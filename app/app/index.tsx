@@ -7,8 +7,9 @@ import { useApi } from "../hooks/useApi";
 import { CsvExportButton } from "../components/CsvExportButton";
 import { Heatmap } from "../components/charts/Heatmap";
 import { DelayHistogram, GapCallout, OtpComparison } from "../components/metrics";
+import { Table } from "../components/Table";
 import { WindowPicker } from "../components/WindowPicker";
-import { Card, ErrorView, Loading, PageTitle, Row, SectionTitle, StatTile, Screen } from "../components/ui";
+import { Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../components/ui";
 
 export default function SystemOverview() {
   const [windowKey, setWindowKey] = useState<WindowKey>("30d");
@@ -49,6 +50,9 @@ export default function SystemOverview() {
             <StatTile label="Cancellation rate" value={formatPercent(summary.data.overall.cancellationRatePercent)} />
             <StatTile label="Median delay" value={formatDelaySeconds(summary.data.overall.medianDelaySeconds)} />
             <StatTile label="P90 delay" value={formatDelaySeconds(summary.data.overall.p90DelaySeconds)} color={theme.colors.warn} />
+            {summary.data.fleetMdbf ? (
+              <StatTile label="Fleet MDBF" value={`${formatInt(summary.data.fleetMdbf.avgMiles)} mi`} hint="miles between failures (NJT)" />
+            ) : null}
           </Row>
 
           <Card>

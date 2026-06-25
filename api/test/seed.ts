@@ -12,10 +12,10 @@ export function seededApp(): { app: Hono; repos: Repositories } {
 
   // --- GTFS catalog ---------------------------------------------------------
   repos.gtfs.insertVersion({ versionId: "v1", effectiveFrom: 0, effectiveTo: null, checksum: "c1", ingestedAtMs: 0 });
-  repos.gtfs.replaceRoutes("v1", [{ routeId: "NE", lineName: NEC }]);
+  repos.gtfs.replaceRoutes("v1", [{ routeId: "NE", lineName: NEC, color: "DD3439" }]);
   repos.gtfs.replaceStops("v1", [
-    { stopId: "NWK", stopName: "Newark Penn" },
-    { stopId: "NYP", stopName: "New York Penn" },
+    { stopId: "NWK", stopName: "Newark Penn", stopLat: 40.7347, stopLon: -74.1644 },
+    { stopId: "NYP", stopName: "New York Penn", stopLat: 40.7506, stopLon: -73.9936 },
   ]);
   repos.gtfs.replaceTrips("v1", [{ tripId: "T1", routeId: "NE", directionId: 0 }]);
   repos.gtfs.replaceStopTimes("v1", [
@@ -83,8 +83,12 @@ export function seededApp(): { app: Hono; repos: Repositories } {
 
   repos.official.upsert({
     year: 2025, month: 7, lineName: NEC, otpPercent: 88.5, otpPercentAmtrakAdjusted: 91.2,
-    tripsOperated: 3000, cancellations: 50,
+    tripsOperated: 3000, cancellations: 50, cancellationCauses: { AMTRAK: 30, Mechanical: 20 },
   });
+  repos.official.upsertMdbf({ year: 2025, month: 7, mdbf: 90000 });
+
+  repos.lightRail.upsertOtp({ year: 2025, month: 7, otpPercent: 96.5 });
+  repos.lightRail.upsertMdbf({ year: 2025, month: 7, lineName: "Hudson-Bergen Light Rail", mdbf: 30000 });
 
   repos.alerts.upsert({
     alertId: "A1", affectedRoutes: ["NE"], affectedStops: ["NWK"],

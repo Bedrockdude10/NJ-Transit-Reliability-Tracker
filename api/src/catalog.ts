@@ -4,18 +4,29 @@ import {
   findLineByName,
   lineHasAmtrakAttribution,
   type LineListItem,
+  type OfficialNjtMetric,
 } from "@njt/shared";
-import { slugify } from "./util";
+import { round1, slugify } from "./util";
 
-/** Build a line list item from a route_id + its GTFS line name. */
-export function toLineItem(routeId: string, lineName: string): LineListItem {
+/** Build a line list item, enriched with NJT's most recent published month. */
+export function toLineItem(
+  routeId: string,
+  lineName: string,
+  latest: OfficialNjtMetric | null,
+  color: string | null = null,
+): LineListItem {
   const catalog = findLineByName(lineName);
+  const scheduled = latest ? latest.tripsOperated + latest.cancellations : 0;
   return {
     id: routeId,
     slug: catalog?.id ?? slugify(lineName),
     name: lineName,
     shortName: catalog?.shortName ?? lineName,
     hasAmtrakAttribution: lineHasAmtrakAttribution(lineName),
+    color,
+    njtOtpPercent: latest?.otpPercent ?? null,
+    njtCancellationRatePercent: latest && scheduled > 0 ? round1((latest.cancellations / scheduled) * 100) : null,
+    njtLatestMonth: latest ? `${latest.year}-${String(latest.month).padStart(2, "0")}` : null,
   };
 }
 
@@ -23,7 +34,10 @@ export function toLineItem(routeId: string, lineName: string): LineListItem {
 export function listLines(repos: Repositories): LineListItem[] {
   const version = repos.gtfs.currentVersion();
   if (!version) return [];
-  return repos.gtfs.routes(version.versionId).map((r) => toLineItem(r.routeId, r.lineName));
+  return repos.gtfs.routes(version.versionId).map((r) => {
+    const history = repos.official.getAllForLine(r.lineName);
+    return toLineItem(r.routeId, r.lineName, history.at(-1) ?? null, r.color ?? null);
+  });
 }
 
 export interface ResolvedLine {

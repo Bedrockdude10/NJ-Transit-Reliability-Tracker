@@ -1,5 +1,6 @@
-import type { OfficialNjtMetric } from "@njt/shared";
+import type { FleetMdbfMetric, OfficialNjtMetric } from "@njt/shared";
 import type { Database } from "../database";
+import { parseCountMap, serializeJson } from "../json";
 
 interface MetricRow {
   year: number;
@@ -9,6 +10,7 @@ interface MetricRow {
   otp_percent_amtrak_adjusted: number | null;
   trips_operated: number;
   cancellations: number;
+  cancellation_causes: string | null;
 }
 
 function toMetric(row: MetricRow): OfficialNjtMetric {
@@ -20,6 +22,7 @@ function toMetric(row: MetricRow): OfficialNjtMetric {
     otpPercentAmtrakAdjusted: row.otp_percent_amtrak_adjusted,
     tripsOperated: row.trips_operated,
     cancellations: row.cancellations,
+    cancellationCauses: row.cancellation_causes ? parseCountMap(row.cancellation_causes) : null,
   };
 }
 
@@ -38,13 +41,14 @@ export class OfficialMetricRepository {
         /* sql */ `
         INSERT INTO official_njt_metrics (
           year, month, line_name, otp_percent, otp_percent_amtrak_adjusted,
-          trips_operated, cancellations
-        ) VALUES (:year, :month, :line, :otp, :otpAdj, :trips, :cancellations)
+          trips_operated, cancellations, cancellation_causes
+        ) VALUES (:year, :month, :line, :otp, :otpAdj, :trips, :cancellations, :causes)
         ON CONFLICT(year, month, line_name) DO UPDATE SET
           otp_percent                 = excluded.otp_percent,
           otp_percent_amtrak_adjusted = excluded.otp_percent_amtrak_adjusted,
           trips_operated              = excluded.trips_operated,
-          cancellations               = excluded.cancellations
+          cancellations               = excluded.cancellations,
+          cancellation_causes         = excluded.cancellation_causes
       `,
       )
       .run({
@@ -55,6 +59,7 @@ export class OfficialMetricRepository {
         otpAdj: metric.otpPercentAmtrakAdjusted,
         trips: metric.tripsOperated,
         cancellations: metric.cancellations,
+        causes: metric.cancellationCauses ? serializeJson(metric.cancellationCauses) : null,
       });
   }
 
@@ -100,5 +105,29 @@ export class OfficialMetricRepository {
         line: lineName,
       })
       .map(toMetric);
+  }
+
+  // --- Fleet MDBF (systemwide mean distance between failures) ---------------
+
+  upsertMdbf(metric: FleetMdbfMetric): void {
+    this.db
+      .prepare(
+        /* sql */ `
+        INSERT INTO official_fleet_mdbf (year, month, mdbf) VALUES (:year, :month, :mdbf)
+        ON CONFLICT(year, month) DO UPDATE SET mdbf = excluded.mdbf
+      `,
+      )
+      .run({ year: metric.year, month: metric.month, mdbf: metric.mdbf });
+  }
+
+  /** MDBF rows across an inclusive month range. */
+  getMdbfForRange(
+    from: { year: number; month: number },
+    to: { year: number; month: number },
+  ): FleetMdbfMetric[] {
+    return this.db.all<FleetMdbfMetric>(
+      "SELECT year, month, mdbf FROM official_fleet_mdbf WHERE (year * 12 + month - 1) BETWEEN :from AND :to ORDER BY year, month",
+      { from: monthIndex(from.year, from.month), to: monthIndex(to.year, to.month) },
+    );
   }
 }

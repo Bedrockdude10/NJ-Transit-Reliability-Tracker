@@ -6,14 +6,17 @@ import {
   type HeatmapResponse,
   type HeatmapType,
   type LineListResponse,
+  type LineMonthlyResponse,
   type LineSummaryResponse,
   type LineTrendResponse,
+  type MonthlyComparisonRow,
+  type OfficialNjtMetric,
   type OtpDailyRow,
   type TrendPoint,
   type WorstTripsResponse,
 } from "@njt/shared";
 import { Hono } from "hono";
-import { buildHeatmap, buildOfficialComparison, buildOtpSummary } from "../aggregation";
+import { buildCancellations, buildHeatmap, buildOfficialComparison, buildOtpSummary } from "../aggregation";
 import { listLines, resolveLine } from "../catalog";
 import { monthRange, resolveRange } from "../dates";
 import { badRequest, round1 } from "../util";
@@ -94,6 +97,7 @@ export function lineRoutes(repos: Repositories): Hono {
     const otpFor = (dir: "all" | "inbound" | "outbound") =>
       repos.aggregates.getOtpDailyRows("line", routeId, dir, range.from, range.to);
     const months = monthRange(range);
+    const officialMetrics = repos.official.getForLineRange(name, months.from, months.to);
 
     const response: LineSummaryResponse = {
       lineId: routeId,
@@ -104,7 +108,8 @@ export function lineRoutes(repos: Repositories): Hono {
       // Per-direction distribution isn't stored; direction summaries focus on OTP/counts.
       inbound: buildOtpSummary(otpFor("inbound"), []),
       outbound: buildOtpSummary(otpFor("outbound"), []),
-      njtOfficial: buildOfficialComparison(repos.official.getForLineRange(name, months.from, months.to)),
+      njtOfficial: buildOfficialComparison(officialMetrics),
+      njtCancellations: buildCancellations(officialMetrics),
     };
     return c.json(response);
   });
@@ -126,6 +131,41 @@ export function lineRoutes(repos: Repositories): Hono {
       njtThresholdSeconds: NJT_OFFICIAL_THRESHOLD_SECONDS,
       points: buildTrend(rows, interval, officialByMonth),
     };
+    return c.json(response);
+  });
+
+  // Full monthly history: NJT's published OTP (real, back to 2017) joined with
+  // this project's monthly OTP wherever independent data exists. Newest first.
+  router.get("/:lineId/monthly", (c) => {
+    const { routeId, name } = resolveLine(repos, c.req.param("lineId"));
+
+    const projectByMonth = new Map<string, { operated: number; onTime15: number }>();
+    for (const row of repos.aggregates.getOtpDailyRows("line", routeId, "all", "2017-01-01", "2100-01-01")) {
+      const month = row.serviceDate.slice(0, 7);
+      const acc = projectByMonth.get(month) ?? { operated: 0, onTime15: 0 };
+      acc.operated += row.tripsOperated;
+      acc.onTime15 += row.onTimeCounts[ON_TIME_15_MIN] ?? 0;
+      projectByMonth.set(month, acc);
+    }
+
+    const officialByMonth = new Map<string, OfficialNjtMetric>(
+      repos.official.getAllForLine(name).map((m) => [`${m.year}-${String(m.month).padStart(2, "0")}`, m]),
+    );
+
+    const months = [...new Set([...projectByMonth.keys(), ...officialByMonth.keys()])].sort().reverse();
+    const rows: MonthlyComparisonRow[] = months.map((month) => {
+      const official = officialByMonth.get(month);
+      const project = projectByMonth.get(month);
+      return {
+        month,
+        njtOtpPercent: official?.otpPercent ?? null,
+        njtOtpPercentAmtrakAdjusted: official?.otpPercentAmtrakAdjusted ?? null,
+        projectOtpPercent15Min: project && project.operated > 0 ? round1((project.onTime15 / project.operated) * 100) : null,
+        projectTripsOperated: project?.operated ?? 0,
+      };
+    });
+
+    const response: LineMonthlyResponse = { lineId: routeId, name, rows };
     return c.json(response);
   });
 

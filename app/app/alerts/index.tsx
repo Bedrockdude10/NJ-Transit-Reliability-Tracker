@@ -1,5 +1,5 @@
 import { useMemo, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
 import { formatTimestamp, humanizeEffect } from "../../lib/format";
 import { theme } from "../../lib/theme";
@@ -9,14 +9,51 @@ import { Table } from "../../components/Table";
 import { Badge, Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, Screen } from "../../components/ui";
 
 const PAGE_SIZE = 20;
+const EFFECTS = ["delay", "cancellation", "detour", "reduced_service", "no_service", "modified_service", "other"];
+
+interface ChipOption {
+  label: string;
+  value: string | undefined;
+}
+
+function Chips({ options, value, onSelect }: { options: ChipOption[]; value: string | undefined; onSelect: (v: string | undefined) => void }) {
+  const all: ChipOption[] = [{ label: "All", value: undefined }, ...options];
+  return (
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.chips}>
+      {all.map((opt) => {
+        const active = opt.value === value;
+        return (
+          <Pressable key={opt.label} onPress={() => onSelect(opt.value)} style={[styles.chip, active && styles.chipActive]}>
+            <Text style={[styles.chipText, active && styles.chipTextActive]}>{opt.label}</Text>
+          </Pressable>
+        );
+      })}
+    </ScrollView>
+  );
+}
 
 export default function Alerts() {
   const range = useMemo(() => windowToRange(90), []);
   const [page, setPage] = useState(1);
+  const [line, setLine] = useState<string | undefined>();
+  const [effect, setEffect] = useState<string | undefined>();
 
-  const list = useApi(() => api.alerts({ page, pageSize: PAGE_SIZE, ...range }), [page, range.from, range.to]);
+  const lines = useApi(() => api.lines(), []);
+  const list = useApi(
+    () => api.alerts({ page, pageSize: PAGE_SIZE, line, effect_type: effect, ...range }),
+    [page, line, effect, range.from, range.to],
+  );
   const freq = useApi(() => api.alertFrequency(range), [range.from, range.to]);
   const totalPages = list.data ? Math.max(1, Math.ceil(list.data.total / PAGE_SIZE)) : 1;
+
+  const selectLine = (v: string | undefined) => {
+    setLine(v);
+    setPage(1);
+  };
+  const selectEffect = (v: string | undefined) => {
+    setEffect(v);
+    setPage(1);
+  };
 
   return (
     <Screen>
@@ -39,6 +76,11 @@ export default function Alerts() {
 
       <Card>
         <SectionTitle>Alert log</SectionTitle>
+        <Text style={styles.filterLabel}>Filter by line</Text>
+        <Chips options={(lines.data?.lines ?? []).map((l) => ({ label: l.shortName, value: l.id }))} value={line} onSelect={selectLine} />
+        <Text style={styles.filterLabel}>Filter by effect</Text>
+        <Chips options={EFFECTS.map((e) => ({ label: humanizeEffect(e), value: e }))} value={effect} onSelect={selectEffect} />
+
         {list.loading ? <Loading /> : null}
         {list.error ? <ErrorView message={list.error} onRetry={list.reload} /> : null}
         {list.data?.alerts.map((alert) => (
@@ -53,7 +95,7 @@ export default function Alerts() {
             </Text>
           </View>
         ))}
-        {list.data && list.data.alerts.length === 0 ? <Muted>No alerts in this period.</Muted> : null}
+        {list.data && list.data.alerts.length === 0 ? <Muted>No alerts match these filters.</Muted> : null}
 
         <Row>
           <Pressable disabled={page <= 1} onPress={() => setPage((p) => p - 1)} style={[styles.pageBtn, page <= 1 && styles.disabled]}>
@@ -72,6 +114,12 @@ export default function Alerts() {
 }
 
 const styles = StyleSheet.create({
+  filterLabel: { color: theme.colors.textMuted, fontSize: theme.fontSize.xs, textTransform: "uppercase", letterSpacing: 0.5, marginTop: theme.spacing(1) },
+  chips: { gap: theme.spacing(2), paddingVertical: theme.spacing(1) },
+  chip: { paddingHorizontal: theme.spacing(3), paddingVertical: theme.spacing(1), borderRadius: 999, backgroundColor: theme.colors.surfaceAlt },
+  chipActive: { backgroundColor: theme.colors.accent },
+  chipText: { color: theme.colors.textMuted, fontSize: theme.fontSize.sm, fontWeight: "600" },
+  chipTextActive: { color: theme.colors.background },
   alert: { gap: theme.spacing(1), paddingVertical: theme.spacing(2), borderBottomWidth: 1, borderBottomColor: theme.colors.border },
   alertHead: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: theme.spacing(2) },
   alertTitle: { color: theme.colors.text, fontWeight: "700", fontSize: theme.fontSize.md, flex: 1 },

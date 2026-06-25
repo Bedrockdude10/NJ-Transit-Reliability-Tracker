@@ -5,5 +5,6 @@ export * from "./domain";
 export * from "./aggregates";
 export * from "./api";
 export * from "./lines";
+export * from "./geo";
 export * from "./time";
 export * from "./delay";

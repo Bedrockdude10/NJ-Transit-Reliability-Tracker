@@ -7,7 +7,7 @@ import {
   type SystemSummaryResponse,
 } from "@njt/shared";
 import { Hono } from "hono";
-import { buildHeatmap, buildOfficialComparison, buildOtpSummary } from "../aggregation";
+import { buildCancellations, buildFleetMdbf, buildHeatmap, buildOfficialComparison, buildOtpSummary } from "../aggregation";
 import { monthRange, resolveRange } from "../dates";
 import { badRequest } from "../util";
 
@@ -28,11 +28,14 @@ export function systemRoutes(repos: Repositories): Hono {
     const otp = repos.aggregates.getOtpDailyRows("system", SYSTEM_SCOPE_ID, "all", range.from, range.to);
     const dist = repos.aggregates.getDelayDistributionDailyRows("system", SYSTEM_SCOPE_ID, range.from, range.to);
     const months = monthRange(range);
+    const officialMetrics = repos.official.getAllForRange(months.from, months.to);
     const response: SystemSummaryResponse = {
       from: range.from,
       to: range.to,
       overall: buildOtpSummary(otp, dist),
-      njtOfficial: buildOfficialComparison(repos.official.getAllForRange(months.from, months.to)),
+      njtOfficial: buildOfficialComparison(officialMetrics),
+      njtCancellations: buildCancellations(officialMetrics),
+      fleetMdbf: buildFleetMdbf(repos.official.getMdbfForRange(months.from, months.to)),
     };
     return c.json(response);
   });

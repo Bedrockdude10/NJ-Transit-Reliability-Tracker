@@ -16,6 +16,7 @@ describe("parseOfficialMetrics", () => {
         otpPercentAmtrakAdjusted: 91.2,
         tripsOperated: 3000,
         cancellations: 50,
+        cancellationCauses: null,
       },
     ]);
   });

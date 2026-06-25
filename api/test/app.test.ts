@@ -5,9 +5,12 @@ import type {
   ConnectionTopResponse,
   HealthResponse,
   HeatmapResponse,
+  LightRailSummaryResponse,
   LineListResponse,
+  LineMonthlyResponse,
   LineSummaryResponse,
   LineTrendResponse,
+  MapResponse,
   StationListResponse,
   StationSummaryResponse,
   SystemSummaryResponse,
@@ -49,6 +52,7 @@ describe("API integration", () => {
     expect(body.overall.thresholds.find((t) => t.thresholdSeconds === 300)?.otpPercent).toBe(70);
     expect(body.njtOfficial?.otpPercent).toBe(88.5); // the gap the project exists to show
     expect(body.njtOfficial?.thresholdSeconds).toBe(360);
+    expect(body.fleetMdbf).toMatchObject({ avgMiles: 90000, monthsCovered: 1 });
   });
 
   it("GET /system/heatmap labels day-of-week buckets", async () => {
@@ -61,11 +65,29 @@ describe("API integration", () => {
     expect((await app.request(`/system/summary?from=bad`)).status).toBe(400);
   });
 
-  it("GET /lines lists active lines", async () => {
+  it("GET /lines lists active lines with NJT's latest reported OTP", async () => {
     const { body } = await getJson<LineListResponse>("/lines");
     expect(body.lines).toEqual([
-      { id: "NE", slug: "northeast-corridor", name: "Northeast Corridor Line", shortName: "NEC", hasAmtrakAttribution: true },
+      {
+        id: "NE",
+        slug: "northeast-corridor",
+        name: "Northeast Corridor Line",
+        shortName: "NEC",
+        hasAmtrakAttribution: true,
+        color: "DD3439",
+        njtOtpPercent: 88.5,
+        njtCancellationRatePercent: 1.6, // 50 / (3000 + 50)
+        njtLatestMonth: "2025-07",
+      },
     ]);
+  });
+
+  it("GET /map returns real geometry + per-line reliability", async () => {
+    const { body } = await getJson<MapResponse>("/map?from=2025-07-01&to=2025-07-31");
+    expect(body.stations.find((s) => s.stopId === "NWK")).toMatchObject({ stopName: "Newark Penn", lat: 40.7347 });
+    const nec = body.lines.find((l) => l.lineId === "NE");
+    expect(nec).toMatchObject({ color: "DD3439", njtOtpPercent: 88.5, projectOtpPercent15Min: 92 });
+    expect(nec?.path).toEqual(["NWK", "NYP"]);
   });
 
   it("GET /lines/:id/summary includes direction split and official figures", async () => {
@@ -74,6 +96,8 @@ describe("API integration", () => {
     expect(body.inbound.tripsOperated).toBe(50);
     expect(body.outbound.tripsOperated).toBe(50);
     expect(body.njtOfficial?.otpPercentAmtrakAdjusted).toBe(91.2);
+    expect(body.njtCancellations?.total).toBe(50);
+    expect(body.njtCancellations?.byCause[0]).toEqual({ cause: "AMTRAK", count: 30, percent: 60 });
   });
 
   it("GET /lines/:id/trend plots 15-min OTP with NJT's monthly figure", async () => {
@@ -83,9 +107,25 @@ describe("API integration", () => {
     expect(body.points[0]?.njtOfficialOtpPercent).toBe(88.5);
   });
 
+  it("GET /lines/:id/monthly merges real NJT months with project months", async () => {
+    const { body } = await getJson<LineMonthlyResponse>("/lines/NE/monthly");
+    const july = body.rows.find((r) => r.month === "2025-07");
+    expect(july).toMatchObject({
+      njtOtpPercent: 88.5,
+      njtOtpPercentAmtrakAdjusted: 91.2,
+      projectOtpPercent15Min: 92, // onTime@900 (92) / operated (100)
+    });
+  });
+
   it("GET /lines/:id/trips/worst ranks by terminal delay", async () => {
     const { body } = await getJson<WorstTripsResponse>(`/lines/NE/trips/worst?${RANGE}`);
     expect(body.trips[0]).toMatchObject({ tripId: "T1", avgTerminalDelaySeconds: 1200 });
+  });
+
+  it("GET /lightrail/summary returns OTP and per-line MDBF", async () => {
+    const { body } = await getJson<LightRailSummaryResponse>("/lightrail/summary?from=2025-07-01&to=2025-07-31");
+    expect(body.otpPercent).toBe(96.5);
+    expect(body.lines.find((l) => l.lineName === "Hudson-Bergen Light Rail")?.avgMdbf).toBe(30000);
   });
 
   it("GET /stations lists stations with their lines", async () => {

@@ -1,6 +1,8 @@
 import type { DelayDistributionDailyRow, OtpDailyRow } from "@njt/shared";
 import { describe, expect, it } from "vitest";
 import {
+  buildCancellations,
+  buildFleetMdbf,
   buildHeatmap,
   buildOfficialComparison,
   buildOtpSummary,
@@ -79,14 +81,42 @@ describe("buildOfficialComparison", () => {
 
   it("trips-weights OTP across months", () => {
     const result = buildOfficialComparison([
-      { year: 2025, month: 6, lineName: "NEC", otpPercent: 80, otpPercentAmtrakAdjusted: 85, tripsOperated: 100, cancellations: 0 },
-      { year: 2025, month: 7, lineName: "NEC", otpPercent: 90, otpPercentAmtrakAdjusted: null, tripsOperated: 300, cancellations: 0 },
+      { year: 2025, month: 6, lineName: "NEC", otpPercent: 80, otpPercentAmtrakAdjusted: 85, tripsOperated: 100, cancellations: 0, cancellationCauses: null },
+      { year: 2025, month: 7, lineName: "NEC", otpPercent: 90, otpPercentAmtrakAdjusted: null, tripsOperated: 300, cancellations: 0, cancellationCauses: null },
     ]);
     // (80*100 + 90*300) / 400 = 87.5
     expect(result?.otpPercent).toBe(87.5);
     expect(result?.otpPercentAmtrakAdjusted).toBe(85); // only one month reports it
     expect(result?.monthsCovered).toBe(2);
     expect(result?.thresholdSeconds).toBe(360);
+  });
+});
+
+describe("buildCancellations", () => {
+  it("returns null with no metrics", () => {
+    expect(buildCancellations([])).toBeNull();
+  });
+
+  it("sums totals and ranks causes by share", () => {
+    const result = buildCancellations([
+      { year: 2025, month: 6, lineName: "NEC", otpPercent: 80, otpPercentAmtrakAdjusted: null, tripsOperated: 100, cancellations: 10, cancellationCauses: { AMTRAK: 6, Mechanical: 4 } },
+      { year: 2025, month: 7, lineName: "NEC", otpPercent: 90, otpPercentAmtrakAdjusted: null, tripsOperated: 100, cancellations: 10, cancellationCauses: { AMTRAK: 4, Mechanical: 6 } },
+    ]);
+    expect(result?.total).toBe(20);
+    expect(result?.byCause[0]).toEqual({ cause: "AMTRAK", count: 10, percent: 50 });
+    expect(result?.monthsCovered).toBe(2);
+  });
+});
+
+describe("buildFleetMdbf", () => {
+  it("averages monthly MDBF and counts months", () => {
+    expect(
+      buildFleetMdbf([
+        { year: 2025, month: 6, mdbf: 80000 },
+        { year: 2025, month: 7, mdbf: 90000 },
+      ]),
+    ).toEqual({ avgMiles: 85000, monthsCovered: 2 });
+    expect(buildFleetMdbf([])).toBeNull();
   });
 });
 

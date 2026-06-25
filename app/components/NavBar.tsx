@@ -4,7 +4,9 @@ import { theme } from "../lib/theme";
 
 const LINKS = [
   { href: "/", label: "Overview" },
+  { href: "/map", label: "Map" },
   { href: "/lines", label: "Lines" },
+  { href: "/lightrail", label: "Light Rail" },
   { href: "/stations", label: "Stations" },
   { href: "/connections", label: "Connections" },
   { href: "/alerts", label: "Alerts" },

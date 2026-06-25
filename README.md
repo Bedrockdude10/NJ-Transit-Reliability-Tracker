@@ -39,24 +39,40 @@ npm install
 
 ### Seed demo data
 
-The pipeline needs live NJT credentials to collect real data, but you can populate a database with realistic synthetic data to explore everything locally:
+The real-time GTFS-RT pipeline needs live NJT credentials, but everything else uses **keyless** real data plus synthetic *independent* measurements. The recommended local setup, in order:
 
 ```bash
-npm run seed          # writes ./data/njt.sqlite (≈30 days of events + aggregates)
+npm run import:gtfs        # real GTFS static network: stops+coords, lines+colors, trips (NJT_GTFS_DIR, default ./data)
+npm run seed               # synthetic independent events + aggregates, generated ON the real network
+npm run import:official    # real NJT monthly OTP/cancellations per line + light rail (NJT_PERFORMANCE_DIR, default ./data)
 ```
+
+- **GTFS static** is keyless — download the NJ Transit *Rail* feed from the Mobility Database (`mobilitydatabase.org`) or `developer.njtransit.com` and unzip it under `./data/` (e.g. `./data/mdb-…/`). This drives the real station map, line list, and geometry. If you skip it, `seed` falls back to a self-contained synthetic catalog so the app still renders.
+- **Official figures** are also keyless — download the per-line rail CSVs from `njtransit.com/performance-data-download` into `./data/`.
+
+So a complete local demo is `npm run import:gtfs && npm run seed && npm run import:official`: the real network and NJT's real published numbers, with synthetic independent measurements standing in until a GTFS-RT key turns on live collection. (Seeding never fabricates official figures — those only come from the importer.)
 
 ### Run the components
 
+Each in its own terminal. (Run these as-is — don't paste trailing comments; zsh doesn't strip them.)
+
+Start the API (reads `./data/njt.sqlite`, serves on the chosen port):
+
 ```bash
-# API (reads ./data/njt.sqlite by default; serves on :4000)
 NJT_DB_PATH=./data/njt.sqlite PORT=4055 npm run api
+```
 
-# Frontend (web). Point it at the API:
-EXPO_PUBLIC_API_URL=http://localhost:4055 npm run app -- --web
-# iOS / Android:
-EXPO_PUBLIC_API_URL=http://localhost:4055 npm run app   # then press i / a
+Run the web frontend, pointed at that API:
 
-# Ingest pipeline (needs real NJT credentials — see .env.example)
+```bash
+EXPO_PUBLIC_API_URL=http://localhost:4055 npm run web --workspace app
+```
+
+For iOS / Android, use `npm run ios --workspace app` or `npm run android --workspace app` (or `npm run start --workspace app` and press `i` / `a`).
+
+Run the ingest pipeline (needs real NJT credentials — see `.env.example`):
+
+```bash
 npm run pipeline
 ```
 

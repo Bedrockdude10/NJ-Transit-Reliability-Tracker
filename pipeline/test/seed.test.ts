@@ -23,8 +23,8 @@ describe("generateSyntheticData", () => {
     // Connections were discovered at the shared hubs.
     expect(repos.aggregates.topConnectionTriples(5).length).toBeGreaterThan(0);
 
-    // Official metrics + alerts + health.
-    expect(repos.official.getAllForLine("Northeast Corridor Line").length).toBeGreaterThan(0);
+    // Official metrics come from the real CSV importer, not the seed.
+    expect(repos.official.getAllForLine("Northeast Corridor Line")).toHaveLength(0);
     expect(repos.alerts.list({}).total).toBeGreaterThan(0);
     expect(repos.health.collectionStartDate()).toBe("2025-07-13");
   });

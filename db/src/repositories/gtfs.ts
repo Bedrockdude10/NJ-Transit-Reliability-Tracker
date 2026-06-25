@@ -4,6 +4,13 @@ import type { Database } from "../database";
 export interface GtfsRouteRecord {
   routeId: string;
   lineName: string;
+  color?: string | null;
+}
+export interface GtfsStopCoord {
+  stopId: string;
+  stopName: string;
+  lat: number | null;
+  lon: number | null;
 }
 export interface GtfsStopRecord {
   stopId: string;
@@ -108,10 +115,10 @@ export class GtfsRepository {
 
   replaceRoutes(versionId: string, routes: readonly GtfsRouteRecord[]): void {
     const stmt = this.db.prepare(
-      "INSERT OR REPLACE INTO gtfs_routes (version_id, route_id, line_name) VALUES (:v, :r, :n)",
+      "INSERT OR REPLACE INTO gtfs_routes (version_id, route_id, line_name, route_color) VALUES (:v, :r, :n, :c)",
     );
     this.db.transaction(() => {
-      for (const r of routes) stmt.run({ v: versionId, r: r.routeId, n: r.lineName });
+      for (const r of routes) stmt.run({ v: versionId, r: r.routeId, n: r.lineName, c: r.color ?? null });
     });
   }
 
@@ -161,9 +168,31 @@ export class GtfsRepository {
 
   routes(versionId: string): GtfsRouteRecord[] {
     return this.db.all<GtfsRouteRecord>(
-      "SELECT route_id AS routeId, line_name AS lineName FROM gtfs_routes WHERE version_id = :v ORDER BY line_name",
+      "SELECT route_id AS routeId, line_name AS lineName, route_color AS color FROM gtfs_routes WHERE version_id = :v ORDER BY line_name",
       { v: versionId },
     );
+  }
+
+  /** Every stop in a version with its coordinates. */
+  allStops(versionId: string): GtfsStopCoord[] {
+    return this.db.all<GtfsStopCoord>(
+      "SELECT stop_id AS stopId, stop_name AS stopName, stop_lat AS lat, stop_lon AS lon FROM gtfs_stops WHERE version_id = :v",
+      { v: versionId },
+    );
+  }
+
+  /** The stop sequence of the longest trip on a route — a line's path. */
+  representativeStopSequence(versionId: string, routeId: string): GtfsStopTimeRecord[] {
+    const longest = this.db.get<{ tripId: string }>(
+      /* sql */ `
+        SELECT st.trip_id AS tripId
+        FROM gtfs_stop_times st JOIN gtfs_trips t ON t.version_id = st.version_id AND t.trip_id = st.trip_id
+        WHERE st.version_id = :v AND t.route_id = :r
+        GROUP BY st.trip_id ORDER BY COUNT(*) DESC LIMIT 1
+      `,
+      { v: versionId, r: routeId },
+    );
+    return longest ? this.stopTimesForTrip(versionId, longest.tripId) : [];
   }
 
   lineNameForRoute(versionId: string, routeId: string): string | null {

@@ -20,15 +20,17 @@ export function OtpComparison({
     value: t.otpPercent,
     color: otpColor(t.otpPercent),
   }));
-  if (njtOfficial) {
-    data.push({ label: "NJT 6m", value: njtOfficial.otpPercent, color: theme.colors.njt });
-  }
+  const referenceLine = njtOfficial
+    ? { value: njtOfficial.otpPercent, label: `NJT 6 min · ${njtOfficial.otpPercent}%`, color: theme.colors.njt }
+    : undefined;
   return (
     <View style={styles.block}>
-      <BarChart data={data} height={210} formatValue={(v) => `${v}%`} />
+      <BarChart data={data} height={220} maxValue={100} referenceLine={referenceLine} formatValue={(v) => `${v}%`} />
       <Muted>
-        On-time % at each threshold (stricter = lower). The yellow bar is NJT’s own reported 6-minute figure
-        {njtOfficial ? ` (${njtOfficial.monthsCovered} mo).` : " (no official data for this period)."}
+        Each bar is the on-time rate at that lateness threshold (stricter on the left).
+        {njtOfficial
+          ? ` The dashed line is NJT’s reported 6-minute figure (${njtOfficial.monthsCovered} mo) — at strict thresholds the real number sits well below it.`
+          : " No NJT official figure for this period."}
       </Muted>
     </View>
   );

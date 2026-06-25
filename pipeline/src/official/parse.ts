@@ -54,6 +54,7 @@ export function parseOfficialMetrics(csv: string): OfficialNjtMetric[] {
       otpPercentAmtrakAdjusted: toNumber(pick(row, ALIASES.otpAdjusted)),
       tripsOperated: toNumber(pick(row, ALIASES.trips)) ?? 0,
       cancellations: toNumber(pick(row, ALIASES.cancellations)) ?? 0,
+      cancellationCauses: null,
     });
   }
   return metrics;

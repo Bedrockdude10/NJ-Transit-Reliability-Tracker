@@ -247,4 +247,47 @@ export const MIGRATIONS: readonly Migration[] = [
       );
     `,
   },
+  {
+    id: "002_cancellation_causes_and_mdbf",
+    up: /* sql */ `
+      -- Per-month cancellation breakdown by NJT cause category (JSON map).
+      ALTER TABLE official_njt_metrics ADD COLUMN cancellation_causes TEXT;
+
+      -- Systemwide fleet Mean Distance Between Failures (miles), monthly.
+      CREATE TABLE official_fleet_mdbf (
+        year  INTEGER NOT NULL,
+        month INTEGER NOT NULL,
+        mdbf  INTEGER NOT NULL,
+        PRIMARY KEY (year, month)
+      );
+    `,
+  },
+  {
+    id: "003_light_rail",
+    up: /* sql */ `
+      -- Systemwide light rail on-time performance, monthly.
+      CREATE TABLE light_rail_otp (
+        year        INTEGER NOT NULL,
+        month       INTEGER NOT NULL,
+        otp_percent REAL    NOT NULL,
+        PRIMARY KEY (year, month)
+      );
+
+      -- Per-line light rail Mean Distance Between Failures (miles), monthly.
+      CREATE TABLE light_rail_mdbf (
+        year      INTEGER NOT NULL,
+        month     INTEGER NOT NULL,
+        line_name TEXT    NOT NULL,
+        mdbf      INTEGER NOT NULL,
+        PRIMARY KEY (year, month, line_name)
+      );
+    `,
+  },
+  {
+    id: "004_route_color",
+    up: /* sql */ `
+      -- Official NJT route color (hex, no leading #) from GTFS routes.txt.
+      ALTER TABLE gtfs_routes ADD COLUMN route_color TEXT;
+    `,
+  },
 ];

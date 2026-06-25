@@ -39,6 +39,25 @@ export interface NjtOfficialComparison {
   monthsCovered: number;
 }
 
+export interface CancellationCauseResult {
+  cause: string;
+  count: number;
+  percent: number;
+}
+
+/** NJT's reported cancellations for the period, broken down by cause. */
+export interface NjtCancellations {
+  total: number;
+  byCause: CancellationCauseResult[];
+  monthsCovered: number;
+}
+
+/** Systemwide fleet reliability for the period. */
+export interface FleetMdbf {
+  avgMiles: number;
+  monthsCovered: number;
+}
+
 export interface HeatmapBucketResult {
   bucket: number;
   label: string;
@@ -70,6 +89,54 @@ export interface HealthResponse {
   generatedAtMs: number;
 }
 
+// --- Map ---------------------------------------------------------------------
+
+export interface MapStation {
+  stopId: string;
+  stopName: string;
+  lat: number;
+  lon: number;
+}
+
+export interface MapLine {
+  /** Catalog route id, for deep-linking to Line Detail. */
+  lineId: string;
+  name: string;
+  shortName: string;
+  /** Official NJT route color (hex, no leading #). */
+  color: string;
+  /** Real NJT OTP for the period (drives reliability coloring), null if none. */
+  njtOtpPercent: number | null;
+  /** Independent (measured) OTP at the 15-min threshold, null if none. */
+  projectOtpPercent15Min: number | null;
+  /** Ordered stop ids tracing the line's path (keys into `stations`). */
+  path: string[];
+}
+
+export interface MapResponse {
+  from: string;
+  to: string;
+  stations: MapStation[];
+  lines: MapLine[];
+}
+
+// --- Light rail --------------------------------------------------------------
+
+export interface LightRailLineMdbf {
+  lineName: string;
+  avgMdbf: number;
+  monthsCovered: number;
+}
+
+export interface LightRailSummaryResponse {
+  from: string;
+  to: string;
+  /** Average systemwide light-rail OTP over the period (null if none). */
+  otpPercent: number | null;
+  monthsCovered: number;
+  lines: LightRailLineMdbf[];
+}
+
 // --- System -----------------------------------------------------------------
 
 export interface SystemSummaryResponse {
@@ -77,6 +144,8 @@ export interface SystemSummaryResponse {
   to: string;
   overall: OtpSummary;
   njtOfficial: NjtOfficialComparison | null;
+  njtCancellations: NjtCancellations | null;
+  fleetMdbf: FleetMdbf | null;
 }
 
 export interface HeatmapResponse {
@@ -95,6 +164,13 @@ export interface LineListItem {
   name: string;
   shortName: string;
   hasAmtrakAttribution: boolean;
+  /** Official NJT route color (hex, no leading #), null if unknown. */
+  color: string | null;
+  /** NJT's reported OTP for the most recent published month (null if none). */
+  njtOtpPercent: number | null;
+  njtCancellationRatePercent: number | null;
+  /** The month those NJT figures are from, `YYYY-MM` (null if none). */
+  njtLatestMonth: string | null;
 }
 
 export interface LineListResponse {
@@ -110,6 +186,7 @@ export interface LineSummaryResponse {
   inbound: OtpSummary;
   outbound: OtpSummary;
   njtOfficial: NjtOfficialComparison | null;
+  njtCancellations: NjtCancellations | null;
 }
 
 export interface TrendPoint {
@@ -128,6 +205,23 @@ export interface LineTrendResponse {
   interval: "daily" | "weekly";
   njtThresholdSeconds: number;
   points: TrendPoint[];
+}
+
+export interface MonthlyComparisonRow {
+  /** `YYYY-MM`. */
+  month: string;
+  /** NJT's reported 6-minute OTP for the month, null if not published. */
+  njtOtpPercent: number | null;
+  njtOtpPercentAmtrakAdjusted: number | null;
+  /** This project's OTP at the 15-minute threshold, null if no data that month. */
+  projectOtpPercent15Min: number | null;
+  projectTripsOperated: number;
+}
+
+export interface LineMonthlyResponse {
+  lineId: string;
+  name: string;
+  rows: MonthlyComparisonRow[];
 }
 
 export interface WorstTrip {

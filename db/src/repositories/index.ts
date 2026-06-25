@@ -4,6 +4,7 @@ import { ServiceAlertRepository } from "./alerts";
 import { TripStopEventRepository } from "./events";
 import { GtfsRepository } from "./gtfs";
 import { HealthRepository } from "./health";
+import { LightRailRepository } from "./lightrail";
 import { OfficialMetricRepository } from "./official";
 import { RawSnapshotRepository } from "./snapshots";
 
@@ -12,6 +13,7 @@ export * from "./alerts";
 export * from "./events";
 export * from "./gtfs";
 export * from "./health";
+export * from "./lightrail";
 export * from "./official";
 export * from "./snapshots";
 
@@ -23,6 +25,7 @@ export interface Repositories {
   alerts: ServiceAlertRepository;
   gtfs: GtfsRepository;
   official: OfficialMetricRepository;
+  lightRail: LightRailRepository;
   aggregates: AggregateRepository;
   health: HealthRepository;
 }
@@ -34,6 +37,7 @@ export function createRepositories(db: Database): Repositories {
     alerts: new ServiceAlertRepository(db),
     gtfs: new GtfsRepository(db),
     official: new OfficialMetricRepository(db),
+    lightRail: new LightRailRepository(db),
     aggregates: new AggregateRepository(db),
     health: new HealthRepository(db),
   };

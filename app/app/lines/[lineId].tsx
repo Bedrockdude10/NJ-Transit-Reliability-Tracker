@@ -1,4 +1,3 @@
-import type { TrendPoint } from "@njt/shared";
 import { useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { api } from "../../lib/api";
@@ -13,24 +12,6 @@ import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
 import { Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
 
-/** Group daily trend points into a monthly project-vs-NJT comparison. */
-function monthlyComparison(points: readonly TrendPoint[]) {
-  const byMonth = new Map<string, { sum: number; count: number; njt: number | null }>();
-  for (const p of points) {
-    const key = p.date.slice(0, 7);
-    const acc = byMonth.get(key) ?? { sum: 0, count: 0, njt: null };
-    acc.sum += p.otpPercent15Min;
-    acc.count += 1;
-    if (p.njtOfficialOtpPercent !== null) acc.njt = p.njtOfficialOtpPercent;
-    byMonth.set(key, acc);
-  }
-  return [...byMonth.entries()].map(([month, a]) => ({
-    month: formatMonth(`${month}-01`),
-    project: `${Math.round((a.sum / a.count) * 10) / 10}%`,
-    njt: a.njt === null ? "—" : `${a.njt}%`,
-  }));
-}
-
 export default function LineDetail() {
   const { lineId } = useLocalSearchParams<{ lineId: string }>();
   const id = lineId ?? "";
@@ -41,9 +22,15 @@ export default function LineDetail() {
   const summary = useApi(() => api.lineSummary(id, range), [id, range.from, range.to]);
   const trend = useApi(() => api.lineTrend(id, range, "daily"), [id, range.from, range.to]);
   const worst = useApi(() => api.lineWorst(id, range, 10), [id, range.from, range.to]);
+  const monthly = useApi(() => api.lineMonthly(id), [id]);
 
   const njtValues = trend.data?.points.map((p) => p.njtOfficialOtpPercent ?? 0) ?? [];
   const hasNjt = njtValues.some((v) => v > 0);
+
+  // Real, long-run NJT OTP history (chronological), from the monthly endpoint.
+  const njtMonthly = (monthly.data?.rows ?? []).filter((r) => r.njtOtpPercent !== null).reverse();
+  const njtMonthlyHasAdj = njtMonthly.some((r) => r.njtOtpPercentAmtrakAdjusted !== null);
+  const amtrakCancel = summary.data?.njtCancellations?.byCause.find((c) => c.cause.toUpperCase() === "AMTRAK") ?? null;
 
   return (
     <Screen>
@@ -103,6 +90,28 @@ export default function LineDetail() {
             <SectionTitle>Delay distribution</SectionTitle>
             <DelayHistogram distribution={summary.data.overall.delayDistribution} />
           </Card>
+
+          {summary.data.njtCancellations && summary.data.njtCancellations.byCause.length > 0 ? (
+            <Card>
+              <SectionTitle>Why NJT cancelled trains</SectionTitle>
+              <Muted>
+                {formatInt(summary.data.njtCancellations.total)} cancellations over {summary.data.njtCancellations.monthsCovered} month(s),
+                by NJT’s own cause category. The Amtrak share is what NJT excludes from its “Amtrak-adjusted” figures.
+              </Muted>
+              <Table
+                columns={[
+                  { key: "cause", label: "Cause", flex: 2.2 },
+                  { key: "count", label: "Count", align: "right" },
+                  { key: "pct", label: "Share", align: "right" },
+                ]}
+                rows={summary.data.njtCancellations.byCause.map((cause) => ({
+                  cause: cause.cause,
+                  count: cause.count,
+                  pct: `${cause.percent}%`,
+                }))}
+              />
+            </Card>
+          ) : null}
         </>
       ) : null}
 
@@ -120,19 +129,60 @@ export default function LineDetail() {
         )}
       </Card>
 
-      {trend.data && trend.data.points.length > 0 ? (
-        <Card>
-          <SectionTitle>Monthly comparison</SectionTitle>
-          <Table
-            columns={[
-              { key: "month", label: "Month", flex: 1.4 },
-              { key: "project", label: "This project ≤15m", align: "right" },
-              { key: "njt", label: "NJT 6m", align: "right" },
-            ]}
-            rows={monthlyComparison(trend.data.points)}
-          />
-        </Card>
-      ) : null}
+      <Card>
+        <SectionTitle>NJT on-time performance over time (real, 2017→)</SectionTitle>
+        {njtMonthly.length > 0 ? (
+          <>
+            <LineChart
+              height={200}
+              series={[
+                { label: "NJT 6 min OTP", color: theme.colors.njt, values: njtMonthly.map((r) => r.njtOtpPercent as number) },
+                ...(njtMonthlyHasAdj
+                  ? [
+                      {
+                        label: "Excl. Amtrak",
+                        color: theme.colors.accent,
+                        values: njtMonthly.map((r) => r.njtOtpPercentAmtrakAdjusted ?? (r.njtOtpPercent as number)),
+                        dashed: true,
+                      },
+                    ]
+                  : []),
+              ]}
+            />
+            <Muted>
+              {njtMonthly.length} months of NJT’s published OTP ({formatMonth(`${njtMonthly[0]?.month}-01`)} →{" "}
+              {formatMonth(`${njtMonthly.at(-1)?.month}-01`)}).
+            </Muted>
+          </>
+        ) : (
+          <Muted>No NJT history for this line.</Muted>
+        )}
+      </Card>
+
+      <Card>
+        <SectionTitle>Monthly comparison — this project vs. NJT</SectionTitle>
+        {monthly.data ? (
+          <>
+            <Table
+              columns={[
+                { key: "month", label: "Month", flex: 1.4 },
+                { key: "project", label: "This project ≤15m", align: "right", flex: 1.4 },
+                { key: "njt", label: "NJT 6m", align: "right" },
+                { key: "njtAdj", label: "NJT adj.", align: "right" },
+              ]}
+              rows={monthly.data.rows.map((r) => ({
+                month: formatMonth(`${r.month}-01`),
+                project: formatPercent(r.projectOtpPercent15Min),
+                njt: formatPercent(r.njtOtpPercent),
+                njtAdj: formatPercent(r.njtOtpPercentAmtrakAdjusted),
+              }))}
+            />
+            <Muted>NJT figures are real and published monthly back to 2017; the project column appears once independent data has been collected for a month.</Muted>
+          </>
+        ) : (
+          <Loading />
+        )}
+      </Card>
 
       <Card>
         <SectionTitle>Most delayed trips</SectionTitle>
@@ -159,9 +209,29 @@ export default function LineDetail() {
       {summary.data?.njtOfficial?.otpPercentAmtrakAdjusted != null ? (
         <Card>
           <SectionTitle>Amtrak attribution</SectionTitle>
+          <Row>
+            <StatTile label="NJT OTP (6 min)" value={formatPercent(summary.data.njtOfficial.otpPercent)} />
+            <StatTile
+              label="Excluding Amtrak"
+              value={formatPercent(summary.data.njtOfficial.otpPercentAmtrakAdjusted)}
+              color={theme.colors.good}
+            />
+            <StatTile
+              label="Attributed to Amtrak"
+              value={`+${Math.round((summary.data.njtOfficial.otpPercentAmtrakAdjusted - summary.data.njtOfficial.otpPercent) * 10) / 10} pts`}
+              color={theme.colors.njt}
+              hint="OTP recovered when Amtrak delays are excluded"
+            />
+          </Row>
+          {amtrakCancel ? (
+            <Muted>
+              Amtrak also caused {amtrakCancel.percent}% of cancellations ({formatInt(amtrakCancel.count)} of{" "}
+              {formatInt(summary.data.njtCancellations?.total ?? 0)}) this period.
+            </Muted>
+          ) : null}
           <Muted>
-            NJT reports {summary.data.njtOfficial.otpPercent}% on-time, or {summary.data.njtOfficial.otpPercentAmtrakAdjusted}%
-            after excluding delays it attributes to Amtrak-owned infrastructure. Attribution is NJT’s own.
+            On the NEC and North Jersey Coast Line, NJT shares Amtrak-owned track and attributes some delay to it.
+            Attribution is NJT’s own.
           </Muted>
         </Card>
       ) : null}

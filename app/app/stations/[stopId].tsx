@@ -5,6 +5,7 @@ import { formatDelaySeconds, formatPercent } from "../../lib/format";
 import { theme } from "../../lib/theme";
 import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
+import { CsvExportButton } from "../../components/CsvExportButton";
 import { Heatmap } from "../../components/charts/Heatmap";
 import { DelayHistogram } from "../../components/metrics";
 import { Table } from "../../components/Table";
@@ -24,13 +25,16 @@ export default function StationDetail() {
   return (
     <Screen>
       <PageTitle title={summary.data?.stopName ?? id} subtitle="Station reliability detail" />
-      <WindowPicker
-        value={windowKey}
-        onChange={(key, d) => {
-          setWindowKey(key);
-          setDays(d);
-        }}
-      />
+      <Row>
+        <WindowPicker
+          value={windowKey}
+          onChange={(key, d) => {
+            setWindowKey(key);
+            setDays(d);
+          }}
+        />
+        <CsvExportButton url={api.exportUrl("station", range, id)} />
+      </Row>
 
       {summary.loading ? <Loading /> : null}
       {summary.error ? <ErrorView message={summary.error} onRetry={summary.reload} /> : null}

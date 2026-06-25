@@ -16,10 +16,11 @@ npm test                         # Vitest: shared, db, pipeline, api, app/lib
 npm test --workspace app         # jest-expo component tests (.test.tsx only)
 npm run typecheck                # strict tsc for the 4 node packages
 npm run typecheck --workspace app
-npm run seed                     # synthetic data → ./data/njt.sqlite
+npm run seed                     # synthetic independent data → ./data/njt.sqlite
+npm run import:official          # real NJT monthly OTP from per-line CSVs in ./data (keyless)
 npm run api                      # start API (env: NJT_DB_PATH, PORT)
 npm run pipeline                 # start ingest worker (needs NJT creds)
-npm run app -- --web             # Expo web dev server
+npm run web --workspace app      # Expo web dev server (ios/android scripts too)
 ```
 
 ## Conventions
@@ -28,6 +29,7 @@ npm run app -- --web             # Expo web dev server
 - **Aggregates are daily.** The pipeline (`pipeline/src/aggregator.ts`, pure `computeAggregates`) writes per-day rollups; the API sums them over a range. Add new metrics as daily rows, not request-time queries.
 - **DB access:** repositories only. Use the typed `Database.all<T>/get<T>/run` helpers (they cast the loose `node:sqlite` rows). Booleans are stored 0/1; map fields are JSON TEXT.
 - **Schema changes:** append a migration to `db/src/schema.ts` — never edit an applied one.
+- **Official NJT metrics** are real and come from `pipeline/src/official/njt-performance.ts` (per-line CSVs, keyed by filename code → catalog name). The seed never fabricates them. The API derives the *system* official figure as the trips-weighted aggregate of the per-line metrics — don't import the systemwide CSV separately (it's redundant and would double-count).
 - **Pipeline I/O is injected** (`Clock`, `FeedClient`, repos) so logic is unit-tested with fakes; HTTP/protobuf parsing lives at the edges.
 - **Frontend logic** lives in `app/lib/` (pure, no React Native — tested by Vitest). Screens/components are thin wrappers; charts render pure geometry from `app/lib/charts.ts`.
 

@@ -6,7 +6,9 @@ import { alertRoutes } from "./routes/alerts";
 import { connectionRoutes } from "./routes/connections";
 import { exportRoutes } from "./routes/export";
 import { healthRoutes } from "./routes/health";
+import { lightRailRoutes } from "./routes/lightrail";
 import { lineRoutes } from "./routes/lines";
+import { mapRoutes } from "./routes/map";
 import { stationRoutes } from "./routes/stations";
 import { systemRoutes } from "./routes/system";
 import { ApiError } from "./util";
@@ -38,6 +40,8 @@ export function createApp(repos: Repositories): Hono {
   app.route("/health", healthRoutes(repos));
   app.route("/system", systemRoutes(repos));
   app.route("/lines", lineRoutes(repos));
+  app.route("/lightrail", lightRailRoutes(repos));
+  app.route("/map", mapRoutes(repos));
   app.route("/stations", stationRoutes(repos));
   app.route("/connections", connectionRoutes(repos));
   app.route("/alerts", alertRoutes(repos));

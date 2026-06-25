@@ -13,5 +13,18 @@ export { createScheduleContext } from "./gtfs-rt/schedule-context";
 export { parseGtfsStatic, unzipGtfs, type GtfsStaticData } from "./gtfs-static/parse";
 export { loadGtfsStatic, type LoadResult } from "./gtfs-static/load";
 export { parseOfficialMetrics, loadOfficialMetrics } from "./official/parse";
+export { importGtfsStatic, findGtfsDir, type GtfsImportResult } from "./gtfs/import-static";
+export {
+  parseOtpData,
+  parseCancellationsData,
+  parseCancellationCauses,
+  parseMdbf,
+  parseLightRailOtp,
+  parseLightRailMdbf,
+  buildLineMetrics,
+  importNjtPerformanceDir,
+  CODE_TO_LINE_ID,
+  type PerformanceImportResult,
+} from "./official/njt-performance";
 export { parseCsv, parseCsvRows } from "./csv";
 export { type Logger, consoleLogger, silentLogger } from "./logger";

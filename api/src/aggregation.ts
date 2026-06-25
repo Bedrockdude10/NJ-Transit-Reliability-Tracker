@@ -2,10 +2,14 @@ import {
   DELAY_BUCKETS,
   NJT_OFFICIAL_THRESHOLD_SECONDS,
   OTP_THRESHOLDS_SECONDS,
+  type CancellationCauseResult,
   type DelayDistributionDailyRow,
   type DistributionBucketResult,
+  type FleetMdbf,
+  type FleetMdbfMetric,
   type HeatmapBucketResult,
   type HeatmapType,
+  type NjtCancellations,
   type NjtOfficialComparison,
   type OfficialNjtMetric,
   type OtpDailyRow,
@@ -135,4 +139,22 @@ export function buildOfficialComparison(
     otpPercentAmtrakAdjusted: weightedAverage((m) => m.otpPercentAmtrakAdjusted),
     monthsCovered: new Set(metrics.map((m) => `${m.year}-${m.month}`)).size,
   };
+}
+
+/** Total cancellations + cause breakdown over a set of official metrics. */
+export function buildCancellations(metrics: readonly OfficialNjtMetric[]): NjtCancellations | null {
+  if (metrics.length === 0) return null;
+  const total = metrics.reduce((s, m) => s + m.cancellations, 0);
+  const merged = mergeCountMaps(metrics.map((m) => m.cancellationCauses ?? {}));
+  const byCause: CancellationCauseResult[] = Object.entries(merged)
+    .map(([cause, count]) => ({ cause, count, percent: total > 0 ? round1((count / total) * 100) : 0 }))
+    .sort((a, b) => b.count - a.count);
+  return { total, byCause, monthsCovered: new Set(metrics.map((m) => `${m.year}-${m.month}`)).size };
+}
+
+/** Average fleet MDBF over a set of monthly rows. */
+export function buildFleetMdbf(rows: readonly FleetMdbfMetric[]): FleetMdbf | null {
+  if (rows.length === 0) return null;
+  const avg = rows.reduce((s, r) => s + r.mdbf, 0) / rows.length;
+  return { avgMiles: Math.round(avg), monthsCovered: rows.length };
 }

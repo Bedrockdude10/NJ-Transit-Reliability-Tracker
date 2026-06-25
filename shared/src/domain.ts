@@ -98,4 +98,33 @@ export interface OfficialNjtMetric {
   otpPercentAmtrakAdjusted: number | null;
   tripsOperated: number;
   cancellations: number;
+  /**
+   * Cancellations broken down by NJT's cause categories (AMTRAK, Mechanical,
+   * Crew/Engineer Availability, …) → count. Null when not imported. The AMTRAK
+   * entry is the Amtrak-attributed share NJT excludes in its adjusted figures.
+   */
+  cancellationCauses: Record<string, number> | null;
+}
+
+/** NJT's systemwide fleet Mean Distance Between Failures (miles), monthly. */
+export interface FleetMdbfMetric {
+  month: number;
+  year: number;
+  /** Miles between failures. */
+  mdbf: number;
+}
+
+/** Systemwide light rail on-time performance, monthly. */
+export interface LightRailOtpMetric {
+  year: number;
+  month: number;
+  otpPercent: number;
+}
+
+/** Per-line light rail Mean Distance Between Failures (miles), monthly. */
+export interface LightRailMdbfMetric {
+  year: number;
+  month: number;
+  lineName: string;
+  mdbf: number;
 }

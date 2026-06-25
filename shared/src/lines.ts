@@ -33,6 +33,8 @@ export const RAIL_LINES: readonly RailLine[] = [
   { id: "raritan-valley", name: "Raritan Valley Line", shortName: "RARV", defaultRouteId: "RV", hasAmtrakAttribution: false },
   { id: "atlantic-city", name: "Atlantic City Line", shortName: "ACRL", defaultRouteId: "AC", hasAmtrakAttribution: false },
   { id: "princeton-shuttle", name: "Princeton Shuttle (Dinky)", shortName: "PRIN", defaultRouteId: "PR", hasAmtrakAttribution: false },
+  { id: "port-jervis", name: "Port Jervis Line", shortName: "PJ", defaultRouteId: "PJ", hasAmtrakAttribution: false },
+  { id: "meadowlands", name: "Meadowlands Rail Line", shortName: "MDWL", defaultRouteId: "MR", hasAmtrakAttribution: false },
 ] as const;
 
 const BY_ID = new Map(RAIL_LINES.map((l) => [l.id, l]));
