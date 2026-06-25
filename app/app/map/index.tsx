@@ -17,11 +17,16 @@ export default function MapScreen() {
   const range = useMemo(() => windowToRange(days), [days]);
   const map = useApi(() => api.map(range), [range.from, range.to]);
 
-  const lines = [...(map.data?.lines ?? [])].sort((a, b) => {
+  const all = map.data?.lines ?? [];
+  const byOtp = (a: { njtOtpPercent: number | null }, b: { njtOtpPercent: number | null }) => {
     if (a.njtOtpPercent === null) return 1;
     if (b.njtOtpPercent === null) return -1;
     return a.njtOtpPercent - b.njtOtpPercent;
-  });
+  };
+  const railLines = all.filter((l) => l.mode === "rail").sort(byOtp);
+  const lightRailLines = all.filter((l) => l.mode === "light_rail");
+  const swatchColor = (l: (typeof all)[number]) =>
+    mode === "line" ? `#${l.color}` : l.njtOtpPercent !== null ? otpColor(l.njtOtpPercent) : theme.colors.textMuted;
 
   return (
     <Screen>
@@ -50,16 +55,11 @@ export default function MapScreen() {
           </Card>
 
           <Card>
-            <SectionTitle>Lines — tap for detail</SectionTitle>
-            {lines.map((l) => (
+            <SectionTitle>Rail lines — tap for detail</SectionTitle>
+            {railLines.map((l) => (
               <Link key={l.lineId} href={`/lines/${l.lineId}`} asChild>
                 <Pressable style={styles.legendRow}>
-                  <View
-                    style={[
-                      styles.swatch,
-                      { backgroundColor: mode === "line" ? `#${l.color}` : l.njtOtpPercent !== null ? otpColor(l.njtOtpPercent) : theme.colors.textMuted },
-                    ]}
-                  />
+                  <View style={[styles.swatch, { backgroundColor: swatchColor(l) }]} />
                   <Text style={styles.legendName}>{l.name}</Text>
                   <Text style={[styles.legendOtp, { color: l.njtOtpPercent !== null ? otpColor(l.njtOtpPercent) : theme.colors.textMuted }]}>
                     {formatPercent(l.njtOtpPercent)}
@@ -68,6 +68,23 @@ export default function MapScreen() {
               </Link>
             ))}
           </Card>
+
+          {lightRailLines.length > 0 ? (
+            <Card>
+              <SectionTitle>Light rail (dashed)</SectionTitle>
+              {lightRailLines.map((l) => (
+                <Link key={l.lineId} href="/lightrail" asChild>
+                  <Pressable style={styles.legendRow}>
+                    <View style={[styles.swatch, { backgroundColor: swatchColor(l) }]} />
+                    <Text style={styles.legendName}>{l.name}</Text>
+                    <Text style={[styles.legendOtp, { color: l.njtOtpPercent !== null ? otpColor(l.njtOtpPercent) : theme.colors.textMuted }]}>
+                      {formatPercent(l.njtOtpPercent)}
+                    </Text>
+                  </Pressable>
+                </Link>
+              ))}
+            </Card>
+          ) : null}
         </>
       ) : null}
     </Screen>

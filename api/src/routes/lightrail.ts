@@ -32,6 +32,7 @@ export function lightRailRoutes(repos: Repositories): Hono {
       otpPercent,
       monthsCovered: otpRows.length,
       lines,
+      otpTrend: otpRows.map((r) => ({ month: `${r.year}-${String(r.month).padStart(2, "0")}`, otpPercent: r.otpPercent })),
     };
     return c.json(response);
   });

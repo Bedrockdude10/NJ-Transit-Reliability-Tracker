@@ -4,6 +4,7 @@ import { formatInt, formatPercent } from "../../lib/format";
 import { theme, otpColor } from "../../lib/theme";
 import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
+import { LineChart } from "../../components/charts/LineChart";
 import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
 import { Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
@@ -39,6 +40,14 @@ export default function LightRail() {
               hint={`NJT systemwide, ${summary.data.monthsCovered} mo`}
             />
           </Row>
+
+          {summary.data.otpTrend.length > 1 ? (
+            <Card>
+              <SectionTitle>On-time performance over time</SectionTitle>
+              <LineChart series={[{ label: "Light rail OTP", color: theme.colors.njt, values: summary.data.otpTrend.map((p) => p.otpPercent) }]} />
+              <Muted>NJT's reported systemwide light-rail OTP, {summary.data.otpTrend.length} months.</Muted>
+            </Card>
+          ) : null}
 
           <Card>
             <SectionTitle>Mean distance between failures, by line</SectionTitle>

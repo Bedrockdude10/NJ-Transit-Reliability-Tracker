@@ -34,10 +34,13 @@ export function toLineItem(
 export function listLines(repos: Repositories): LineListItem[] {
   const version = repos.gtfs.currentVersion();
   if (!version) return [];
-  return repos.gtfs.routes(version.versionId).map((r) => {
-    const history = repos.official.getAllForLine(r.lineName);
-    return toLineItem(r.routeId, r.lineName, history.at(-1) ?? null, r.color ?? null);
-  });
+  return repos.gtfs
+    .routes(version.versionId)
+    .filter((r) => r.mode !== "light_rail")
+    .map((r) => {
+      const history = repos.official.getAllForLine(r.lineName);
+      return toLineItem(r.routeId, r.lineName, history.at(-1) ?? null, r.color ?? null);
+    });
 }
 
 export interface ResolvedLine {

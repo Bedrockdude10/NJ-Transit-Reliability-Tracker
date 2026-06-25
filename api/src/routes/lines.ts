@@ -5,6 +5,7 @@ import {
   parseDateString,
   type HeatmapResponse,
   type HeatmapType,
+  type HistoryResponse,
   type LineListResponse,
   type LineMonthlyResponse,
   type LineSummaryResponse,
@@ -16,7 +17,14 @@ import {
   type WorstTripsResponse,
 } from "@njt/shared";
 import { Hono } from "hono";
-import { buildCancellations, buildHeatmap, buildOfficialComparison, buildOtpSummary } from "../aggregation";
+import {
+  buildAnnualOtp,
+  buildCancellations,
+  buildHeatmap,
+  buildOfficialComparison,
+  buildOtpSummary,
+  buildSeasonality,
+} from "../aggregation";
 import { listLines, resolveLine } from "../catalog";
 import { monthRange, resolveRange } from "../dates";
 import { badRequest, round1 } from "../util";
@@ -166,6 +174,17 @@ export function lineRoutes(repos: Repositories): Hono {
     });
 
     const response: LineMonthlyResponse = { lineId: routeId, name, rows };
+    return c.json(response);
+  });
+
+  router.get("/:lineId/history", (c) => {
+    const { name } = resolveLine(repos, c.req.param("lineId"));
+    const metrics = repos.official.getAllForLine(name);
+    const response: HistoryResponse = {
+      scopeLabel: name,
+      seasonality: buildSeasonality(metrics),
+      annual: buildAnnualOtp(metrics),
+    };
     return c.json(response);
   });
 

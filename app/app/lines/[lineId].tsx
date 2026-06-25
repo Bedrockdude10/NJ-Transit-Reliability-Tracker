@@ -7,6 +7,7 @@ import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
 import { CsvExportButton } from "../../components/CsvExportButton";
 import { LineChart } from "../../components/charts/LineChart";
+import { HistoryCharts } from "../../components/HistoryCharts";
 import { DelayHistogram, GapCallout, OtpComparison } from "../../components/metrics";
 import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
@@ -23,6 +24,7 @@ export default function LineDetail() {
   const trend = useApi(() => api.lineTrend(id, range, "daily"), [id, range.from, range.to]);
   const worst = useApi(() => api.lineWorst(id, range, 10), [id, range.from, range.to]);
   const monthly = useApi(() => api.lineMonthly(id), [id]);
+  const history = useApi(() => api.lineHistory(id), [id]);
 
   const njtValues = trend.data?.points.map((p) => p.njtOfficialOtpPercent ?? 0) ?? [];
   const hasNjt = njtValues.some((v) => v > 0);
@@ -158,6 +160,14 @@ export default function LineDetail() {
           <Muted>No NJT history for this line.</Muted>
         )}
       </Card>
+
+      {history.data && history.data.annual.length > 0 ? (
+        <Card>
+          <SectionTitle>NJT on-time history</SectionTitle>
+          <HistoryCharts history={history.data} />
+          <Muted>Real NJT figures across all published years — seasonality (winters run worse) and the long-term trend.</Muted>
+        </Card>
+      ) : null}
 
       <Card>
         <SectionTitle>Monthly comparison — this project vs. NJT</SectionTitle>

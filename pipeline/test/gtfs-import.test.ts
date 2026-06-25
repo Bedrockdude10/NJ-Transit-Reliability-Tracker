@@ -43,18 +43,20 @@ function writeFeed(): string {
 }
 
 describe("importGtfsStatic", () => {
-  it("maps rail routes to canonical lines, collapses variants, excludes light rail", () => {
+  it("maps rail to canonical lines, collapses variants, tags light rail by mode", () => {
     const dir = writeFeed();
     const repos = createRepositories(openDatabase());
     const result = importGtfsStatic(repos, dir);
 
-    // NEC + (NJCL/NJCLL collapsed) = 2 canonical lines; light rail excluded.
-    expect(result.routes).toBe(2);
+    // NEC + (NJCL/NJCLL collapsed) + Hudson-Bergen light rail = 3 lines.
+    expect(result.routes).toBe(3);
     const version = repos.gtfs.currentVersion()!;
     const routes = repos.gtfs.routes(version.versionId);
-    const names = routes.map((r) => r.lineName).sort();
-    expect(names).toEqual(["North Jersey Coast Line", "Northeast Corridor Line"]);
+    const rail = routes.filter((r) => r.mode !== "light_rail").map((r) => r.lineName).sort();
+    expect(rail).toEqual(["North Jersey Coast Line", "Northeast Corridor Line"]);
     expect(routes.find((r) => r.lineName === "Northeast Corridor Line")?.color).toBe("DD3439");
+    const hblr = routes.find((r) => r.lineName === "Hudson-Bergen Light Rail");
+    expect(hblr?.mode).toBe("light_rail");
   });
 
   it("keeps real coordinates and builds a line path from stop_times", () => {

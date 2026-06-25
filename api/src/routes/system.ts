@@ -4,10 +4,22 @@ import {
   SYSTEM_SCOPE_ID,
   type HeatmapResponse,
   type HeatmapType,
+  type HistoryResponse,
   type SystemSummaryResponse,
 } from "@njt/shared";
 import { Hono } from "hono";
-import { buildCancellations, buildFleetMdbf, buildHeatmap, buildOfficialComparison, buildOtpSummary } from "../aggregation";
+import {
+  buildAnnualOtp,
+  buildCancellations,
+  buildFleetMdbf,
+  buildHeatmap,
+  buildOfficialComparison,
+  buildOtpSummary,
+  buildSeasonality,
+} from "../aggregation";
+
+/** Inclusive month bounds wide enough to cover all published history. */
+const ALL_MONTHS = { from: { year: 2000, month: 1 }, to: { year: 2100, month: 12 } };
 import { monthRange, resolveRange } from "../dates";
 import { badRequest } from "../util";
 
@@ -36,6 +48,16 @@ export function systemRoutes(repos: Repositories): Hono {
       njtOfficial: buildOfficialComparison(officialMetrics),
       njtCancellations: buildCancellations(officialMetrics),
       fleetMdbf: buildFleetMdbf(repos.official.getMdbfForRange(months.from, months.to)),
+    };
+    return c.json(response);
+  });
+
+  router.get("/history", (c) => {
+    const metrics = repos.official.getAllForRange(ALL_MONTHS.from, ALL_MONTHS.to);
+    const response: HistoryResponse = {
+      scopeLabel: "System",
+      seasonality: buildSeasonality(metrics),
+      annual: buildAnnualOtp(metrics),
     };
     return c.json(response);
   });

@@ -8,6 +8,43 @@ A monorepo (npm workspaces, TypeScript, ESM) tracking NJ Transit rail reliabilit
 
 **Dependency rule (enforced by package boundaries):** `app` imports only `@njt/shared`. Only `pipeline` and `api` import `@njt/db`. The frontend never queries the database directly.
 
+## Architecture
+
+Data flow (every source is real & keyless except the GTFS-RT/XML real-time feeds, which need a key):
+
+```
+GTFS static (keyless) ─┐  import:gtfs ─┐
+Performance CSVs ──────┼─ import:official ─┤        ┌──────────────┐      ┌────────────┐  HTTP/JSON   ┌────────────┐
+GTFS-RT + XML (KEY) ───┘  pipeline worker ─┼──write─►│ SQLite (db)  │◄read─│ api (Hono) │─(@njt/shared)─►│ app (Expo) │
+seed (synthetic) ──────────────────────────┘        │  daily rows  │      │ sums range │   DTOs        │ web/iOS/And│
+                                                     └──────────────┘      └────────────┘              └────────────┘
+```
+
+Package deps (compile-enforced — see Dependency rule):
+
+```
+shared ◄── db ◄── pipeline
+   ▲        ▲
+   │        └──── api
+   └───────────── app        (app depends on shared ONLY)
+```
+
+Request lifecycle, e.g. `GET /lines/:id/summary?from&to`:
+
+```
+route handler → resolveRange(from,to) → repo.getOtpDailyRows(range)  ← sums small daily rows,
+              → aggregation.buildOtpSummary(...) → JSON (a @njt/shared DTO)    never scans raw events
+```
+
+Pipeline / seed tick: `fetch (FeedClient) → parse → repos.events.record → aggregator.recomputeServiceDate(date)` (pure `computeAggregates` does the math; persistence is a thin wrapper).
+
+## Where to add things
+
+- **New screen:** `app/app/<route>/index.tsx` + a link in `app/components/NavBar.tsx`. Fetch via `app/lib/api.ts` (`useApi` hook).
+- **New API endpoint:** `api/src/routes/<group>.ts`, mount in `api/src/app.ts`; add the response DTO to `shared/src/api.ts` and a client method to `app/lib/api.ts`.
+- **New metric:** emit a daily row in `pipeline/src/aggregator.ts`, store it via `db/src/repositories/aggregates.ts` (add a migration), sum it in `api/src/aggregation.ts`, surface in a DTO + screen. Don't compute it at request time.
+- **New data source:** an importer under `pipeline/src/<source>/` + a repository + a migration; keep HTTP/parse at the edges, logic pure.
+
 ## Commands
 
 ```bash
@@ -16,8 +53,9 @@ npm test                         # Vitest: shared, db, pipeline, api, app/lib
 npm test --workspace app         # jest-expo component tests (.test.tsx only)
 npm run typecheck                # strict tsc for the 4 node packages
 npm run typecheck --workspace app
-npm run seed                     # synthetic independent data → ./data/njt.sqlite
-npm run import:official          # real NJT monthly OTP from per-line CSVs in ./data (keyless)
+npm run import:gtfs              # real GTFS static network (stops/coords/lines/colors/trips) → run BEFORE seed
+npm run seed                     # synthetic independent events on the real network → ./data/njt.sqlite
+npm run import:official          # real NJT monthly OTP + cancellations + MDBF + light rail from CSVs in ./data (keyless)
 npm run api                      # start API (env: NJT_DB_PATH, PORT)
 npm run pipeline                 # start ingest worker (needs NJT creds)
 npm run web --workspace app      # Expo web dev server (ios/android scripts too)
@@ -30,6 +68,10 @@ npm run web --workspace app      # Expo web dev server (ios/android scripts too)
 - **DB access:** repositories only. Use the typed `Database.all<T>/get<T>/run` helpers (they cast the loose `node:sqlite` rows). Booleans are stored 0/1; map fields are JSON TEXT.
 - **Schema changes:** append a migration to `db/src/schema.ts` — never edit an applied one.
 - **Official NJT metrics** are real and come from `pipeline/src/official/njt-performance.ts` (per-line CSVs, keyed by filename code → catalog name). The seed never fabricates them. The API derives the *system* official figure as the trips-weighted aggregate of the per-line metrics — don't import the systemwide CSV separately (it's redundant and would double-count).
+- **GTFS static** (`pipeline/src/gtfs/import-static.ts`) maps GTFS `route_short_name` → canonical catalog line (`SHORT_NAME_TO_LINE_ID`), collapses variant routes (NJCL + NJCLL → one), keeps real colors + coordinates, and excludes light rail (`route_type` 0). It becomes the current GTFS version, so the app runs on the real network. Run `import:gtfs` **before** `seed`.
+- **Seed on the real network:** when a real GTFS version is present, `generateSyntheticData` builds events on real stops/lines; otherwise it falls back to a self-contained synthetic catalog. Stop offsets can exceed 60 min, so compute `baseArrival + offset*60` — never `hhmm(hour, offset)` (would emit `08:90:00`).
+- **Map:** `/map` returns real geometry (stop coords + per-line stop paths), colors, and OTP. `SystemMap` projects lat/lon (cosine-latitude correction) over the union of stations and `NJ_STATE_OUTLINE` (`shared/src/geo.ts`, a coarse silhouette) and colors lines by reliability or NJT color.
+- **The contract is `@njt/shared`** — all DTOs (`api.ts`), domain types (`domain.ts`), constants, and pure math live there; it's the single source of truth and the only thing `app` may import. Add a type once, here.
 - **Pipeline I/O is injected** (`Clock`, `FeedClient`, repos) so logic is unit-tested with fakes; HTTP/protobuf parsing lives at the edges.
 - **Frontend logic** lives in `app/lib/` (pure, no React Native — tested by Vitest). Screens/components are thin wrappers; charts render pure geometry from `app/lib/charts.ts`.
 

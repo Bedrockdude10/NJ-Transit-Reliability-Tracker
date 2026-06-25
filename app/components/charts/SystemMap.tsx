@@ -72,9 +72,21 @@ export function SystemMap({
           <Path d={outlineD} fill={theme.colors.surfaceAlt} stroke={theme.colors.border} strokeWidth={1} opacity={0.55} />
           {lines.map((l) => {
             const d = pathD(l);
-            return d ? (
-              <Path key={l.lineId} d={d} stroke={colorFor(l)} strokeWidth={3} strokeLinejoin="round" strokeLinecap="round" fill="none" opacity={0.9} />
-            ) : null;
+            if (!d) return null;
+            const lightRail = l.mode === "light_rail";
+            return (
+              <Path
+                key={l.lineId}
+                d={d}
+                stroke={colorFor(l)}
+                strokeWidth={lightRail ? 2 : 3}
+                strokeDasharray={lightRail ? "5,4" : undefined}
+                strokeLinejoin="round"
+                strokeLinecap="round"
+                fill="none"
+                opacity={0.9}
+              />
+            );
           })}
           {stations.map((s) => {
             const c = coord.get(s.stopId);

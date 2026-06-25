@@ -20,12 +20,20 @@ export function mapRoutes(repos: Repositories): Hono {
     const months = monthRange(range);
     const stationIds = new Set<string>();
 
+    // Systemwide light-rail OTP (one figure, shared by the light rail lines).
+    const lrOtpRows = repos.lightRail.getOtpForRange(months.from, months.to);
+    const lightRailOtp =
+      lrOtpRows.length > 0 ? round1(lrOtpRows.reduce((s, r) => s + r.otpPercent, 0) / lrOtpRows.length) : null;
+
     const lines: MapLine[] = repos.gtfs.routes(version.versionId).map((route) => {
       const path = repos.gtfs.representativeStopSequence(version.versionId, route.routeId).map((s) => s.stopId);
       for (const id of path) stationIds.add(id);
+      const isLightRail = route.mode === "light_rail";
 
-      const official = buildOfficialComparison(repos.official.getForLineRange(route.lineName, months.from, months.to));
-      const otpRows = repos.aggregates.getOtpDailyRows("line", route.routeId, "all", range.from, range.to);
+      const official = isLightRail
+        ? null
+        : buildOfficialComparison(repos.official.getForLineRange(route.lineName, months.from, months.to));
+      const otpRows = isLightRail ? [] : repos.aggregates.getOtpDailyRows("line", route.routeId, "all", range.from, range.to);
       const operated = otpRows.reduce((s, r) => s + r.tripsOperated, 0);
       const onTime15 = otpRows.reduce((s, r) => s + (r.onTimeCounts[ON_TIME_15_MIN] ?? 0), 0);
 
@@ -33,8 +41,9 @@ export function mapRoutes(repos: Repositories): Hono {
         lineId: route.routeId,
         name: route.lineName,
         shortName: findLineByName(route.lineName)?.shortName ?? route.routeId,
+        mode: isLightRail ? "light_rail" : "rail",
         color: route.color || "8895A7",
-        njtOtpPercent: official?.otpPercent ?? null,
+        njtOtpPercent: isLightRail ? lightRailOtp : (official?.otpPercent ?? null),
         projectOtpPercent15Min: operated > 0 ? round1((onTime15 / operated) * 100) : null,
         path,
       };

@@ -57,6 +57,7 @@ function realNetworks(repos: Repositories, versionId: string): LineNetwork[] {
   const stopName = new Map(repos.gtfs.allStops(versionId).map((s) => [s.stopId, s.stopName]));
   const networks: LineNetwork[] = [];
   for (const route of repos.gtfs.routes(versionId)) {
+    if (route.mode === "light_rail") continue; // light rail has its own (real) metrics, no synthetic events
     const seq = repos.gtfs.representativeStopSequence(versionId, route.routeId);
     if (seq.length < 2) continue;
     const first = parseGtfsTimeToSeconds(seq[0]?.arrivalTime ?? "00:00:00");

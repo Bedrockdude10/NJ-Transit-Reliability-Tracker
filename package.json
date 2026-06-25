@@ -23,6 +23,7 @@
     "api": "tsx api/src/main.ts",
     "seed": "tsx pipeline/src/seed/seed.ts",
     "import:gtfs": "tsx pipeline/src/gtfs/import.ts",
+    "build:geo": "tsx pipeline/src/geo/build-outline.ts",
     "import:official": "tsx pipeline/src/official/import.ts",
     "app": "npm run start --workspace app"
   },

@@ -5,6 +5,7 @@ import type {
   ConnectionTopResponse,
   HealthResponse,
   HeatmapResponse,
+  HistoryResponse,
   LightRailSummaryResponse,
   LineListResponse,
   LineMonthlyResponse,
@@ -53,6 +54,8 @@ describe("API integration", () => {
     expect(body.njtOfficial?.otpPercent).toBe(88.5); // the gap the project exists to show
     expect(body.njtOfficial?.thresholdSeconds).toBe(360);
     expect(body.fleetMdbf).toMatchObject({ avgMiles: 90000, monthsCovered: 1 });
+    expect(body.njtCancellations?.total).toBe(50);
+    expect(body.njtCancellations?.byCause[0]).toEqual({ cause: "AMTRAK", count: 30, percent: 60 });
   });
 
   it("GET /system/heatmap labels day-of-week buckets", async () => {
@@ -122,10 +125,23 @@ describe("API integration", () => {
     expect(body.trips[0]).toMatchObject({ tripId: "T1", avgTerminalDelaySeconds: 1200 });
   });
 
-  it("GET /lightrail/summary returns OTP and per-line MDBF", async () => {
+  it("GET /lightrail/summary returns OTP, per-line MDBF, and a trend", async () => {
     const { body } = await getJson<LightRailSummaryResponse>("/lightrail/summary?from=2025-07-01&to=2025-07-31");
     expect(body.otpPercent).toBe(96.5);
     expect(body.lines.find((l) => l.lineName === "Hudson-Bergen Light Rail")?.avgMdbf).toBe(30000);
+    expect(body.otpTrend).toEqual([{ month: "2025-07", otpPercent: 96.5 }]);
+  });
+
+  it("GET /system/history returns seasonality + annual from real official data", async () => {
+    const { body } = await getJson<HistoryResponse>("/system/history");
+    expect(body.seasonality.find((m) => m.month === 7)?.avgOtpPercent).toBe(88.5);
+    expect(body.annual.find((y) => y.year === 2025)?.avgOtpPercent).toBe(88.5);
+  });
+
+  it("GET /health reports official-data coverage", async () => {
+    const { body } = await getJson<HealthResponse>("/health");
+    const nec = body.officialCoverage.find((c) => c.lineName === "Northeast Corridor Line");
+    expect(nec).toMatchObject({ monthsPresent: 1, monthsExpected: 1 });
   });
 
   it("GET /stations lists stations with their lines", async () => {

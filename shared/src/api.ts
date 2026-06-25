@@ -81,11 +81,22 @@ export interface DataGap {
   endMs: number;
 }
 
+/** Completeness of NJT's published monthly data for a line (detects gaps). */
+export interface OfficialCoverage {
+  lineName: string;
+  firstMonth: string | null;
+  lastMonth: string | null;
+  monthsPresent: number;
+  monthsExpected: number;
+  missingMonths: string[];
+}
+
 export interface HealthResponse {
   collectionStartDate: string | null;
   uptimePercent: number;
   feeds: FeedHealth[];
   knownGaps: DataGap[];
+  officialCoverage: OfficialCoverage[];
   generatedAtMs: number;
 }
 
@@ -103,6 +114,7 @@ export interface MapLine {
   lineId: string;
   name: string;
   shortName: string;
+  mode: "rail" | "light_rail";
   /** Official NJT route color (hex, no leading #). */
   color: string;
   /** Real NJT OTP for the period (drives reliability coloring), null if none. */
@@ -135,6 +147,8 @@ export interface LightRailSummaryResponse {
   otpPercent: number | null;
   monthsCovered: number;
   lines: LightRailLineMdbf[];
+  /** Monthly systemwide light-rail OTP over the period, ascending. */
+  otpTrend: { month: string; otpPercent: number }[];
 }
 
 // --- System -----------------------------------------------------------------
@@ -222,6 +236,27 @@ export interface LineMonthlyResponse {
   lineId: string;
   name: string;
   rows: MonthlyComparisonRow[];
+}
+
+/** Average NJT OTP for a calendar month (1-12) across all available years. */
+export interface SeasonalityMonth {
+  month: number;
+  avgOtpPercent: number | null;
+  years: number;
+}
+
+/** Average NJT OTP for a calendar year. */
+export interface AnnualOtpYear {
+  year: number;
+  avgOtpPercent: number | null;
+  months: number;
+}
+
+/** Long-run NJT history for a scope: seasonality (by month) + annual trend. */
+export interface HistoryResponse {
+  scopeLabel: string;
+  seasonality: SeasonalityMonth[];
+  annual: AnnualOtpYear[];
 }
 
 export interface WorstTrip {

@@ -1,10 +1,12 @@
 import type { GtfsStaticVersion } from "@njt/shared";
 import type { Database } from "../database";
 
+export type RouteMode = "rail" | "light_rail";
 export interface GtfsRouteRecord {
   routeId: string;
   lineName: string;
   color?: string | null;
+  mode?: RouteMode;
 }
 export interface GtfsStopCoord {
   stopId: string;
@@ -115,10 +117,10 @@ export class GtfsRepository {
 
   replaceRoutes(versionId: string, routes: readonly GtfsRouteRecord[]): void {
     const stmt = this.db.prepare(
-      "INSERT OR REPLACE INTO gtfs_routes (version_id, route_id, line_name, route_color) VALUES (:v, :r, :n, :c)",
+      "INSERT OR REPLACE INTO gtfs_routes (version_id, route_id, line_name, route_color, route_mode) VALUES (:v, :r, :n, :c, :m)",
     );
     this.db.transaction(() => {
-      for (const r of routes) stmt.run({ v: versionId, r: r.routeId, n: r.lineName, c: r.color ?? null });
+      for (const r of routes) stmt.run({ v: versionId, r: r.routeId, n: r.lineName, c: r.color ?? null, m: r.mode ?? "rail" });
     });
   }
 
@@ -168,7 +170,7 @@ export class GtfsRepository {
 
   routes(versionId: string): GtfsRouteRecord[] {
     return this.db.all<GtfsRouteRecord>(
-      "SELECT route_id AS routeId, line_name AS lineName, route_color AS color FROM gtfs_routes WHERE version_id = :v ORDER BY line_name",
+      "SELECT route_id AS routeId, line_name AS lineName, route_color AS color, route_mode AS mode FROM gtfs_routes WHERE version_id = :v ORDER BY line_name",
       { v: versionId },
     );
   }

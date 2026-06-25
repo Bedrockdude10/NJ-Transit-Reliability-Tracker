@@ -2,6 +2,7 @@ import {
   DELAY_BUCKETS,
   NJT_OFFICIAL_THRESHOLD_SECONDS,
   OTP_THRESHOLDS_SECONDS,
+  type AnnualOtpYear,
   type CancellationCauseResult,
   type DelayDistributionDailyRow,
   type DistributionBucketResult,
@@ -11,10 +12,12 @@ import {
   type HeatmapType,
   type NjtCancellations,
   type NjtOfficialComparison,
+  type OfficialCoverage,
   type OfficialNjtMetric,
   type OtpDailyRow,
   type OtpSummary,
   type OtpThresholdResult,
+  type SeasonalityMonth,
 } from "@njt/shared";
 import { round1 } from "./util";
 
@@ -157,4 +160,77 @@ export function buildFleetMdbf(rows: readonly FleetMdbfMetric[]): FleetMdbf | nu
   if (rows.length === 0) return null;
   const avg = rows.reduce((s, r) => s + r.mdbf, 0) / rows.length;
   return { avgMiles: Math.round(avg), monthsCovered: rows.length };
+}
+
+/** Trips-weighted average OTP grouped by `keyOf`, ordered by the numeric key. */
+function weightedOtpByKey(
+  metrics: readonly OfficialNjtMetric[],
+  keyOf: (m: OfficialNjtMetric) => number,
+): Map<number, { weight: number; valueSum: number; spans: Set<number> }> {
+  const by = new Map<number, { weight: number; valueSum: number; spans: Set<number> }>();
+  for (const m of metrics) {
+    const key = keyOf(m);
+    const acc = by.get(key) ?? { weight: 0, valueSum: 0, spans: new Set<number>() };
+    const w = m.tripsOperated > 0 ? m.tripsOperated : 1;
+    acc.weight += w;
+    acc.valueSum += m.otpPercent * w;
+    acc.spans.add(m.year * 12 + m.month);
+    by.set(key, acc);
+  }
+  return by;
+}
+
+/** Average OTP for each calendar month (1-12) across all available years. */
+export function buildSeasonality(metrics: readonly OfficialNjtMetric[]): SeasonalityMonth[] {
+  const by = weightedOtpByKey(metrics, (m) => m.month);
+  const out: SeasonalityMonth[] = [];
+  for (let month = 1; month <= 12; month++) {
+    const acc = by.get(month);
+    out.push({
+      month,
+      avgOtpPercent: acc && acc.weight > 0 ? round1(acc.valueSum / acc.weight) : null,
+      years: acc ? acc.spans.size : 0,
+    });
+  }
+  return out;
+}
+
+/** Average OTP for each calendar year present, ascending. */
+export function buildAnnualOtp(metrics: readonly OfficialNjtMetric[]): AnnualOtpYear[] {
+  const by = weightedOtpByKey(metrics, (m) => m.year);
+  return [...by.entries()]
+    .sort(([a], [b]) => a - b)
+    .map(([year, acc]) => ({
+      year,
+      avgOtpPercent: acc.weight > 0 ? round1(acc.valueSum / acc.weight) : null,
+      months: acc.spans.size,
+    }));
+}
+
+/** Per-line completeness of NJT's monthly data, flagging missing months. */
+export function buildOfficialCoverage(metrics: readonly OfficialNjtMetric[]): OfficialCoverage[] {
+  const byLine = new Map<string, number[]>(); // lineName -> monthIndexes present
+  for (const m of metrics) {
+    const list = byLine.get(m.lineName) ?? [];
+    list.push(m.year * 12 + (m.month - 1));
+    byLine.set(m.lineName, list);
+  }
+  const fmt = (idx: number) => `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, "0")}`;
+  return [...byLine.entries()]
+    .map(([lineName, idxs]) => {
+      const present = new Set(idxs);
+      const min = Math.min(...idxs);
+      const max = Math.max(...idxs);
+      const missingMonths: string[] = [];
+      for (let i = min; i <= max; i++) if (!present.has(i)) missingMonths.push(fmt(i));
+      return {
+        lineName,
+        firstMonth: fmt(min),
+        lastMonth: fmt(max),
+        monthsPresent: present.size,
+        monthsExpected: max - min + 1,
+        missingMonths,
+      };
+    })
+    .sort((a, b) => b.missingMonths.length - a.missingMonths.length || a.lineName.localeCompare(b.lineName));
 }

@@ -290,4 +290,12 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE gtfs_routes ADD COLUMN route_color TEXT;
     `,
   },
+  {
+    id: "005_route_mode",
+    up: /* sql */ `
+      -- Transit mode: 'rail' (commuter) or 'light_rail'. Lets the map include
+      -- light rail while line/official screens stay commuter-rail only.
+      ALTER TABLE gtfs_routes ADD COLUMN route_mode TEXT NOT NULL DEFAULT 'rail';
+    `,
+  },
 ];

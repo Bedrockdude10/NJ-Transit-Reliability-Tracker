@@ -41,7 +41,12 @@ const SHORT_NAME_TO_LINE_ID: Record<string, string> = {
   RARV: "raritan-valley",
 };
 
-const RAIL_ROUTE_TYPE = "2";
+/** GTFS `route_short_name` → light rail line (route_type 0). */
+const LIGHT_RAIL_BY_SHORT: Record<string, { routeId: string; lineName: string }> = {
+  HBLR: { routeId: "HBLR", lineName: "Hudson-Bergen Light Rail" },
+  NLR: { routeId: "NLR", lineName: "Newark Light Rail" },
+  RVLN: { routeId: "RVLN", lineName: "River Line" },
+};
 
 export interface GtfsImportResult {
   versionId: string;
@@ -72,21 +77,25 @@ function num(value: string | undefined): number | null {
 export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImportResult {
   const read = (name: string) => readFileSync(join(gtfsDir, name), "utf8");
 
-  // --- routes: map rail routes to canonical catalog lines -------------------
-  const canonicalRoutes = new Map<string, GtfsRouteRecord>(); // catalog routeId -> record
-  const realToCanonical = new Map<string, string>(); // GTFS route_id -> catalog routeId
+  // --- routes: rail → canonical catalog lines; light rail → its own lines ----
+  const canonicalRoutes = new Map<string, GtfsRouteRecord>(); // canonical routeId -> record
+  const realToCanonical = new Map<string, string>(); // GTFS route_id -> canonical routeId
   for (const row of parseCsv(read("routes.txt"))) {
-    if (row.route_type !== RAIL_ROUTE_TYPE) continue;
-    const lineId = SHORT_NAME_TO_LINE_ID[row.route_short_name ?? ""];
-    const line = lineId ? findLineById(lineId) : undefined;
-    if (!line) continue;
-    realToCanonical.set(row.route_id!, line.defaultRouteId);
-    if (!canonicalRoutes.has(line.defaultRouteId)) {
-      canonicalRoutes.set(line.defaultRouteId, {
-        routeId: line.defaultRouteId,
-        lineName: line.name,
-        color: row.route_color || null,
-      });
+    const short = row.route_short_name ?? "";
+    if (row.route_type === "2") {
+      const line = findLineById(SHORT_NAME_TO_LINE_ID[short] ?? "");
+      if (!line) continue;
+      realToCanonical.set(row.route_id!, line.defaultRouteId);
+      if (!canonicalRoutes.has(line.defaultRouteId)) {
+        canonicalRoutes.set(line.defaultRouteId, { routeId: line.defaultRouteId, lineName: line.name, color: row.route_color || null, mode: "rail" });
+      }
+    } else if (row.route_type === "0") {
+      const lr = LIGHT_RAIL_BY_SHORT[short];
+      if (!lr) continue;
+      realToCanonical.set(row.route_id!, lr.routeId);
+      if (!canonicalRoutes.has(lr.routeId)) {
+        canonicalRoutes.set(lr.routeId, { routeId: lr.routeId, lineName: lr.lineName, color: row.route_color || null, mode: "light_rail" });
+      }
     }
   }
 

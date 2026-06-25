@@ -45,6 +45,25 @@ export default function Health() {
           </Card>
 
           <Card>
+            <SectionTitle>NJT official data coverage</SectionTitle>
+            <Muted>Completeness of NJT's published monthly figures per line — missing months are real reporting gaps (e.g. the Atlantic City Line's 2018–19 PTC suspension).</Muted>
+            <Table
+              columns={[
+                { key: "line", label: "Line", flex: 2 },
+                { key: "range", label: "Range", flex: 1.8 },
+                { key: "present", label: "Months", align: "right" },
+                { key: "missing", label: "Missing", align: "right" },
+              ]}
+              rows={data.officialCoverage.map((c) => ({
+                line: c.lineName,
+                range: c.firstMonth && c.lastMonth ? `${c.firstMonth} → ${c.lastMonth}` : "—",
+                present: `${c.monthsPresent}/${c.monthsExpected}`,
+                missing: c.missingMonths.length,
+              }))}
+            />
+          </Card>
+
+          <Card>
             <SectionTitle>Known data gaps</SectionTitle>
             {data.knownGaps.length > 0 ? (
               <Table
