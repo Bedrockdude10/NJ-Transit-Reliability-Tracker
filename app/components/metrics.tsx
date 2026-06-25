@@ -1,0 +1,77 @@
+import type { DistributionBucketResult, NjtOfficialComparison, OtpThresholdResult } from "@njt/shared";
+import { StyleSheet, Text, View } from "react-native";
+import { theme, otpColor } from "../lib/theme";
+import { BarChart, type BarDatum } from "./charts/BarChart";
+import { Muted } from "./ui";
+
+/**
+ * The core comparison: independent OTP at strict thresholds next to NJT's own
+ * loose 6-minute figure. The visible gap is the point of the project.
+ */
+export function OtpComparison({
+  thresholds,
+  njtOfficial,
+}: {
+  thresholds: OtpThresholdResult[];
+  njtOfficial: NjtOfficialComparison | null;
+}) {
+  const data: BarDatum[] = thresholds.map((t) => ({
+    label: `≤${t.thresholdMinutes}m`,
+    value: t.otpPercent,
+    color: otpColor(t.otpPercent),
+  }));
+  if (njtOfficial) {
+    data.push({ label: "NJT 6m", value: njtOfficial.otpPercent, color: theme.colors.njt });
+  }
+  return (
+    <View style={styles.block}>
+      <BarChart data={data} height={210} formatValue={(v) => `${v}%`} />
+      <Muted>
+        On-time % at each threshold (stricter = lower). The yellow bar is NJT’s own reported 6-minute figure
+        {njtOfficial ? ` (${njtOfficial.monthsCovered} mo).` : " (no official data for this period)."}
+      </Muted>
+    </View>
+  );
+}
+
+const SHORT: Record<string, string> = {
+  early: "early",
+  "0-5 min": "0–5",
+  "5-10 min": "5–10",
+  "10-15 min": "10–15",
+  "15-30 min": "15–30",
+  "30-60 min": "30–60",
+  "60+ min": "60+",
+};
+
+export function DelayHistogram({ distribution }: { distribution: DistributionBucketResult[] }) {
+  const data: BarDatum[] = distribution.map((b) => ({ label: SHORT[b.label] ?? b.label, value: b.count, color: theme.colors.accent }));
+  return (
+    <View style={styles.block}>
+      <BarChart data={data} height={190} formatValue={(v) => String(v)} />
+      <Muted>Trips by terminal delay (minutes late). The long right tail is what a single “on-time %” hides.</Muted>
+    </View>
+  );
+}
+
+export function GapCallout({ strictPercent, njtPercent }: { strictPercent: number; njtPercent: number | null }) {
+  if (njtPercent === null) return null;
+  const gap = Math.round((njtPercent - strictPercent) * 10) / 10;
+  return (
+    <View style={styles.callout}>
+      <Text style={styles.calloutText}>
+        NJT reports <Text style={styles.njt}>{njtPercent}%</Text> on-time (6 min). Measured at a 5-minute threshold it’s{" "}
+        <Text style={styles.strict}>{strictPercent}%</Text> — a <Text style={styles.gap}>{gap}-point</Text> gap.
+      </Text>
+    </View>
+  );
+}
+
+const styles = StyleSheet.create({
+  block: { gap: theme.spacing(2) },
+  callout: { backgroundColor: theme.colors.surfaceAlt, borderRadius: theme.radius, padding: theme.spacing(3), borderLeftWidth: 3, borderLeftColor: theme.colors.njt },
+  calloutText: { color: theme.colors.text, fontSize: theme.fontSize.md, lineHeight: 22 },
+  njt: { color: theme.colors.njt, fontWeight: "700" },
+  strict: { color: theme.colors.accent, fontWeight: "700" },
+  gap: { color: theme.colors.bad, fontWeight: "700" },
+});

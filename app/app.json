@@ -1,0 +1,16 @@
+{
+  "expo": {
+    "name": "NJT Reliability",
+    "slug": "njt-reliability",
+    "scheme": "njtreliability",
+    "version": "0.1.0",
+    "orientation": "portrait",
+    "userInterfaceStyle": "automatic",
+    "newArchEnabled": true,
+    "web": {
+      "bundler": "metro",
+      "output": "static"
+    },
+    "plugins": ["expo-router", "expo-status-bar"]
+  }
+}

@@ -1,0 +1,17 @@
+{
+  "name": "@njt/db",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "SQLite-backed data layer (schema, migrations, repositories) for the NJT tracker. Used by the pipeline (writes) and the API (reads). The frontend never depends on this.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "types": "./src/index.ts",
+  "dependencies": {
+    "@njt/shared": "*"
+  }
+}

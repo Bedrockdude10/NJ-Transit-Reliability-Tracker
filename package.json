@@ -1,0 +1,33 @@
+{
+  "name": "njt-reliability-tracker",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Independent reliability tracking for NJ Transit commuter rail.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=22"
+  },
+  "workspaces": [
+    "shared",
+    "db",
+    "pipeline",
+    "api",
+    "app"
+  ],
+  "scripts": {
+    "typecheck": "tsc --noEmit -p tsconfig.json",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "pipeline": "tsx pipeline/src/main.ts",
+    "api": "tsx api/src/main.ts",
+    "seed": "tsx pipeline/src/seed/seed.ts",
+    "app": "npm run start --workspace app"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.0",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.2",
+    "vitest": "^3.0.0"
+  }
+}

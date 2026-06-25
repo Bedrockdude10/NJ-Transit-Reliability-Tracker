@@ -1,0 +1,40 @@
+{
+  "name": "njt-app",
+  "version": "0.1.0",
+  "private": true,
+  "main": "expo-router/entry",
+  "scripts": {
+    "start": "expo start",
+    "web": "expo start --web",
+    "android": "expo start --android",
+    "ios": "expo start --ios",
+    "test": "jest",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@expo/metro-runtime": "~56.0.15",
+    "@njt/shared": "*",
+    "expo": "^56.0.0",
+    "expo-constants": "~56.0.18",
+    "expo-linking": "~56.0.14",
+    "expo-router": "~56.2.11",
+    "expo-status-bar": "~56.0.4",
+    "expo-system-ui": "~56.0.5",
+    "react": "19.2.7",
+    "react-dom": "19.2.7",
+    "react-native": "0.86.0",
+    "react-native-safe-area-context": "~5.7.0",
+    "react-native-screens": "4.25.2",
+    "react-native-svg": "15.15.4",
+    "react-native-web": "^0.21.2"
+  },
+  "devDependencies": {
+    "@testing-library/react-native": "^13.2.0",
+    "@types/jest": "29.5.14",
+    "@types/react": "^19.2.17",
+    "jest": "^29.7.0",
+    "jest-expo": "~56.0.0",
+    "react-test-renderer": "19.2.7",
+    "typescript": "~5.9.3"
+  }
+}

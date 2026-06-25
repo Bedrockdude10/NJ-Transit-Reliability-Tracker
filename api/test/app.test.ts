@@ -1,0 +1,156 @@
+import type {
+  AlertFrequencyResponse,
+  AlertListResponse,
+  ConnectionResponse,
+  ConnectionTopResponse,
+  HealthResponse,
+  HeatmapResponse,
+  LineListResponse,
+  LineSummaryResponse,
+  LineTrendResponse,
+  StationListResponse,
+  StationSummaryResponse,
+  SystemSummaryResponse,
+  WorstTripsResponse,
+} from "@njt/shared";
+import { beforeEach, describe, expect, it } from "vitest";
+import type { Hono } from "hono";
+import { SEED_DATE, seededApp } from "./seed";
+
+const RANGE = `from=${SEED_DATE}&to=${SEED_DATE}`;
+
+describe("API integration", () => {
+  let app: Hono;
+  beforeEach(() => {
+    app = seededApp().app;
+  });
+
+  const getJson = async <T>(path: string): Promise<{ status: number; body: T }> => {
+    const res = await app.request(path);
+    return { status: res.status, body: (await res.json()) as T };
+  };
+
+  it("serves the root with a disclaimer header", async () => {
+    const res = await app.request("/");
+    expect(res.status).toBe(200);
+    expect(res.headers.get("X-NJT-Disclaimer")).toContain("Independent of NJT");
+  });
+
+  it("GET /health reports collection state", async () => {
+    const { body } = await getJson<HealthResponse>("/health");
+    expect(body.collectionStartDate).toBe("2025-07-01");
+    const tripUpdates = body.feeds.find((f) => f.feedType === "TripUpdates");
+    expect(tripUpdates?.lastSuccessAtMs).toBe(Date.UTC(2025, 6, 15, 12, 0, 0));
+  });
+
+  it("GET /system/summary shows OTP gap vs NJT official", async () => {
+    const { body } = await getJson<SystemSummaryResponse>(`/system/summary?${RANGE}`);
+    expect(body.overall.tripsOperated).toBe(100);
+    expect(body.overall.thresholds.find((t) => t.thresholdSeconds === 300)?.otpPercent).toBe(70);
+    expect(body.njtOfficial?.otpPercent).toBe(88.5); // the gap the project exists to show
+    expect(body.njtOfficial?.thresholdSeconds).toBe(360);
+  });
+
+  it("GET /system/heatmap labels day-of-week buckets", async () => {
+    const { body } = await getJson<HeatmapResponse>(`/system/heatmap?type=day_of_week&${RANGE}`);
+    expect(body.buckets.find((b) => b.bucket === 2)).toMatchObject({ label: "Tue", avgDelaySeconds: 60 });
+  });
+
+  it("rejects a bad heatmap type and malformed dates", async () => {
+    expect((await app.request(`/system/heatmap?type=nope&${RANGE}`)).status).toBe(400);
+    expect((await app.request(`/system/summary?from=bad`)).status).toBe(400);
+  });
+
+  it("GET /lines lists active lines", async () => {
+    const { body } = await getJson<LineListResponse>("/lines");
+    expect(body.lines).toEqual([
+      { id: "NE", slug: "northeast-corridor", name: "Northeast Corridor Line", shortName: "NEC", hasAmtrakAttribution: true },
+    ]);
+  });
+
+  it("GET /lines/:id/summary includes direction split and official figures", async () => {
+    const { body } = await getJson<LineSummaryResponse>(`/lines/NE/summary?${RANGE}`);
+    expect(body.overall.tripsOperated).toBe(100);
+    expect(body.inbound.tripsOperated).toBe(50);
+    expect(body.outbound.tripsOperated).toBe(50);
+    expect(body.njtOfficial?.otpPercentAmtrakAdjusted).toBe(91.2);
+  });
+
+  it("GET /lines/:id/trend plots 15-min OTP with NJT's monthly figure", async () => {
+    const { body } = await getJson<LineTrendResponse>(`/lines/NE/trend?interval=daily&${RANGE}`);
+    expect(body.points).toHaveLength(1);
+    expect(body.points[0]?.otpPercent15Min).toBe(92);
+    expect(body.points[0]?.njtOfficialOtpPercent).toBe(88.5);
+  });
+
+  it("GET /lines/:id/trips/worst ranks by terminal delay", async () => {
+    const { body } = await getJson<WorstTripsResponse>(`/lines/NE/trips/worst?${RANGE}`);
+    expect(body.trips[0]).toMatchObject({ tripId: "T1", avgTerminalDelaySeconds: 1200 });
+  });
+
+  it("GET /stations lists stations with their lines", async () => {
+    const { body } = await getJson<StationListResponse>("/stations");
+    expect(body.stations.find((s) => s.stopId === "NWK")?.lines).toEqual(["Northeast Corridor Line"]);
+  });
+
+  it("GET /stations/:id/summary computes delay amplification", async () => {
+    const { body } = await getJson<StationSummaryResponse>(`/stations/NWK/summary?${RANGE}`);
+    expect(body.byLineDirection[0]).toMatchObject({ direction: "inbound", avgArrivalDelaySeconds: 120 });
+    expect(body.amplification).toMatchObject({ arrivedWithin5Min: 40, departedLate: 8, amplificationRatePercent: 20 });
+    expect(body.hourOfDay.find((h) => h.bucket === 8)?.avgDelaySeconds).toBe(60);
+  });
+
+  it("GET /stations/:id/top-delayed-trips uses the bounded event query", async () => {
+    const { body } = await getJson<WorstTripsResponse>(`/stations/NWK/top-delayed-trips?${RANGE}`);
+    expect(body.trips[0]).toMatchObject({ tripId: "T1", avgTerminalDelaySeconds: 1200 });
+  });
+
+  it("GET /connections reports success rate and a plain-English summary", async () => {
+    const { body } = await getJson<ConnectionResponse>(
+      `/connections?inbound_trip_id=T1&transfer_stop_id=NWK&outbound_trip_id=T2&${RANGE}`,
+    );
+    expect(body.successRatePercent).toBe(90);
+    expect(body.lowSample).toBe(false);
+    expect(body.summaryText).toContain("90%");
+    expect(body.byDayOfWeek.find((d) => d.dayOfWeek === 2)?.successRatePercent).toBe(90);
+  });
+
+  it("GET /connections requires the trip/stop params", async () => {
+    expect((await app.request(`/connections?inbound_trip_id=T1&${RANGE}`)).status).toBe(400);
+  });
+
+  it("GET /connections/top auto-populates the highest-frequency transfers", async () => {
+    const { body } = await getJson<ConnectionTopResponse>("/connections/top");
+    expect(body.transfers[0]).toMatchObject({ transferStopId: "NWK", transferStopName: "Newark Penn", observations: 40 });
+  });
+
+  it("GET /alerts filters by line and lists the log", async () => {
+    const { body } = await getJson<AlertListResponse>(`/alerts?line=NE&${RANGE}`);
+    expect(body.total).toBe(1);
+    expect(body.alerts[0]?.headerText).toBe("Delays on the NEC");
+    const none = await getJson<AlertListResponse>(`/alerts?line=NC&${RANGE}`);
+    expect(none.body.total).toBe(0);
+  });
+
+  it("GET /alerts/frequency counts by line and effect", async () => {
+    const { body } = await getJson<AlertFrequencyResponse>(`/alerts/frequency?${RANGE}`);
+    expect(body.byLine[0]).toMatchObject({ lineName: "Northeast Corridor Line", total: 1 });
+    expect(body.byLine[0]?.counts.delay).toBe(1);
+  });
+
+  it("GET /export returns CSV for system and line", async () => {
+    const system = await app.request(`/export?entity=system&${RANGE}`);
+    expect(system.headers.get("Content-Type")).toContain("text/csv");
+    expect(await system.text()).toContain("Trips operated");
+
+    const line = await app.request(`/export?entity=line&id=NE&${RANGE}`);
+    expect(line.status).toBe(200);
+    expect(await line.text()).toContain("Northeast Corridor Line");
+
+    expect((await app.request(`/export?entity=bogus&${RANGE}`)).status).toBe(400);
+  });
+
+  it("returns 404 for unknown routes", async () => {
+    expect((await app.request("/nope")).status).toBe(404);
+  });
+});

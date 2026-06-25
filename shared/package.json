@@ -1,0 +1,14 @@
+{
+  "name": "@njt/shared",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Domain types, constants, and pure utilities shared across the NJT tracker. No I/O — safe to bundle into the React Native app.",
+  "exports": {
+    ".": {
+      "types": "./src/index.ts",
+      "default": "./src/index.ts"
+    }
+  },
+  "types": "./src/index.ts"
+}

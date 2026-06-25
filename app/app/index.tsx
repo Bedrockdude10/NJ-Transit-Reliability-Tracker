@@ -1,0 +1,85 @@
+import { useMemo, useState } from "react";
+import { api } from "../lib/api";
+import { formatDelaySeconds, formatInt, formatPercent } from "../lib/format";
+import { theme } from "../lib/theme";
+import { windowToRange, type WindowKey } from "../lib/windows";
+import { useApi } from "../hooks/useApi";
+import { CsvExportButton } from "../components/CsvExportButton";
+import { Heatmap } from "../components/charts/Heatmap";
+import { DelayHistogram, GapCallout, OtpComparison } from "../components/metrics";
+import { WindowPicker } from "../components/WindowPicker";
+import { Card, ErrorView, Loading, PageTitle, Row, SectionTitle, StatTile, Screen } from "../components/ui";
+
+export default function SystemOverview() {
+  const [windowKey, setWindowKey] = useState<WindowKey>("30d");
+  const [days, setDays] = useState(30);
+  const range = useMemo(() => windowToRange(days), [days]);
+
+  const summary = useApi(() => api.systemSummary(range), [range.from, range.to]);
+  const dow = useApi(() => api.systemHeatmap(range, "day_of_week"), [range.from, range.to]);
+  const hour = useApi(() => api.systemHeatmap(range, "hour_of_day"), [range.from, range.to]);
+
+  return (
+    <Screen>
+      <PageTitle title="System Overview" subtitle="NJ Transit commuter rail — independently measured reliability" />
+      <Row>
+        <WindowPicker
+          value={windowKey}
+          onChange={(key, d) => {
+            setWindowKey(key);
+            setDays(d);
+          }}
+        />
+        <CsvExportButton url={api.exportUrl("system", range)} />
+      </Row>
+
+      {summary.loading ? <Loading /> : null}
+      {summary.error ? <ErrorView message={summary.error} onRetry={summary.reload} /> : null}
+
+      {summary.data ? (
+        <>
+          <GapCallout
+            strictPercent={summary.data.overall.thresholds[0]?.otpPercent ?? 0}
+            njtPercent={summary.data.njtOfficial?.otpPercent ?? null}
+          />
+
+          <Row>
+            <StatTile label="Trips operated" value={formatInt(summary.data.overall.tripsOperated)} />
+            <StatTile label="Cancelled" value={formatInt(summary.data.overall.tripsCancelled)} color={theme.colors.bad} />
+            <StatTile label="Cancellation rate" value={formatPercent(summary.data.overall.cancellationRatePercent)} />
+            <StatTile label="Median delay" value={formatDelaySeconds(summary.data.overall.medianDelaySeconds)} />
+            <StatTile label="P90 delay" value={formatDelaySeconds(summary.data.overall.p90DelaySeconds)} color={theme.colors.warn} />
+          </Row>
+
+          <Card>
+            <SectionTitle>On-time performance vs. NJT</SectionTitle>
+            <OtpComparison thresholds={summary.data.overall.thresholds} njtOfficial={summary.data.njtOfficial} />
+          </Card>
+
+          <Card>
+            <SectionTitle>Delay distribution</SectionTitle>
+            <DelayHistogram distribution={summary.data.overall.delayDistribution} />
+          </Card>
+        </>
+      ) : null}
+
+      <Card>
+        <SectionTitle>Average delay by day of week</SectionTitle>
+        {dow.data ? (
+          <Heatmap cells={dow.data.buckets.map((b) => ({ label: b.label, value: b.avgDelaySeconds, observations: b.observations }))} />
+        ) : (
+          <Loading />
+        )}
+      </Card>
+
+      <Card>
+        <SectionTitle>Average delay by hour of day</SectionTitle>
+        {hour.data ? (
+          <Heatmap cells={hour.data.buckets.map((b) => ({ label: b.label.replace(":00", ""), value: b.avgDelaySeconds, observations: b.observations }))} />
+        ) : (
+          <Loading />
+        )}
+      </Card>
+    </Screen>
+  );
+}
