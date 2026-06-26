@@ -119,21 +119,25 @@ fly secrets set \
 ```
 Setting secrets restarts the machine; `start.mjs` now also launches the pipeline (because `NJT_TRIP_UPDATES_URL` is set). Confirm on the **Pipeline Health** screen / `GET /health`.
 
-## 4. Web app on Cloudflare Pages
+## 4. Web app on Cloudflare (Workers static assets)
 
-In the Cloudflare dashboard → Pages → connect the GitHub repo, then:
+This repo deploys the web app as a **Cloudflare Worker serving static assets** (Cloudflare's current default; the classic Pages flow also works — see the note at the end). The Worker config lives in [`app/wrangler.jsonc`](app/wrangler.jsonc): it points at the Expo export (`./dist`) and uses `not_found_handling: "single-page-application"` for deep-link fallback (so **no `_redirects` file** — Cloudflare's asset engine rejects the `/* → /index.html` rule as an infinite loop).
+
+In the Cloudflare dashboard → Workers & Pages → connect the GitHub repo, then set:
 
 - **Build command:** `npm ci && npm run build:web --workspace app`
-- **Build output directory:** `app/dist`
-- **Environment variables:**
-  - `EXPO_PUBLIC_API_URL = https://njt-reliability-tracker.fly.dev` (your Fly URL)
-  - `EXPO_PUBLIC_SITE_URL = https://<your-pages-domain>` (the web origin — used to build absolute Open Graph / Twitter card URLs in `app/app/+html.tsx`; if unset, social previews fall back to relative URLs and may not render in every client)
+- **Deploy command:** `cd app && npx wrangler deploy`
+  - The `cd app` matters: run at the repo root, `wrangler deploy` sees the npm `workspaces` field and aborts (*"detection logic has been run in the root of a workspace"*). Running inside `app/` also lets it find `wrangler.jsonc`.
+- **`name` in `app/wrangler.jsonc` must equal your Worker/project name** (here `nj-transit-reliability-tracker`), or Cloudflare overrides it and opens a "fix config" PR.
+- **Build variables** (Settings → Variables & Secrets, **Build** scope — *not* runtime):
+  - `EXPO_PUBLIC_API_URL = https://njt-reliability-tracker.fly.dev` — **must be a build var.** Metro inlines `EXPO_PUBLIC_*` into the JS during `expo export`; a runtime Worker var does nothing for a static bundle. If the deployed site's network calls go to `localhost:4055`, this wasn't set as a build var — set it and redeploy.
+  - `EXPO_PUBLIC_SITE_URL = https://<your-worker-or-custom-domain>` — for absolute Open Graph / Twitter URLs in `app/app/+html.tsx`. Optional; only affects social previews.
 
-Drop a **`app/public/og-image.png`** (1200×630) in the repo — it's served at `/og-image.png` and referenced by the social card tags. Without it the link still works; it just previews without an image.
+Drop a **`app/public/og-image.png`** (1200×630) in the repo — served at `/og-image.png`, referenced by the social card tags. Without it the link still works; it just previews without an image.
 
-Cloudflare builds remotely (no bandwidth from you beyond the `git push`). The `_redirects` file ships in the output, so deep links resolve. CORS is already open on the API.
+Cloudflare builds remotely (no bandwidth from you beyond the `git push`). CORS is already open on the API. The live Worker URL looks like `https://<name>.<account>.workers.dev`.
 
-(Netlify works identically; Vercel too — same build command/output/env.)
+> **Classic Pages alternative:** create a Pages project (Workers & Pages → Pages → Connect to Git) with the same build command, **Build output directory `app/dist`**, and **no deploy command** (Pages publishes the directory directly). That path *does* use a `_redirects` SPA file — but since this repo deletes it in favor of the Worker config, re-add `app/public/_redirects` with `/*  /index.html  200` if you switch to Pages. (Netlify/Vercel: same build command/output/env.)
 
 ## Ongoing
 
