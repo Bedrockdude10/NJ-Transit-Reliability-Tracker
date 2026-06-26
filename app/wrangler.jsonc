@@ -2,7 +2,7 @@
   // Static-assets Worker that serves the Expo web export (`app/dist`).
   // Deployed by Cloudflare Workers Builds with deploy command: `cd app && npx wrangler deploy`.
   // IMPORTANT: `name` must match your Cloudflare Workers project name.
-  "name": "njt-reliability-tracker",
+  "name": "nj-transit-reliability-tracker",
   "compatibility_date": "2025-06-01",
   "assets": {
     "directory": "./dist",

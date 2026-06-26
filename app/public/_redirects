@@ -1,4 +1,0 @@
-# SPA fallback: serve the app shell for every path so deep links to dynamic
-# routes (e.g. /lines/NE, /stations/38293) resolve via client-side routing.
-# Read by Cloudflare Pages and Netlify. Copied into the web export by Expo.
-/*    /index.html    200
