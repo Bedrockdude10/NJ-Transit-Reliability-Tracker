@@ -14,7 +14,11 @@ import { buildThemeCss, FONT_HREF, STYLE_ELEMENT_ID } from "../lib/themeCss";
  * (`var(--njt-...)`), the whole app re-themes with the OS setting and no JS.
  */
 
-const SITE_URL = (process.env.EXPO_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
+// Public origin used to build absolute Open Graph / Twitter card URLs. Defaults
+// to the live Worker URL so social previews work without extra config; override
+// with the EXPO_PUBLIC_SITE_URL build var when a custom domain is added.
+const DEFAULT_SITE_URL = "https://nj-transit-reliability-tracker.dannyrollo4.workers.dev";
+const SITE_URL = (process.env.EXPO_PUBLIC_SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
 const TITLE = "NJ Transit Reliability Tracker";
 const DESCRIPTION =
   "Independent on-time performance for NJ Transit rail — stricter delay thresholds, line comparisons, and cancellation causes alongside NJT's official figures.";
