@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
 import { buildComparison, fillForward, type CompareInput } from "../../lib/compare";
@@ -13,20 +13,33 @@ const MAX_SELECTED = 5;
 // Fallback palette for lines NJT publishes no color for.
 const PALETTE = [theme.colors.accent, theme.colors.njt, theme.colors.good, theme.colors.warn, theme.colors.bad];
 
+// Remember the user's selection across in-session navigations (resets on full
+// reload). `null` means "untouched — show the default"; an array (including [])
+// is an explicit choice that sticks, so clearing it no longer springs back.
+let remembered: string[] | null = null;
+
 export default function Compare() {
   const list = useApi(() => api.lines(), []);
   const lines = list.data?.lines ?? [];
 
-  const [selected, setSelected] = useState<string[]>([]);
-  // Default to the two least-reliable lines with NJT data once the list loads.
-  const effective = useMemo(() => {
-    if (selected.length > 0) return selected;
-    return [...lines]
-      .filter((l) => l.njtOtpPercent !== null)
-      .sort((a, b) => (a.njtOtpPercent ?? 100) - (b.njtOtpPercent ?? 100))
-      .slice(0, 2)
-      .map((l) => l.id);
-  }, [selected, lines]);
+  const [selected, setSelectedState] = useState<string[] | null>(remembered);
+  const setSelected = useCallback((next: string[]) => {
+    remembered = next;
+    setSelectedState(next);
+  }, []);
+
+  // Neutral default: the first two lines with NJT data, alphabetically — not an
+  // editorial "worst performers" pairing the user has to keep deselecting.
+  const defaultIds = useMemo(
+    () =>
+      [...lines]
+        .filter((l) => l.njtOtpPercent !== null)
+        .sort((a, b) => a.name.localeCompare(b.name))
+        .slice(0, 2)
+        .map((l) => l.id),
+    [lines],
+  );
+  const effective = selected ?? defaultIds;
 
   const key = effective.join(",");
   const monthly = useApi(
@@ -46,8 +59,7 @@ export default function Compare() {
   const toggle = (id: string) => {
     const base = effective;
     if (base.includes(id)) {
-      const next = base.filter((x) => x !== id);
-      setSelected(next.length > 0 ? next : []);
+      setSelected(base.filter((x) => x !== id)); // may become [] — and stays []
     } else if (base.length < MAX_SELECTED) {
       setSelected([...base, id]);
     }

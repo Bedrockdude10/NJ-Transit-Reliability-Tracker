@@ -57,7 +57,40 @@ fly open /health
 
 ### Load the data onto the volume (one time)
 
-The DB starts empty. Get the keyless data onto the volume and build it. Easiest is to do it **on the server** so it never touches your connection:
+The DB starts empty (the API auto-creates a ~4 KB placeholder at `/data/njt.sqlite` on first boot). You have two ways to populate it.
+
+> **Two Fly footguns to know first:**
+> - **`fly ssh console -C "…"` does not run a shell** — `>`, `|`, and `&&` are passed as literal arguments, not interpreted. For anything with a redirect or chain, open an interactive shell (`fly ssh console`, then type the commands), or wrap it: `fly ssh console -C "sh -c '…'"`.
+> - On a **Fly trial**, machines auto-stop after 5 minutes (`Trial machine stopping…` in the logs). This app must run 24/7, so add a payment method (Dashboard → Billing) — this tiny VM sits within Fly's allowance.
+
+**Option A — upload the prebuilt SQLite (recommended).** If you've already run `npm run bootstrap` locally, you have a complete `./data/njt.sqlite`. Ship that one file instead of rebuilding on the server. It gzips ~6:1, so it's the smallest transfer too:
+
+```bash
+# 1. compress locally (52 MB → ~9 MB); checkpoint first if a local API/pipeline is running
+gzip -k -9 data/njt.sqlite
+
+# 2. upload the .gz to the volume
+fly ssh sftp shell
+#   put data/njt.sqlite.gz /data/njt.sqlite.gz
+#   quit
+
+# 3. decompress IN AN INTERACTIVE SHELL (redirects don't work via -C)
+fly ssh console
+#   cd /data
+#   gunzip -fc njt.sqlite.gz > njt.sqlite.new      # atomic swap avoids corrupting the file the API holds open
+#   mv -f njt.sqlite.new njt.sqlite
+#   rm -f njt.sqlite.gz njt.sqlite-wal njt.sqlite-shm   # drop the .gz + the empty-DB sidecars
+#   ls -l                                          # expect njt.sqlite ~52 MB
+#   exit
+
+# 4. restart so the API reopens the real DB, then verify
+fly apps restart njt-reliability-tracker
+curl -s https://njt-reliability-tracker.fly.dev/lines | head -c 300   # real lines, not {"lines":[]}
+```
+
+Note `wget` isn't in the slim image — verify from your Mac with `curl` against the public URL (above), or on the box with `node -e "fetch('http://localhost:4000/lines').then(r=>r.text()).then(console.log)"`.
+
+**Option B — build on the server** (no local DB, or you'd rather not transfer it). Keylessly fetch the sources and run the importer on the box so it never touches your connection:
 
 ```bash
 fly ssh console
@@ -69,7 +102,7 @@ mkdir -p /data && cd /data
 cd /app && NJT_GTFS_DIR=/data NJT_PERFORMANCE_DIR=/data npm run bootstrap
 exit
 ```
-Alternatively upload your local `./data` once with `fly ssh sftp shell` (it's ~40 MB). After bootstrap, the dashboard shows real NJT official figures + synthetic independent data.
+(Or sftp your local `./data` — GTFS dir + CSVs, ~40 MB — then run `bootstrap`.) After either option, the dashboard shows real NJT official figures + synthetic independent data.
 
 ## 3. Turn on live collection (when you have the NJT key)
 
