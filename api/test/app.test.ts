@@ -136,6 +136,7 @@ describe("API integration", () => {
     const { body } = await getJson<HistoryResponse>("/system/history");
     expect(body.seasonality.find((m) => m.month === 7)?.avgOtpPercent).toBe(88.5);
     expect(body.annual.find((y) => y.year === 2025)?.avgOtpPercent).toBe(88.5);
+    expect(body.mdbfAnnual?.[0]).toEqual({ year: 2025, avgMdbf: 90000 });
   });
 
   it("GET /health reports official-data coverage", async () => {

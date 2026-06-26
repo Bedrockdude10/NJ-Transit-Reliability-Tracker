@@ -26,7 +26,10 @@ export default function LinesList() {
           <Pressable>
             <Card style={styles.line}>
               <View style={styles.lineMain}>
-                <Text style={styles.lineName}>{line.name}</Text>
+                <View style={styles.nameRow}>
+                  {line.color ? <View style={[styles.dot, { backgroundColor: `#${line.color}` }]} /> : null}
+                  <Text style={styles.lineName}>{line.name}</Text>
+                </View>
                 <View style={styles.badges}>
                   <Badge text={line.shortName} color={theme.colors.surfaceAlt} />
                   {line.hasAmtrakAttribution ? <Badge text="Amtrak-attributed" color={theme.colors.surfaceAlt} /> : null}
@@ -57,7 +60,9 @@ export default function LinesList() {
 const styles = StyleSheet.create({
   line: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: theme.spacing(2) },
   lineMain: { gap: theme.spacing(2), flexShrink: 1 },
-  lineName: { color: theme.colors.text, fontSize: theme.fontSize.lg, fontWeight: "700" },
+  nameRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing(2) },
+  dot: { width: 12, height: 12, borderRadius: 6 },
+  lineName: { color: theme.colors.text, fontSize: theme.fontSize.lg, fontWeight: "700", flexShrink: 1 },
   badges: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing(2) },
   stats: { alignItems: "flex-end" },
   otp: { fontSize: theme.fontSize.xl, fontWeight: "800" },

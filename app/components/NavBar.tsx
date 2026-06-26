@@ -6,11 +6,13 @@ const LINKS = [
   { href: "/", label: "Overview" },
   { href: "/map", label: "Map" },
   { href: "/lines", label: "Lines" },
+  { href: "/compare", label: "Compare" },
   { href: "/lightrail", label: "Light Rail" },
   { href: "/stations", label: "Stations" },
   { href: "/connections", label: "Connections" },
   { href: "/alerts", label: "Alerts" },
   { href: "/health", label: "Health" },
+  { href: "/about", label: "About" },
 ] as const;
 
 function isActive(pathname: string, href: string): boolean {

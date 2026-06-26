@@ -1,0 +1,16 @@
+# Keep the build context small (bandwidth) and the image lean.
+node_modules
+**/node_modules
+app
+data
+*.sqlite
+*.sqlite-*
+.git
+.expo
+**/.expo
+dist
+**/dist
+coverage
+*.log
+.env
+.env.*

@@ -1,0 +1,36 @@
+# Fly.io config for the pipeline + API (Tier 1: SQLite on a persistent volume).
+# Rename `app` to your own (must be globally unique): `fly apps create <name>`.
+app = "njt-reliability-tracker"
+primary_region = "ewr"  # Secaucus/Newark — next door to NJ Transit.
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NJT_DB_PATH = "/data/njt.sqlite"
+  PORT = "4000"
+
+# Persistent volume holding the SQLite database. Create it once:
+#   fly volumes create njt_data --region ewr --size 10
+[mounts]
+  source = "njt_data"
+  destination = "/data"
+
+[http_service]
+  internal_port = 4000
+  force_https = true
+  # The pipeline must run 24/7, so never scale to zero.
+  auto_stop_machines = false
+  auto_start_machines = true
+  min_machines_running = 1
+
+  [[http_service.checks]]
+    method = "get"
+    path = "/health"
+    interval = "30s"
+    timeout = "5s"
+    grace_period = "20s"
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "512mb"

@@ -25,6 +25,8 @@
     "import:gtfs": "tsx pipeline/src/gtfs/import.ts",
     "build:geo": "tsx pipeline/src/geo/build-outline.ts",
     "import:official": "tsx pipeline/src/official/import.ts",
+    "bootstrap": "npm run import:gtfs && npm run import:official && npm run seed",
+    "start:server": "node deploy/start.mjs",
     "app": "npm run start --workspace app"
   },
   "devDependencies": {

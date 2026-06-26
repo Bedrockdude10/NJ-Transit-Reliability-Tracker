@@ -13,6 +13,7 @@ import {
   buildCancellations,
   buildFleetMdbf,
   buildHeatmap,
+  buildMdbfAnnual,
   buildOfficialComparison,
   buildOtpSummary,
   buildSeasonality,
@@ -58,6 +59,7 @@ export function systemRoutes(repos: Repositories): Hono {
       scopeLabel: "System",
       seasonality: buildSeasonality(metrics),
       annual: buildAnnualOtp(metrics),
+      mdbfAnnual: buildMdbfAnnual(repos.official.getMdbfForRange(ALL_MONTHS.from, ALL_MONTHS.to)),
     };
     return c.json(response);
   });

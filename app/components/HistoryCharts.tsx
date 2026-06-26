@@ -20,6 +20,15 @@ export function HistoryCharts({ history }: { history: HistoryResponse }) {
       <BarChart maxValue={100} formatValue={pct} data={history.seasonality.map((m) => otpBar(MONTH_ABBR[m.month] ?? String(m.month), m.avgOtpPercent))} />
       <Text style={styles.label}>By year</Text>
       <BarChart maxValue={100} formatValue={pct} data={history.annual.map((y) => otpBar(`’${String(y.year).slice(2)}`, y.avgOtpPercent))} />
+      {history.mdbfAnnual && history.mdbfAnnual.length > 0 ? (
+        <>
+          <Text style={styles.label}>Fleet reliability — avg miles between failures, by year</Text>
+          <BarChart
+            formatValue={(v) => `${Math.round(v / 1000)}k`}
+            data={history.mdbfAnnual.map((m) => ({ label: `’${String(m.year).slice(2)}`, value: m.avgMdbf, color: theme.colors.accent }))}
+          />
+        </>
+      ) : null}
     </View>
   );
 }

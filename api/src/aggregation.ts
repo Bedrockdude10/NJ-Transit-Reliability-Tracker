@@ -207,6 +207,18 @@ export function buildAnnualOtp(metrics: readonly OfficialNjtMetric[]): AnnualOtp
     }));
 }
 
+/** Average fleet MDBF per calendar year, ascending. */
+export function buildMdbfAnnual(rows: readonly FleetMdbfMetric[]): { year: number; avgMdbf: number }[] {
+  const by = new Map<number, { sum: number; n: number }>();
+  for (const r of rows) {
+    const acc = by.get(r.year) ?? { sum: 0, n: 0 };
+    acc.sum += r.mdbf;
+    acc.n += 1;
+    by.set(r.year, acc);
+  }
+  return [...by.entries()].sort(([a], [b]) => a - b).map(([year, acc]) => ({ year, avgMdbf: Math.round(acc.sum / acc.n) }));
+}
+
 /** Per-line completeness of NJT's monthly data, flagging missing months. */
 export function buildOfficialCoverage(metrics: readonly OfficialNjtMetric[]): OfficialCoverage[] {
   const byLine = new Map<string, number[]>(); // lineName -> monthIndexes present

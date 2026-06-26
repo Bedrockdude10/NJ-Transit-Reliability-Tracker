@@ -257,6 +257,8 @@ export interface HistoryResponse {
   scopeLabel: string;
   seasonality: SeasonalityMonth[];
   annual: AnnualOtpYear[];
+  /** Fleet mean-distance-between-failures by year (system scope only). */
+  mdbfAnnual?: { year: number; avgMdbf: number }[];
 }
 
 export interface WorstTrip {

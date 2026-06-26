@@ -49,7 +49,8 @@ export default function MapScreen() {
           <Card>
             <SystemMap stations={map.data.stations} lines={map.data.lines} colorMode={mode} />
             <Muted>
-              {map.data.stations.length} stations · {map.data.lines.length} lines · positions from NJT's GTFS feed.{" "}
+              {map.data.stations.length} stations · {map.data.lines.length} lines · positions from NJT's GTFS feed. Tap a station or
+              line to open its detail.{" "}
               {mode === "reliability" ? "Line color is NJT's reported OTP — greener is more reliable." : "Official NJT line colors."}
             </Muted>
           </Card>
