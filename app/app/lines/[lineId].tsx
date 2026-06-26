@@ -1,10 +1,14 @@
 import { useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
 import { formatDelaySeconds, formatInt, formatMonth, formatPercent } from "../../lib/format";
-import { theme, otpColor } from "../../lib/theme";
+import { theme, otpColor, otpColorAt } from "../../lib/theme";
+import { useChartColors } from "../../lib/useChartColors";
 import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
+import { GradeBadge, TrendBadge } from "../../components/Indicators";
+import { Sparkline } from "../../components/charts/Sparkline";
 import { CsvExportButton } from "../../components/CsvExportButton";
 import { LineChart } from "../../components/charts/LineChart";
 import { HistoryCharts } from "../../components/HistoryCharts";
@@ -19,6 +23,7 @@ export default function LineDetail() {
   const [windowKey, setWindowKey] = useState<WindowKey>("30d");
   const [days, setDays] = useState(30);
   const range = useMemo(() => windowToRange(days), [days]);
+  const c = useChartColors();
 
   const summary = useApi(() => api.lineSummary(id, range), [id, range.from, range.to]);
   const trend = useApi(() => api.lineTrend(id, range, "daily"), [id, range.from, range.to]);
@@ -32,11 +37,34 @@ export default function LineDetail() {
   // Real, long-run NJT OTP history (chronological), from the monthly endpoint.
   const njtMonthly = (monthly.data?.rows ?? []).filter((r) => r.njtOtpPercent !== null).reverse();
   const njtMonthlyHasAdj = njtMonthly.some((r) => r.njtOtpPercentAmtrakAdjusted !== null);
+  // Latest published month and the prior one, for the report-card header trend.
+  const latestM = njtMonthly.at(-1) ?? null;
+  const prevM = njtMonthly.at(-2) ?? null;
+  const momDelta =
+    latestM?.njtOtpPercent != null && prevM?.njtOtpPercent != null ? latestM.njtOtpPercent - prevM.njtOtpPercent : null;
   const amtrakCancel = summary.data?.njtCancellations?.byCause.find((c) => c.cause.toUpperCase() === "AMTRAK") ?? null;
 
   return (
     <Screen>
       <PageTitle title={summary.data?.name ?? id} subtitle="Line reliability detail" />
+
+      {latestM?.njtOtpPercent != null ? (
+        <View style={styles.report}>
+          <GradeBadge otpPercent={latestM.njtOtpPercent} size={56} />
+          <View style={styles.reportMain}>
+            <Text style={styles.reportOtp}>{formatPercent(latestM.njtOtpPercent)} on-time</Text>
+            <Muted>NJT official · 6 min · {formatMonth(`${latestM.month}-01`)}</Muted>
+          </View>
+          {njtMonthly.length >= 2 ? (
+            <Sparkline values={njtMonthly.slice(-12).map((r) => r.njtOtpPercent as number)} width={120} height={40} color={otpColorAt(c, latestM.njtOtpPercent)} />
+          ) : null}
+          <View style={styles.reportTrend}>
+            <TrendBadge delta={momDelta} />
+            <Text style={styles.vsLabel}>vs prior month</Text>
+          </View>
+        </View>
+      ) : null}
+
       <Row>
         <WindowPicker
           value={windowKey}
@@ -122,8 +150,8 @@ export default function LineDetail() {
         {trend.data && trend.data.points.length > 0 ? (
           <LineChart
             series={[
-              { label: "This project ≤15 min", color: theme.colors.accent, values: trend.data.points.map((p) => p.otpPercent15Min) },
-              ...(hasNjt ? [{ label: "NJT 6 min", color: theme.colors.njt, values: njtValues, dashed: true }] : []),
+              { label: "This project ≤15 min", color: c.accent, values: trend.data.points.map((p) => p.otpPercent15Min) },
+              ...(hasNjt ? [{ label: "NJT 6 min", color: c.njt, values: njtValues, dashed: true }] : []),
             ]}
           />
         ) : (
@@ -138,12 +166,12 @@ export default function LineDetail() {
             <LineChart
               height={200}
               series={[
-                { label: "NJT 6 min OTP", color: theme.colors.njt, values: njtMonthly.map((r) => r.njtOtpPercent as number) },
+                { label: "NJT 6 min OTP", color: c.njt, values: njtMonthly.map((r) => r.njtOtpPercent as number) },
                 ...(njtMonthlyHasAdj
                   ? [
                       {
                         label: "Excl. Amtrak",
-                        color: theme.colors.accent,
+                        color: c.accent,
                         values: njtMonthly.map((r) => r.njtOtpPercentAmtrakAdjusted ?? (r.njtOtpPercent as number)),
                         dashed: true,
                       },
@@ -248,3 +276,22 @@ export default function LineDetail() {
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  report: {
+    flexDirection: "row",
+    alignItems: "center",
+    flexWrap: "wrap",
+    gap: theme.spacing(3),
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    padding: theme.spacing(4),
+    ...theme.shadow.card,
+  },
+  reportMain: { flex: 1, gap: 2 },
+  reportOtp: { color: theme.colors.text, fontSize: theme.fontSize.xl, fontWeight: "800", letterSpacing: -0.5 },
+  reportTrend: { alignItems: "flex-end", gap: 3 },
+  vsLabel: { color: theme.colors.textFaint, fontSize: theme.fontSize.xs },
+});

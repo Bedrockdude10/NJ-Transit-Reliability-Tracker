@@ -1,21 +1,25 @@
 import { useMemo, useState } from "react";
+import { StyleSheet, Text, View } from "react-native";
 import { api } from "../lib/api";
-import { formatDelaySeconds, formatInt, formatPercent } from "../lib/format";
-import { otpColor, theme } from "../lib/theme";
+import { formatDelayShort, formatInt, formatPercent } from "../lib/format";
+import { otpColor, otpColorAt, theme } from "../lib/theme";
+import { useChartColors } from "../lib/useChartColors";
 import { windowToRange, type WindowKey } from "../lib/windows";
 import { useApi } from "../hooks/useApi";
 import { CsvExportButton } from "../components/CsvExportButton";
+import { Gauge } from "../components/charts/Gauge";
 import { Heatmap } from "../components/charts/Heatmap";
-import { DelayHistogram, GapCallout, OtpComparison } from "../components/metrics";
+import { DelayHistogram, OtpComparison } from "../components/metrics";
 import { HistoryCharts } from "../components/HistoryCharts";
 import { Table } from "../components/Table";
 import { WindowPicker } from "../components/WindowPicker";
-import { Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../components/ui";
+import { Card, Eyebrow, ErrorView, Loading, Muted, PageTitle, Row, SkeletonCard, StatTile, Screen } from "../components/ui";
 
 export default function SystemOverview() {
   const [windowKey, setWindowKey] = useState<WindowKey>("30d");
   const [days, setDays] = useState(30);
   const range = useMemo(() => windowToRange(days), [days]);
+  const chartColors = useChartColors();
 
   const summary = useApi(() => api.systemSummary(range), [range.from, range.to]);
   const dow = useApi(() => api.systemHeatmap(range, "day_of_week"), [range.from, range.to]);
@@ -29,106 +33,105 @@ export default function SystemOverview() {
   const best = ranked[0];
   const worst = ranked[ranked.length - 1];
 
+  const s = summary.data;
+  const thr = (sec: number) => s?.overall.thresholds.find((t) => t.thresholdSeconds === sec)?.otpPercent ?? null;
+  const njt = s?.njtOfficial?.otpPercent ?? null;
+  const strict5 = thr(300);
+  const within15 = thr(900);
+  const headline = njt ?? within15 ?? 0;
+  const gap = njt !== null && strict5 !== null ? Math.round((njt - strict5) * 10) / 10 : null;
+
   return (
     <Screen>
       <PageTitle title="System Overview" subtitle="NJ Transit commuter rail — independently measured reliability" />
       <Row>
-        <WindowPicker
-          value={windowKey}
-          onChange={(key, d) => {
-            setWindowKey(key);
-            setDays(d);
-          }}
-        />
+        <WindowPicker value={windowKey} onChange={(key, d) => { setWindowKey(key); setDays(d); }} />
         <CsvExportButton url={api.exportUrl("system", range)} />
       </Row>
 
-      {summary.loading ? <Loading /> : null}
+      {summary.loading ? <SkeletonCard lines={4} /> : null}
       {summary.error ? <ErrorView message={summary.error} onRetry={summary.reload} /> : null}
 
-      {summary.data ? (
+      {s ? (
         <>
-          <GapCallout
-            strictPercent={summary.data.overall.thresholds[0]?.otpPercent ?? 0}
-            njtPercent={summary.data.njtOfficial?.otpPercent ?? null}
-          />
+          {/* Hero: the headline NJT figure next to the stricter measured reality. */}
+          <Card>
+            <Eyebrow>How on-time is NJ Transit, really?</Eyebrow>
+            <View style={styles.hero}>
+              <Gauge value={headline} color={otpColorAt(chartColors, headline)} label={formatPercent(Math.round(headline))} caption={njt !== null ? "NJT official · 6 min" : "Measured · ≤15 min"} />
+              <View style={styles.heroText}>
+                <Text style={styles.heroLede}>
+                  NJT counts a train “on time” if it arrives within <Text style={styles.bold}>6 minutes</Text> of schedule. Measured
+                  against stricter thresholds, the picture changes:
+                </Text>
+                <Row>
+                  {strict5 !== null ? <StatTile label="On time ≤5 min" value={formatPercent(strict5)} color={otpColor(strict5)} accent={otpColor(strict5)} /> : null}
+                  {within15 !== null ? <StatTile label="On time ≤15 min" value={formatPercent(within15)} color={otpColor(within15)} accent={otpColor(within15)} /> : null}
+                  {gap !== null ? <StatTile label="Gap vs NJT (6 min)" value={`${gap} pts`} color={theme.colors.bad} accent={theme.colors.bad} hint="stricter threshold = lower" /> : null}
+                </Row>
+              </View>
+            </View>
+          </Card>
 
           <Row>
-            <StatTile label="Trips operated" value={formatInt(summary.data.overall.tripsOperated)} />
-            <StatTile label="Cancelled" value={formatInt(summary.data.overall.tripsCancelled)} color={theme.colors.bad} />
-            <StatTile label="Cancellation rate" value={formatPercent(summary.data.overall.cancellationRatePercent)} />
-            <StatTile label="Median delay" value={formatDelaySeconds(summary.data.overall.medianDelaySeconds)} />
-            <StatTile label="P90 delay" value={formatDelaySeconds(summary.data.overall.p90DelaySeconds)} color={theme.colors.warn} />
-            {summary.data.fleetMdbf ? (
-              <StatTile label="Fleet MDBF" value={`${formatInt(summary.data.fleetMdbf.avgMiles)} mi`} hint="miles between failures (NJT)" />
-            ) : null}
+            <StatTile label="Trips operated" value={formatInt(s.overall.tripsOperated)} accent={theme.colors.accent} />
+            <StatTile label="Cancelled" value={formatInt(s.overall.tripsCancelled)} color={theme.colors.bad} />
+            <StatTile label="Cancellation rate" value={formatPercent(s.overall.cancellationRatePercent)} />
+            <StatTile label="Median delay" value={formatDelayShort(s.overall.medianDelaySeconds)} />
+            <StatTile label="P90 delay" value={formatDelayShort(s.overall.p90DelaySeconds)} color={theme.colors.warn} accent={theme.colors.warn} />
+            {s.fleetMdbf ? <StatTile label="Fleet MDBF" value={`${formatInt(s.fleetMdbf.avgMiles)} mi`} hint="miles between failures (NJT)" /> : null}
           </Row>
 
           {best && worst && best.id !== worst.id ? (
             <Row>
-              <StatTile label="Most reliable line (NJT, latest)" value={`${best.shortName} · ${formatPercent(best.njtOtpPercent)}`} color={otpColor(best.njtOtpPercent ?? 0)} hint={best.name} />
-              <StatTile label="Least reliable line (NJT, latest)" value={`${worst.shortName} · ${formatPercent(worst.njtOtpPercent)}`} color={otpColor(worst.njtOtpPercent ?? 0)} hint={worst.name} />
+              <StatTile label="Most reliable line (NJT, latest)" value={`${best.shortName} · ${formatPercent(best.njtOtpPercent)}`} color={otpColor(best.njtOtpPercent ?? 0)} accent={otpColor(best.njtOtpPercent ?? 0)} hint={best.name} />
+              <StatTile label="Least reliable line (NJT, latest)" value={`${worst.shortName} · ${formatPercent(worst.njtOtpPercent)}`} color={otpColor(worst.njtOtpPercent ?? 0)} accent={otpColor(worst.njtOtpPercent ?? 0)} hint={worst.name} />
             </Row>
           ) : null}
 
-          <Card>
-            <SectionTitle>On-time performance vs. NJT</SectionTitle>
-            <OtpComparison thresholds={summary.data.overall.thresholds} njtOfficial={summary.data.njtOfficial} />
+          <Card title="On-time performance vs. NJT" subtitle="Independent OTP at strict thresholds against NJT's loose 6-minute figure">
+            <OtpComparison thresholds={s.overall.thresholds} njtOfficial={s.njtOfficial} />
           </Card>
 
-          <Card>
-            <SectionTitle>Delay distribution</SectionTitle>
-            <DelayHistogram distribution={summary.data.overall.delayDistribution} />
+          <Card title="Delay distribution" subtitle="Trips by terminal lateness — the long tail a single percentage hides">
+            <DelayHistogram distribution={s.overall.delayDistribution} />
           </Card>
 
-          {summary.data.njtCancellations && summary.data.njtCancellations.byCause.length > 0 ? (
-            <Card>
-              <SectionTitle>Why NJT cancels trains (system-wide)</SectionTitle>
-              <Muted>
-                {formatInt(summary.data.njtCancellations.total)} cancellations over {summary.data.njtCancellations.monthsCovered} month(s),
-                by NJT’s own cause category.
-              </Muted>
+          {s.njtCancellations && s.njtCancellations.byCause.length > 0 ? (
+            <Card title="Why NJT cancels trains" subtitle={`${formatInt(s.njtCancellations.total)} cancellations over ${s.njtCancellations.monthsCovered} month(s), by NJT's own cause category`}>
               <Table
                 columns={[
                   { key: "cause", label: "Cause", flex: 2.2 },
                   { key: "count", label: "Count", align: "right" },
                   { key: "pct", label: "Share", align: "right" },
                 ]}
-                rows={summary.data.njtCancellations.byCause.slice(0, 8).map((cause) => ({
-                  cause: cause.cause,
-                  count: cause.count,
-                  pct: `${cause.percent}%`,
-                }))}
+                rows={s.njtCancellations.byCause.slice(0, 8).map((cause) => ({ cause: cause.cause, count: cause.count, pct: `${cause.percent}%` }))}
               />
             </Card>
           ) : null}
         </>
       ) : null}
 
-      <Card>
-        <SectionTitle>Average delay by day of week</SectionTitle>
-        {dow.data ? (
-          <Heatmap cells={dow.data.buckets.map((b) => ({ label: b.label, value: b.avgDelaySeconds, observations: b.observations }))} />
-        ) : (
-          <Loading />
-        )}
+      <Card title="Average delay by day of week">
+        {dow.data ? <Heatmap cells={dow.data.buckets.map((b) => ({ label: b.label, value: b.avgDelaySeconds, observations: b.observations }))} /> : <Loading />}
       </Card>
 
-      <Card>
-        <SectionTitle>Average delay by hour of day</SectionTitle>
-        {hour.data ? (
-          <Heatmap cells={hour.data.buckets.map((b) => ({ label: b.label.replace(":00", ""), value: b.avgDelaySeconds, observations: b.observations }))} />
-        ) : (
-          <Loading />
-        )}
+      <Card title="Average delay by hour of day">
+        {hour.data ? <Heatmap cells={hour.data.buckets.map((b) => ({ label: b.label.replace(":00", ""), value: b.avgDelaySeconds, observations: b.observations }))} /> : <Loading />}
       </Card>
 
       {history.data && history.data.annual.length > 0 ? (
-        <Card>
-          <SectionTitle>NJT on-time history (system)</SectionTitle>
+        <Card title="NJT on-time history (system)" subtitle="Real published figures across every year on record">
           <HistoryCharts history={history.data} />
         </Card>
       ) : null}
     </Screen>
   );
 }
+
+const styles = StyleSheet.create({
+  hero: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: theme.spacing(5) },
+  heroText: { flex: 1, minWidth: 260, gap: theme.spacing(3) },
+  heroLede: { color: theme.colors.textMuted, fontSize: theme.fontSize.md, lineHeight: 23 },
+  bold: { color: theme.colors.text, fontWeight: "700" },
+});

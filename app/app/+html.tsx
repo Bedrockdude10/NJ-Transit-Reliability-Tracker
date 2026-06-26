@@ -1,14 +1,17 @@
 import { ScrollViewStyleReset } from "expo-router/html";
 import type { PropsWithChildren } from "react";
+import { DARK, LIGHT } from "../lib/palette";
+import { buildThemeCss, FONT_HREF, STYLE_ELEMENT_ID } from "../lib/themeCss";
 
 /**
  * Web-only HTML shell wrapping every statically-rendered page. This is where
- * document-level <head> content lives: the title, description, and Open
- * Graph / Twitter card tags that control how the site previews when shared.
+ * document-level <head> content lives: the title, description, Open Graph /
+ * Twitter card tags, the color tokens, and base CSS.
  *
- * Absolute URLs are required for social images, so they're built from
- * EXPO_PUBLIC_SITE_URL (set at build time to the deployed web origin). The card
- * image is expected at `public/og-image.png` (1200×630) — see DEPLOY.md.
+ * Theming: the palette is emitted as CSS variables (`--njt-<key>`). `:root`
+ * holds the dark scheme; a `prefers-color-scheme: light` media query swaps in
+ * the light scheme. Because React Native Web styles reference these variables
+ * (`var(--njt-...)`), the whole app re-themes with the OS setting and no JS.
  */
 
 const SITE_URL = (process.env.EXPO_PUBLIC_SITE_URL ?? "").replace(/\/+$/, "");
@@ -25,9 +28,16 @@ export default function Root({ children }: PropsWithChildren) {
         <meta httpEquiv="X-UA-Compatible" content="IE=edge" />
         <meta name="viewport" content="width=device-width, initial-scale=1, shrink-to-fit=no" />
 
+        {/* Inter (UI) + JetBrains Mono (codes/IDs), with a system fallback. */}
+        <link rel="preconnect" href="https://fonts.googleapis.com" />
+        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
+        <link rel="stylesheet" href={FONT_HREF} />
+        <style id={STYLE_ELEMENT_ID} dangerouslySetInnerHTML={{ __html: buildThemeCss() }} />
+
         <title>{TITLE}</title>
         <meta name="description" content={DESCRIPTION} />
-        <meta name="theme-color" content="#0f172a" />
+        <meta name="theme-color" media="(prefers-color-scheme: dark)" content={DARK.background} />
+        <meta name="theme-color" media="(prefers-color-scheme: light)" content={LIGHT.background} />
         {SITE_URL ? <link rel="canonical" href={SITE_URL} /> : null}
 
         {/* Open Graph (Facebook, LinkedIn, iMessage, Slack, …) */}

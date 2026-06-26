@@ -13,6 +13,20 @@ export function formatDelaySeconds(seconds: number | null | undefined): string {
   return seconds < 0 ? `${core} early` : `${core} late`;
 }
 
+/**
+ * Compact delay for tight spaces (KPI tiles): "14m 51s", "2m", "0", or "−1m"
+ * for early. Drops the "late"/"early" words since the label provides context.
+ */
+export function formatDelayShort(seconds: number | null | undefined): string {
+  if (seconds === null || seconds === undefined) return "—";
+  if (Math.abs(seconds) <= 30) return "0";
+  const abs = Math.abs(seconds);
+  const minutes = Math.floor(abs / 60);
+  const rem = Math.round(abs % 60);
+  const core = minutes > 0 ? (rem > 0 ? `${minutes}m ${rem}s` : `${minutes}m`) : `${rem}s`;
+  return seconds < 0 ? `−${core}` : core;
+}
+
 export function formatPercent(value: number | null | undefined): string {
   return value === null || value === undefined ? "—" : `${value}%`;
 }

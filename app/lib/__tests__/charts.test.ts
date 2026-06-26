@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { barLayout, heatColor, linePath, linePoints, niceMax } from "../charts";
+import { areaPath, axisTicks, barLayout, gaugeArc, heatColor, linePath, linePoints, niceMax, smoothPath } from "../charts";
 
 describe("niceMax", () => {
   it("rounds up to 1/2/5 x 10^n", () => {
@@ -29,8 +29,43 @@ describe("linePoints / linePath", () => {
 });
 
 describe("heatColor", () => {
-  it("interpolates from cool to hot", () => {
-    expect(heatColor(0, 100)).toBe("rgb(225, 240, 252)");
-    expect(heatColor(100, 100)).toBe("rgb(197, 48, 48)");
+  it("ramps green (low delay) → amber → red (high delay)", () => {
+    expect(heatColor(0, 100)).toBe("rgb(52, 211, 153)"); // green
+    expect(heatColor(50, 100)).toBe("rgb(251, 191, 36)"); // amber at the midpoint
+    expect(heatColor(100, 100)).toBe("rgb(248, 113, 113)"); // red
+  });
+});
+
+describe("axisTicks", () => {
+  it("returns evenly spaced ticks from 0 to max", () => {
+    expect(axisTicks(100, 4)).toEqual([0, 25, 50, 75, 100]);
+    expect(axisTicks(60, 3)).toEqual([0, 20, 40, 60]);
+  });
+});
+
+describe("smoothPath", () => {
+  it("falls back to a straight path under 3 points", () => {
+    expect(smoothPath([{ x: 0, y: 0 }, { x: 10, y: 10 }])).toBe("M0.00,0.00 L10.00,10.00");
+  });
+
+  it("emits cubic béziers for 3+ points", () => {
+    const d = smoothPath([{ x: 0, y: 0 }, { x: 10, y: 10 }, { x: 20, y: 0 }]);
+    expect(d.startsWith("M0.00,0.00")).toBe(true);
+    expect(d).toContain("C");
+  });
+});
+
+describe("areaPath", () => {
+  it("closes the line down to the baseline", () => {
+    const d = areaPath([{ x: 0, y: 10 }, { x: 100, y: 0 }], 50, false);
+    expect(d).toBe("M0.00,10.00 L100.00,0.00 L100.00,50.00 L0.00,50.00 Z");
+  });
+});
+
+describe("gaugeArc", () => {
+  it("builds an SVG arc command", () => {
+    const d = gaugeArc(50, 50, 40, 0, 90);
+    expect(d.startsWith("M ")).toBe(true);
+    expect(d).toContain(" A 40 40 ");
   });
 });

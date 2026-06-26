@@ -1,7 +1,8 @@
 import { useMemo, useState } from "react";
 import { api } from "../../lib/api";
 import { formatInt, formatPercent } from "../../lib/format";
-import { theme, otpColor } from "../../lib/theme";
+import { otpColor } from "../../lib/theme";
+import { useChartColors } from "../../lib/useChartColors";
 import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
 import { LineChart } from "../../components/charts/LineChart";
@@ -13,6 +14,7 @@ export default function LightRail() {
   const [windowKey, setWindowKey] = useState<WindowKey>("1y");
   const [days, setDays] = useState(365);
   const range = useMemo(() => windowToRange(days), [days]);
+  const c = useChartColors();
 
   const summary = useApi(() => api.lightRailSummary(range), [range.from, range.to]);
 
@@ -44,7 +46,7 @@ export default function LightRail() {
           {summary.data.otpTrend.length > 1 ? (
             <Card>
               <SectionTitle>On-time performance over time</SectionTitle>
-              <LineChart series={[{ label: "Light rail OTP", color: theme.colors.njt, values: summary.data.otpTrend.map((p) => p.otpPercent) }]} />
+              <LineChart series={[{ label: "Light rail OTP", color: c.njt, values: summary.data.otpTrend.map((p) => p.otpPercent) }]} />
               <Muted>NJT's reported systemwide light-rail OTP, {summary.data.otpTrend.length} months.</Muted>
             </Card>
           ) : null}

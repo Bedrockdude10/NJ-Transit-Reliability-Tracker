@@ -129,6 +129,6 @@ const styles = StyleSheet.create({
   optionMain: { gap: 2, flex: 1, paddingHorizontal: theme.spacing(2) },
   optionTitle: { color: theme.colors.text, fontWeight: "600", fontSize: theme.fontSize.sm },
   subhead: { color: theme.colors.text, fontWeight: "700", fontSize: theme.fontSize.md },
-  warn: { backgroundColor: "#3b2f12", borderRadius: theme.radius, padding: theme.spacing(3) },
-  warnText: { color: theme.colors.warn, fontSize: theme.fontSize.sm },
+  warn: { backgroundColor: theme.colors.warnSoft, borderRadius: theme.radii.md, padding: theme.spacing(3), borderWidth: 1, borderColor: theme.colors.warn },
+  warnText: { color: theme.colors.warn, fontSize: theme.fontSize.sm, fontWeight: "600" },
 });

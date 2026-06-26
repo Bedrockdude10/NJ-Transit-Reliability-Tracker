@@ -1,6 +1,7 @@
 import type { DistributionBucketResult, NjtOfficialComparison, OtpThresholdResult } from "@njt/shared";
 import { StyleSheet, Text, View } from "react-native";
-import { theme, otpColor } from "../lib/theme";
+import { theme, otpColorAt } from "../lib/theme";
+import { useChartColors } from "../lib/useChartColors";
 import { BarChart, type BarDatum } from "./charts/BarChart";
 import { Muted } from "./ui";
 
@@ -15,13 +16,14 @@ export function OtpComparison({
   thresholds: OtpThresholdResult[];
   njtOfficial: NjtOfficialComparison | null;
 }) {
+  const c = useChartColors();
   const data: BarDatum[] = thresholds.map((t) => ({
     label: `≤${t.thresholdMinutes}m`,
     value: t.otpPercent,
-    color: otpColor(t.otpPercent),
+    color: otpColorAt(c, t.otpPercent),
   }));
   const referenceLine = njtOfficial
-    ? { value: njtOfficial.otpPercent, label: `NJT 6 min · ${njtOfficial.otpPercent}%`, color: theme.colors.njt }
+    ? { value: njtOfficial.otpPercent, label: `NJT 6 min · ${njtOfficial.otpPercent}%`, color: c.njt }
     : undefined;
   return (
     <View style={styles.block}>
@@ -47,7 +49,8 @@ const SHORT: Record<string, string> = {
 };
 
 export function DelayHistogram({ distribution }: { distribution: DistributionBucketResult[] }) {
-  const data: BarDatum[] = distribution.map((b) => ({ label: SHORT[b.label] ?? b.label, value: b.count, color: theme.colors.accent }));
+  const c = useChartColors();
+  const data: BarDatum[] = distribution.map((b) => ({ label: SHORT[b.label] ?? b.label, value: b.count, color: c.accent }));
   return (
     <View style={styles.block}>
       <BarChart data={data} height={190} formatValue={(v) => String(v)} />

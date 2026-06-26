@@ -15,9 +15,10 @@ const styles = StyleSheet.create({
     alignSelf: "flex-start",
     borderWidth: 1,
     borderColor: theme.colors.border,
-    borderRadius: theme.radius,
-    paddingHorizontal: theme.spacing(3),
+    backgroundColor: theme.colors.surfaceAlt,
+    borderRadius: theme.radii.pill,
+    paddingHorizontal: theme.spacing(4),
     paddingVertical: theme.spacing(2),
   },
-  text: { color: theme.colors.accent, fontWeight: "600", fontSize: theme.fontSize.sm },
+  text: { color: theme.colors.accent, fontWeight: "700", fontSize: theme.fontSize.sm },
 });

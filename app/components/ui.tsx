@@ -1,7 +1,8 @@
 import type { ReactNode } from "react";
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { theme } from "../lib/theme";
 
+/** Page scaffold: scrollable, centered, comfortable max width and rhythm. */
 export function Screen({ children }: { children: ReactNode }) {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.screenContent}>
@@ -10,12 +11,49 @@ export function Screen({ children }: { children: ReactNode }) {
   );
 }
 
-export function Card({ children, style }: { children: ReactNode; style?: object }) {
-  return <View style={[styles.card, style]}>{children}</View>;
+/**
+ * Surface container. Pass `title`/`subtitle`/`right` to render a standardized
+ * header row (replacing ad-hoc SectionTitle usage); otherwise it's a plain
+ * padded surface. `tint` swaps the background for a semantic callout look.
+ */
+export function Card({
+  children,
+  style,
+  title,
+  subtitle,
+  right,
+  tint,
+}: {
+  children?: ReactNode;
+  style?: ViewStyle | ViewStyle[];
+  title?: string;
+  subtitle?: string;
+  right?: ReactNode;
+  tint?: string;
+}) {
+  return (
+    <View style={[styles.card, tint ? { backgroundColor: tint } : null, style as ViewStyle]}>
+      {title ? (
+        <View style={styles.cardHeader}>
+          <View style={styles.cardHeaderText}>
+            <Text style={styles.sectionTitle}>{title}</Text>
+            {subtitle ? <Text style={styles.cardSubtitle}>{subtitle}</Text> : null}
+          </View>
+          {right ?? null}
+        </View>
+      ) : null}
+      {children}
+    </View>
+  );
 }
 
 export function SectionTitle({ children }: { children: ReactNode }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
+}
+
+/** A small uppercase label used to head a sub-section inside a card. */
+export function Eyebrow({ children }: { children: ReactNode }) {
+  return <Text style={styles.eyebrow}>{children}</Text>;
 }
 
 export function PageTitle({ title, subtitle }: { title: string; subtitle?: string }) {
@@ -27,12 +65,35 @@ export function PageTitle({ title, subtitle }: { title: string; subtitle?: strin
   );
 }
 
-export function StatTile({ label, value, color, hint }: { label: string; value: string; color?: string; hint?: string }) {
+/**
+ * KPI tile: big tabular value with an uppercase label, optional hint and a
+ * colored accent strip down the left edge. `color` tints the value; `accent`
+ * (defaults to `color`) tints the strip.
+ */
+export function StatTile({
+  label,
+  value,
+  color,
+  hint,
+  accent,
+}: {
+  label: string;
+  value: string;
+  color?: string;
+  hint?: string;
+  accent?: string;
+}) {
+  const strip = accent ?? color ?? theme.colors.border;
   return (
     <View style={styles.tile}>
-      <Text style={styles.tileLabel}>{label}</Text>
-      <Text style={[styles.tileValue, color ? { color } : null]}>{value}</Text>
-      {hint ? <Text style={styles.tileHint}>{hint}</Text> : null}
+      <View style={[styles.tileStrip, { backgroundColor: strip }]} />
+      <View style={styles.tileBody}>
+        <Text style={styles.tileLabel}>{label}</Text>
+        <Text style={[styles.tileValue, color ? { color } : null]} numberOfLines={1}>
+          {value}
+        </Text>
+        {hint ? <Text style={styles.tileHint}>{hint}</Text> : null}
+      </View>
     </View>
   );
 }
@@ -41,10 +102,20 @@ export function Row({ children, wrap = true }: { children: ReactNode; wrap?: boo
   return <View style={[styles.row, wrap ? styles.wrap : null]}>{children}</View>;
 }
 
-export function Badge({ text, color = theme.colors.surfaceAlt }: { text: string; color?: string }) {
+/** Small colored status dot (e.g. live/idle indicators, reliability tiers). */
+export function StatusDot({ color, pulse = false }: { color: string; pulse?: boolean }) {
   return (
-    <View style={[styles.badge, { backgroundColor: color }]}>
-      <Text style={styles.badgeText}>{text}</Text>
+    <View style={[styles.dot, { backgroundColor: color }, pulse ? styles.dotPulse : null]}>
+      {pulse ? <View style={[styles.dotHalo, { backgroundColor: color }]} /> : null}
+    </View>
+  );
+}
+
+/** Pill badge. `tint` sets the background; `color` sets the text/dot. */
+export function Badge({ text, color = theme.colors.textMuted, tint = theme.colors.surfaceAlt }: { text: string; color?: string; tint?: string }) {
+  return (
+    <View style={[styles.badge, { backgroundColor: tint }]}>
+      <Text style={[styles.badgeText, { color }]}>{text}</Text>
     </View>
   );
 }
@@ -53,21 +124,48 @@ export function Loading({ label = "Loading…" }: { label?: string }) {
   return (
     <View style={styles.center}>
       <ActivityIndicator color={theme.colors.accent} />
-      <Text style={styles.muted}>{label}</Text>
+      <Text style={[styles.muted, styles.centerText]}>{label}</Text>
+    </View>
+  );
+}
+
+/** Shimmerless skeleton block for content-shaped loading states. */
+export function Skeleton({ height = 16, width = "100%", radius = theme.radii.sm }: { height?: number; width?: number | string; radius?: number }) {
+  return <View style={[styles.skeleton, { height, width: width as number, borderRadius: radius }]} />;
+}
+
+/** A card-shaped skeleton placeholder (used while a section's data loads). */
+export function SkeletonCard({ lines = 3 }: { lines?: number }) {
+  return (
+    <View style={styles.card}>
+      <Skeleton height={18} width="40%" />
+      {Array.from({ length: lines }).map((_, i) => (
+        <Skeleton key={i} height={12} width={`${90 - i * 12}%`} />
+      ))}
     </View>
   );
 }
 
 export function ErrorView({ message, onRetry }: { message: string; onRetry?: () => void }) {
   return (
-    <View style={styles.center}>
+    <View style={[styles.center, styles.errorCard]}>
       <Text style={styles.errorText}>Couldn’t load data</Text>
-      <Text style={styles.muted}>{message}</Text>
+      <Text style={[styles.muted, styles.centerText]}>{message}</Text>
       {onRetry ? (
-        <Pressable style={styles.retry} onPress={onRetry}>
+        <Pressable style={styles.retry} onPress={onRetry} accessibilityRole="button">
           <Text style={styles.retryText}>Retry</Text>
         </Pressable>
       ) : null}
+    </View>
+  );
+}
+
+/** Friendly empty state for sections with no data yet. */
+export function EmptyState({ title, hint }: { title: string; hint?: string }) {
+  return (
+    <View style={styles.empty}>
+      <Text style={styles.emptyTitle}>{title}</Text>
+      {hint ? <Text style={[styles.muted, styles.centerText]}>{hint}</Text> : null}
     </View>
   );
 }
@@ -76,25 +174,103 @@ export function Muted({ children }: { children: ReactNode }) {
   return <Text style={styles.muted}>{children}</Text>;
 }
 
+/** Pill-style segmented control (generalizes the old WindowPicker styling). */
+export function SegmentedControl<T extends string>({
+  options,
+  value,
+  onChange,
+}: {
+  options: readonly { key: T; label: string }[];
+  value: T;
+  onChange: (key: T) => void;
+}) {
+  return (
+    <View style={styles.segments}>
+      {options.map((opt) => {
+        const active = opt.key === value;
+        return (
+          <Pressable
+            key={opt.key}
+            onPress={() => onChange(opt.key)}
+            style={[styles.segment, active && styles.segmentActive]}
+            accessibilityRole="button"
+            accessibilityState={{ selected: active }}
+          >
+            <Text style={[styles.segmentLabel, active && styles.segmentLabelActive]}>{opt.label}</Text>
+          </Pressable>
+        );
+      })}
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.colors.background },
-  screenContent: { padding: theme.spacing(4), gap: theme.spacing(4), maxWidth: 1000, width: "100%", alignSelf: "center" },
-  card: { backgroundColor: theme.colors.surface, borderRadius: theme.radius, padding: theme.spacing(4), gap: theme.spacing(3), borderWidth: 1, borderColor: theme.colors.border },
-  sectionTitle: { color: theme.colors.text, fontSize: theme.fontSize.lg, fontWeight: "700" },
-  pageTitle: { gap: theme.spacing(1) },
-  pageTitleText: { color: theme.colors.text, fontSize: theme.fontSize.xxl, fontWeight: "800" },
-  subtitle: { color: theme.colors.textMuted, fontSize: theme.fontSize.md },
-  tile: { flexGrow: 1, flexBasis: 130, backgroundColor: theme.colors.surfaceAlt, borderRadius: theme.radius, padding: theme.spacing(3), gap: theme.spacing(1) },
-  tileLabel: { color: theme.colors.textMuted, fontSize: theme.fontSize.xs, textTransform: "uppercase", letterSpacing: 0.5 },
-  tileValue: { color: theme.colors.text, fontSize: theme.fontSize.xl, fontWeight: "700" },
-  tileHint: { color: theme.colors.textMuted, fontSize: theme.fontSize.xs },
+  screenContent: { padding: theme.spacing(5), gap: theme.spacing(4), maxWidth: 1040, width: "100%", alignSelf: "center" },
+
+  card: {
+    backgroundColor: theme.colors.surface,
+    borderRadius: theme.radius,
+    padding: theme.spacing(5),
+    gap: theme.spacing(3),
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    ...theme.shadow.card,
+  },
+  cardHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: theme.spacing(3) },
+  cardHeaderText: { gap: 2, flexShrink: 1 },
+  cardSubtitle: { color: theme.colors.textMuted, fontSize: theme.fontSize.sm },
+
+  sectionTitle: { color: theme.colors.text, fontSize: theme.fontSize.lg, fontWeight: "700", letterSpacing: -0.2 },
+  eyebrow: { color: theme.colors.textFaint, fontSize: theme.fontSize.xs, fontWeight: "700", textTransform: "uppercase", letterSpacing: 0.8 },
+
+  pageTitle: { gap: theme.spacing(1), marginBottom: theme.spacing(1) },
+  pageTitleText: { color: theme.colors.text, fontSize: theme.fontSize.xxl, fontWeight: "800", letterSpacing: -0.5 },
+  subtitle: { color: theme.colors.textMuted, fontSize: theme.fontSize.md, lineHeight: 22 },
+
+  tile: {
+    flexGrow: 1,
+    flexBasis: 150,
+    flexDirection: "row",
+    backgroundColor: theme.colors.surfaceAlt,
+    borderRadius: theme.radii.md,
+    overflow: "hidden",
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+  },
+  tileStrip: { width: 4 },
+  tileBody: { flex: 1, padding: theme.spacing(3), gap: theme.spacing(1) },
+  tileLabel: { color: theme.colors.textMuted, fontSize: theme.fontSize.xs, textTransform: "uppercase", letterSpacing: 0.6, fontWeight: "600" },
+  tileValue: { color: theme.colors.text, fontSize: 21, fontWeight: "800", letterSpacing: -0.5 },
+  tileHint: { color: theme.colors.textFaint, fontSize: theme.fontSize.xs },
+
   row: { flexDirection: "row", gap: theme.spacing(3) },
   wrap: { flexWrap: "wrap" },
-  badge: { paddingHorizontal: theme.spacing(2), paddingVertical: theme.spacing(1), borderRadius: 999 },
-  badgeText: { color: theme.colors.text, fontSize: theme.fontSize.xs, fontWeight: "600" },
+
+  dot: { width: 9, height: 9, borderRadius: 999, alignItems: "center", justifyContent: "center" },
+  dotPulse: {},
+  dotHalo: { position: "absolute", width: 9, height: 9, borderRadius: 999, opacity: 0.4, transform: [{ scale: 2 }] },
+
+  badge: { paddingHorizontal: theme.spacing(2), paddingVertical: 3, borderRadius: theme.radii.pill, alignSelf: "flex-start" },
+  badgeText: { fontSize: theme.fontSize.xs, fontWeight: "700", letterSpacing: 0.2 },
+
   center: { padding: theme.spacing(8), alignItems: "center", gap: theme.spacing(2) },
-  muted: { color: theme.colors.textMuted, fontSize: theme.fontSize.sm, textAlign: "center" },
+  muted: { color: theme.colors.textMuted, fontSize: theme.fontSize.sm, lineHeight: 20 },
+  centerText: { textAlign: "center" },
+
+  skeleton: { backgroundColor: theme.colors.surfaceAlt, opacity: 0.6 },
+
+  errorCard: { backgroundColor: theme.colors.badSoft, borderRadius: theme.radius, borderWidth: 1, borderColor: theme.colors.bad },
   errorText: { color: theme.colors.bad, fontSize: theme.fontSize.lg, fontWeight: "700" },
-  retry: { marginTop: theme.spacing(2), backgroundColor: theme.colors.accent, paddingHorizontal: theme.spacing(4), paddingVertical: theme.spacing(2), borderRadius: theme.radius },
+  retry: { marginTop: theme.spacing(2), backgroundColor: theme.colors.accent, paddingHorizontal: theme.spacing(4), paddingVertical: theme.spacing(2), borderRadius: theme.radii.md },
   retryText: { color: theme.colors.background, fontWeight: "700" },
+
+  empty: { padding: theme.spacing(6), alignItems: "center", gap: theme.spacing(1), backgroundColor: theme.colors.surfaceAlt, borderRadius: theme.radii.md, borderWidth: 1, borderColor: theme.colors.border, borderStyle: "dashed" },
+  emptyTitle: { color: theme.colors.text, fontSize: theme.fontSize.md, fontWeight: "600" },
+
+  segments: { flexDirection: "row", backgroundColor: theme.colors.surfaceAlt, borderRadius: theme.radii.pill, padding: 3, alignSelf: "flex-start", borderWidth: 1, borderColor: theme.colors.border },
+  segment: { paddingHorizontal: theme.spacing(3), paddingVertical: theme.spacing(2), borderRadius: theme.radii.pill },
+  segmentActive: { backgroundColor: theme.colors.accent },
+  segmentLabel: { color: theme.colors.textMuted, fontWeight: "600", fontSize: theme.fontSize.sm },
+  segmentLabelActive: { color: theme.colors.background, fontWeight: "700" },
 });

@@ -4,14 +4,13 @@ import { api } from "../../lib/api";
 import { buildComparison, fillForward, type CompareInput } from "../../lib/compare";
 import { formatMonth, formatPercent } from "../../lib/format";
 import { theme } from "../../lib/theme";
+import { useChartColors } from "../../lib/useChartColors";
 import { useApi } from "../../hooks/useApi";
 import { LineChart, type LineSeries } from "../../components/charts/LineChart";
 import { Table } from "../../components/Table";
 import { Card, ErrorView, Loading, Muted, PageTitle, SectionTitle, Screen } from "../../components/ui";
 
 const MAX_SELECTED = 5;
-// Fallback palette for lines NJT publishes no color for.
-const PALETTE = [theme.colors.accent, theme.colors.njt, theme.colors.good, theme.colors.warn, theme.colors.bad];
 
 // Remember the user's selection across in-session navigations (resets on full
 // reload). `null` means "untouched — show the default"; an array (including [])
@@ -21,6 +20,9 @@ let remembered: string[] | null = null;
 export default function Compare() {
   const list = useApi(() => api.lines(), []);
   const lines = list.data?.lines ?? [];
+  const cc = useChartColors();
+  // Fallback palette (concrete, for SVG) for lines NJT publishes no color for.
+  const palette = [cc.accent, cc.njt, cc.good, cc.warn, cc.bad];
 
   const [selected, setSelectedState] = useState<string[] | null>(remembered);
   const setSelected = useCallback((next: string[]) => {
@@ -67,7 +69,7 @@ export default function Compare() {
 
   const series: LineSeries[] = (comparison?.series ?? []).map((s, i) => ({
     label: s.name,
-    color: s.color ? `#${s.color}` : PALETTE[i % PALETTE.length]!,
+    color: s.color ? `#${s.color}` : palette[i % palette.length]!,
     values: fillForward(s.values),
   }));
 

@@ -1,10 +1,11 @@
 import { useRouter } from "expo-router";
-import { useState } from "react";
-import { type GestureResponderEvent, type LayoutChangeEvent, Pressable, StyleSheet, Text, View } from "react-native";
-import Svg, { Circle, Path } from "react-native-svg";
+import { useEffect, useRef, useState } from "react";
+import { type LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from "react-native";
+import Svg, { Circle, G, Path } from "react-native-svg";
 import { NJ_STATE_OUTLINE, type MapLine, type MapStation } from "@njt/shared";
 import { formatPercent } from "../../lib/format";
-import { otpColor, theme } from "../../lib/theme";
+import { otpColor, otpColorAt, theme } from "../../lib/theme";
+import { useChartColors } from "../../lib/useChartColors";
 
 export type MapColorMode = "reliability" | "line";
 
@@ -18,9 +19,17 @@ type Selection =
   | { kind: "station"; station: MapStation; at: Pt }
   | { kind: "line"; line: MapLine; at: Pt };
 
-const TOOLTIP_WIDTH = 230;
+interface ViewBox {
+  scale: number;
+  tx: number;
+  ty: number;
+}
 
-/** Distance from point p to segment a–b (screen space). */
+const TOOLTIP_WIDTH = 230;
+const MIN_SCALE = 1;
+const MAX_SCALE = 8;
+
+/** Distance from point p to segment a–b. */
 function distToSegment(p: Pt, a: Pt, b: Pt): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -29,15 +38,31 @@ function distToSegment(p: Pt, a: Pt, b: Pt): number {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
+/** Keep the (scaled) content covering the viewport; lock to origin at 1×. */
+function clampView(v: ViewBox, w: number, h: number): ViewBox {
+  const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, v.scale));
+  if (scale <= 1.0001) return { scale: 1, tx: 0, ty: 0 };
+  return {
+    scale,
+    tx: Math.min(0, Math.max(w * (1 - scale), v.tx)),
+    ty: Math.min(0, Math.max(h * (1 - scale), v.ty)),
+  };
+}
+
+/** Zoom by `factor` keeping the point `focal` (screen space) fixed. */
+function applyZoom(v: ViewBox, focal: Pt, factor: number, w: number, h: number): ViewBox {
+  const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, v.scale * factor));
+  const baseX = (focal.x - v.tx) / v.scale;
+  const baseY = (focal.y - v.ty) / v.scale;
+  return clampView({ scale, tx: focal.x - baseX * scale, ty: focal.y - baseY * scale }, w, h);
+}
+
 /**
- * Geographic schematic of the rail network, rendered with react-native-svg so
- * it works identically on web + native (no map tiles or API keys). Station
- * lat/lon are projected with a cosine-latitude correction and uniform scaling
- * to preserve the network's real shape; lines are colored by reliability or by
- * NJT's official line colors. Tapping a station or line opens an in-place
- * tooltip with its details (deep-link is a secondary action inside the tip) —
- * resolved by a single coordinate hit-test, since react-native-web rejects
- * per-element handlers on raw SVG nodes.
+ * Geographic schematic of the rail network (react-native-svg, web + native).
+ * Station lat/lon are projected with a cosine-latitude correction over the NJ
+ * outline. Pan + zoom (mouse wheel / drag on web, plus on-screen controls) are
+ * applied as an SVG group transform; tapping hit-tests in base coordinates
+ * (inverting the transform) and opens an in-place tooltip with deep-link.
  */
 export function SystemMap({
   stations,
@@ -52,9 +77,14 @@ export function SystemMap({
 }) {
   const [width, setWidth] = useState(0);
   const [selected, setSelected] = useState<Selection | null>(null);
-  const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
+  const [view, setView] = useState<ViewBox>({ scale: 1, tx: 0, ty: 0 });
+  const containerRef = useRef<View>(null);
   const router = useRouter();
+  const c = useChartColors();
 
+  const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
+
+  // --- projection (base, unzoomed coordinates) -----------------------------
   const lats = [...stations.map((s) => s.lat), ...NJ_STATE_OUTLINE.map(([, lat]) => lat)];
   const lons = [...stations.map((s) => s.lon), ...NJ_STATE_OUTLINE.map(([lon]) => lon)];
   const minLat = Math.min(...lats);
@@ -77,58 +107,131 @@ export function SystemMap({
   }).join(" ") + " Z";
 
   const colorFor = (l: MapLine) =>
-    colorMode === "line" ? `#${l.color}` : l.njtOtpPercent !== null ? otpColor(l.njtOtpPercent) : theme.colors.textMuted;
+    colorMode === "line" ? `#${l.color}` : l.njtOtpPercent !== null ? otpColorAt(c, l.njtOtpPercent) : c.textMuted;
   const linePoints = (l: MapLine) => l.path.map((id) => coord.get(id)).filter((p): p is Pt => Boolean(p));
   const pathD = (l: MapLine) => {
     const pts = linePoints(l);
     return pts.length < 2 ? "" : pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
   };
 
-  /** Tap nearest station (within 14px), else nearest line (within 8px), else dismiss. */
-  const handlePress = (e: GestureResponderEvent) => {
-    // Native gives locationX/Y; react-native-web hands back the raw DOM event,
-    // which carries offsetX/Y (relative to the element) instead.
-    const ne = e.nativeEvent as unknown as { locationX?: number; locationY?: number; offsetX?: number; offsetY?: number };
-    const p: Pt = { x: ne.locationX ?? ne.offsetX ?? 0, y: ne.locationY ?? ne.offsetY ?? 0 };
+  // --- hit testing (screen point → base coords) ----------------------------
+  // Refs keep the latest state available to the once-attached DOM listeners.
+  const itx = useRef<{ view: ViewBox; coord: Map<string, Pt>; stations: MapStation[]; lines: MapLine[]; lp: (l: MapLine) => Pt[] }>({
+    view,
+    coord,
+    stations,
+    lines,
+    lp: linePoints,
+  });
+  itx.current = { view, coord, stations, lines, lp: linePoints };
+
+  const tapAt = (p: Pt) => {
+    const { view: v, coord: cd, stations: sts, lines: lns, lp } = itx.current;
+    const base: Pt = { x: (p.x - v.tx) / v.scale, y: (p.y - v.ty) / v.scale };
     let nearestStation: MapStation | null = null;
     let stationDist = Infinity;
-    for (const s of stations) {
-      const c = coord.get(s.stopId);
+    for (const s of sts) {
+      const c = cd.get(s.stopId);
       if (!c) continue;
-      const d = Math.hypot(p.x - c.x, p.y - c.y);
+      const d = Math.hypot(base.x - c.x, base.y - c.y);
       if (d < stationDist) [stationDist, nearestStation] = [d, s];
     }
-    if (nearestStation && stationDist <= 14) {
-      const c = coord.get(nearestStation.stopId) ?? p;
-      setSelected({ kind: "station", station: nearestStation, at: c });
+    if (nearestStation && stationDist <= 14 / v.scale) {
+      const c = cd.get(nearestStation.stopId)!;
+      setSelected({ kind: "station", station: nearestStation, at: { x: c.x * v.scale + v.tx, y: c.y * v.scale + v.ty } });
       return;
     }
     let nearestLine: MapLine | null = null;
     let lineDist = Infinity;
-    for (const l of lines) {
-      const pts = linePoints(l);
+    for (const l of lns) {
+      const pts = lp(l);
       for (let i = 0; i < pts.length - 1; i++) {
-        const d = distToSegment(p, pts[i] as Pt, pts[i + 1] as Pt);
+        const d = distToSegment(base, pts[i] as Pt, pts[i + 1] as Pt);
         if (d < lineDist) [lineDist, nearestLine] = [d, l];
       }
     }
-    if (nearestLine && lineDist <= 8) {
-      setSelected({ kind: "line", line: nearestLine, at: p });
+    if (nearestLine && lineDist <= 8 / v.scale) {
+      setSelected({ kind: "line", line: nearestLine, at: { x: p.x, y: p.y } });
       return;
     }
-    setSelected(null); // tapped empty space → dismiss any open tooltip
+    setSelected(null);
+  };
+
+  // --- web pan/zoom via native DOM events ----------------------------------
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const el = containerRef.current as unknown as HTMLElement | null;
+    if (!el) return;
+    el.style.touchAction = "none";
+    const rel = (e: PointerEvent | WheelEvent): Pt => {
+      const r = el.getBoundingClientRect();
+      return { x: e.clientX - r.left, y: e.clientY - r.top };
+    };
+    let down: { p: Pt; tx: number; ty: number } | null = null;
+    let dragged = false;
+
+    const onDown = (e: PointerEvent) => {
+      if (e.target !== el) return; // ignore clicks on controls/tooltip (the SVG is pointer-events:none)
+      down = { p: rel(e), tx: itx.current.view.tx, ty: itx.current.view.ty };
+      dragged = false;
+    };
+    const onMove = (e: PointerEvent) => {
+      if (!down) return;
+      const p = rel(e);
+      const dx = p.x - down.p.x;
+      const dy = p.y - down.p.y;
+      if (!dragged && Math.hypot(dx, dy) > 4) {
+        dragged = true;
+        setSelected(null);
+      }
+      if (dragged && itx.current.view.scale > 1) {
+        const w = el.clientWidth;
+        setView((v) => clampView({ scale: v.scale, tx: down!.tx + dx, ty: down!.ty + dy }, w, height));
+      }
+    };
+    const onUp = (e: PointerEvent) => {
+      if (down && !dragged) tapAt(rel(e));
+      down = null;
+    };
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      setSelected(null);
+      const factor = Math.exp(-e.deltaY * 0.0015);
+      setView((v) => applyZoom(v, rel(e), factor, el.clientWidth, height));
+    };
+
+    el.addEventListener("pointerdown", onDown);
+    window.addEventListener("pointermove", onMove);
+    window.addEventListener("pointerup", onUp);
+    el.addEventListener("wheel", onWheel, { passive: false });
+    return () => {
+      el.removeEventListener("pointerdown", onDown);
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerup", onUp);
+      el.removeEventListener("wheel", onWheel);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [height]);
+
+  const zoomButton = (factor: number) => () => {
+    setSelected(null);
+    setView((v) => applyZoom(v, { x: width / 2, y: height / 2 }, factor, width, height));
+  };
+  const resetView = () => {
+    setSelected(null);
+    setView({ scale: 1, tx: 0, ty: 0 });
   };
 
   const selectedStationId = selected?.kind === "station" ? selected.station.stopId : null;
   const selectedLineId = selected?.kind === "line" ? selected.line.lineId : null;
-  const selectedLinePath = selected?.kind === "line" ? pathD(selected.line) : "";
+  const transform = `translate(${view.tx} ${view.ty}) scale(${view.scale})`;
 
   return (
-    <View testID="system-map" onLayout={onLayout} style={{ width: "100%", height }}>
-      <Pressable onPress={handlePress} style={StyleSheet.absoluteFill}>
-        {width > 0 && stations.length > 0 ? (
-          <Svg width={width} height={height} pointerEvents="none">
-            <Path d={outlineD} fill={theme.colors.surfaceAlt} stroke={theme.colors.border} strokeWidth={1} opacity={0.55} />
+    <View ref={containerRef} testID="system-map" onLayout={onLayout} style={[styles.container, { height }]}>
+      {width > 0 && stations.length > 0 ? (
+        <Svg width={width} height={height} pointerEvents="none">
+          <G transform={transform}>
+            <Path d={outlineD} fill={c.surfaceAlt} stroke={c.border} strokeWidth={1} opacity={0.55} />
             {lines.map((l) => {
               const d = pathD(l);
               if (!d) return null;
@@ -139,7 +242,7 @@ export function SystemMap({
                   key={l.lineId}
                   d={d}
                   stroke={colorFor(l)}
-                  strokeWidth={lightRail ? 2 : 3}
+                  strokeWidth={(lightRail ? 2 : 3) / Math.sqrt(view.scale)}
                   strokeDasharray={lightRail ? "5,4" : undefined}
                   strokeLinejoin="round"
                   strokeLinecap="round"
@@ -148,38 +251,35 @@ export function SystemMap({
                 />
               );
             })}
-            {/* Highlight the selected line on top, thicker and at full opacity. */}
-            {selectedLinePath && selected?.kind === "line" ? (
-              <Path
-                d={selectedLinePath}
-                stroke={colorFor(selected.line)}
-                strokeWidth={selected.line.mode === "light_rail" ? 4 : 5}
-                strokeLinejoin="round"
-                strokeLinecap="round"
-                fill="none"
-                opacity={1}
-              />
+            {selected?.kind === "line" ? (
+              <Path d={pathD(selected.line)} stroke={colorFor(selected.line)} strokeWidth={(selected.line.mode === "light_rail" ? 4 : 5) / Math.sqrt(view.scale)} strokeLinejoin="round" strokeLinecap="round" fill="none" opacity={1} />
             ) : null}
             {stations.map((s) => {
-              const c = coord.get(s.stopId);
-              if (!c) return null;
+              const pt = coord.get(s.stopId);
+              if (!pt) return null;
               const active = s.stopId === selectedStationId;
-              return (
-                <Circle
-                  key={s.stopId}
-                  cx={c.x}
-                  cy={c.y}
-                  r={active ? 5 : 2.6}
-                  fill={active ? theme.colors.accent : theme.colors.text}
-                  stroke={active ? theme.colors.background : undefined}
-                  strokeWidth={active ? 1.5 : 0}
-                  opacity={active ? 1 : 0.7}
-                />
-              );
+              const r = (active ? 5 : 2.6) / Math.sqrt(view.scale);
+              return <Circle key={s.stopId} cx={pt.x} cy={pt.y} r={r} fill={active ? c.accent : c.text} stroke={active ? c.background : undefined} strokeWidth={active ? 1.5 / view.scale : 0} opacity={active ? 1 : 0.7} />;
             })}
-          </Svg>
-        ) : null}
-      </Pressable>
+          </G>
+        </Svg>
+      ) : null}
+
+      {/* Native tap layer (web uses DOM pointer events on the container). */}
+      {Platform.OS !== "web" ? (
+        <Pressable
+          style={StyleSheet.absoluteFill}
+          onPress={(e) => tapAt({ x: e.nativeEvent.locationX, y: e.nativeEvent.locationY })}
+        />
+      ) : null}
+
+      {/* Zoom controls */}
+      <View style={styles.controls}>
+        <Pressable style={styles.ctrlBtn} onPress={zoomButton(1.6)} accessibilityLabel="Zoom in"><Text style={styles.ctrlText}>+</Text></Pressable>
+        <Pressable style={styles.ctrlBtn} onPress={zoomButton(1 / 1.6)} accessibilityLabel="Zoom out"><Text style={styles.ctrlText}>−</Text></Pressable>
+        {view.scale > 1 ? <Pressable style={styles.ctrlBtn} onPress={resetView} accessibilityLabel="Reset view"><Text style={styles.ctrlReset}>⤢</Text></Pressable> : null}
+      </View>
+
       {selected ? (
         <MapTooltip
           selection={selected}
@@ -220,10 +320,6 @@ function MapTooltip({
 
   return (
     <View style={[styles.tip, { left, top }]}>
-      <Pressable onPress={onClose} style={styles.close} hitSlop={8}>
-        <Text style={styles.closeText}>×</Text>
-      </Pressable>
-
       {selection.kind === "station" ? (
         <StationTip
           station={selection.station}
@@ -233,6 +329,10 @@ function MapTooltip({
       ) : (
         <LineTip line={selection.line} onOpen={() => onOpenLine(selection.line)} />
       )}
+      {/* Rendered last so it paints above the content and stays clickable. */}
+      <Pressable onPress={onClose} style={styles.close} hitSlop={10} accessibilityLabel="Close">
+        <Text style={styles.closeText}>×</Text>
+      </Pressable>
     </View>
   );
 }
@@ -242,12 +342,8 @@ function StationTip({ station, servingLines, onOpen }: { station: MapStation; se
   const extra = servingLines.length - shown.length;
   return (
     <>
-      <Text style={styles.tipTitle} numberOfLines={2}>
-        {station.stopName}
-      </Text>
-      <Text style={styles.tipSub}>
-        {servingLines.length > 0 ? `${servingLines.length} line${servingLines.length === 1 ? "" : "s"}` : "No lines mapped"}
-      </Text>
+      <Text style={styles.tipTitle} numberOfLines={2}>{station.stopName}</Text>
+      <Text style={styles.tipSub}>{servingLines.length > 0 ? `${servingLines.length} line${servingLines.length === 1 ? "" : "s"}` : "No lines mapped"}</Text>
       {shown.length > 0 ? (
         <View style={styles.chipRow}>
           {shown.map((l) => (
@@ -259,9 +355,7 @@ function StationTip({ station, servingLines, onOpen }: { station: MapStation; se
           {extra > 0 ? <Text style={styles.tipSub}>+{extra}</Text> : null}
         </View>
       ) : null}
-      <Pressable onPress={onOpen}>
-        <Text style={styles.tipLink}>Open station →</Text>
-      </Pressable>
+      <Pressable onPress={onOpen}><Text style={styles.tipLink}>Open station →</Text></Pressable>
     </>
   );
 }
@@ -271,29 +365,38 @@ function LineTip({ line, onOpen }: { line: MapLine; onOpen: () => void }) {
     <>
       <View style={styles.tipHeadRow}>
         <View style={[styles.chipDot, { backgroundColor: `#${line.color}` }]} />
-        <Text style={styles.tipTitle} numberOfLines={2}>
-          {line.name}
-        </Text>
+        <Text style={styles.tipTitle} numberOfLines={2}>{line.name}</Text>
       </View>
       <Text style={styles.tipSub}>{line.mode === "light_rail" ? "Light rail" : "Commuter rail"}</Text>
       <View style={styles.statRow}>
         <Text style={styles.statLabel}>NJT OTP (6 min)</Text>
-        <Text style={[styles.statVal, { color: line.njtOtpPercent !== null ? otpColor(line.njtOtpPercent) : theme.colors.textMuted }]}>
-          {formatPercent(line.njtOtpPercent)}
-        </Text>
+        <Text style={[styles.statVal, { color: line.njtOtpPercent !== null ? otpColor(line.njtOtpPercent) : theme.colors.textMuted }]}>{formatPercent(line.njtOtpPercent)}</Text>
       </View>
       <View style={styles.statRow}>
         <Text style={styles.statLabel}>Independent ≤15 min</Text>
         <Text style={styles.statVal}>{formatPercent(line.projectOtpPercent15Min)}</Text>
       </View>
-      <Pressable onPress={onOpen}>
-        <Text style={styles.tipLink}>{line.mode === "light_rail" ? "Open light rail →" : "Open line detail →"}</Text>
-      </Pressable>
+      <Pressable onPress={onOpen}><Text style={styles.tipLink}>{line.mode === "light_rail" ? "Open light rail →" : "Open line detail →"}</Text></Pressable>
     </>
   );
 }
 
 const styles = StyleSheet.create({
+  container: { width: "100%", position: "relative", overflow: "hidden", borderRadius: theme.radii.md },
+  controls: { position: "absolute", top: theme.spacing(2), right: theme.spacing(2), gap: theme.spacing(2) },
+  ctrlBtn: {
+    width: 34,
+    height: 34,
+    borderRadius: theme.radii.sm,
+    backgroundColor: theme.colors.surface,
+    borderWidth: 1,
+    borderColor: theme.colors.border,
+    alignItems: "center",
+    justifyContent: "center",
+    ...theme.shadow.card,
+  },
+  ctrlText: { color: theme.colors.text, fontSize: 20, fontWeight: "700", lineHeight: 22 },
+  ctrlReset: { color: theme.colors.textMuted, fontSize: 16, fontWeight: "700" },
   tip: {
     position: "absolute",
     width: TOOLTIP_WIDTH,
@@ -303,14 +406,9 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     padding: theme.spacing(3),
     gap: theme.spacing(2),
-    // Float above the SVG.
-    shadowColor: "#000",
-    shadowOpacity: 0.4,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 6,
+    ...theme.shadow.pop,
   },
-  close: { position: "absolute", top: 2, right: 6, padding: theme.spacing(1) },
+  close: { position: "absolute", top: 2, right: 6, padding: theme.spacing(1), zIndex: 5 },
   closeText: { color: theme.colors.textMuted, fontSize: theme.fontSize.lg, fontWeight: "700", lineHeight: 20 },
   tipHeadRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing(2), paddingRight: theme.spacing(4) },
   tipTitle: { color: theme.colors.text, fontSize: theme.fontSize.md, fontWeight: "800", flexShrink: 1, paddingRight: theme.spacing(4) },
