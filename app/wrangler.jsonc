@@ -1,0 +1,12 @@
+{
+  // Static-assets Worker that serves the Expo web export (`app/dist`).
+  // Deployed by Cloudflare Workers Builds with deploy command: `cd app && npx wrangler deploy`.
+  // IMPORTANT: `name` must match your Cloudflare Workers project name.
+  "name": "njt-reliability-tracker",
+  "compatibility_date": "2025-06-01",
+  "assets": {
+    "directory": "./dist",
+    // SPA fallback so deep links (/lines/NEC, /stations/38293) resolve to index.html.
+    "not_found_handling": "single-page-application"
+  }
+}
