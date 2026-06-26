@@ -6,6 +6,7 @@ import { theme } from "../../lib/theme";
 import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
 import { DelayHistogram } from "../../components/metrics";
+import { ModeledBanner } from "../../components/Indicators";
 import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
 import { Badge, Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
@@ -35,6 +36,10 @@ export default function Connections() {
   return (
     <Screen>
       <PageTitle title="Connection Reliability" subtitle="How often a timed transfer actually works" />
+      <ModeledBanner>
+        Connection reliability is modeled sample data until the live GTFS-Realtime feed is connected — it
+        demonstrates the methodology, not real transfer outcomes yet.
+      </ModeledBanner>
       <WindowPicker
         value={windowKey}
         onChange={(key, d) => {

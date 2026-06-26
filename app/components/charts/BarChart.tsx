@@ -59,8 +59,8 @@ export function BarChart({
       {width > 0 ? (
         <Svg width={width} height={height}>
           {/* gridlines */}
-          {axisTicks(max, 4).map((t) => (
-            <Line key={`g${t}`} x1={0} y1={yFor(t)} x2={width} y2={yFor(t)} stroke={c.gridLine} strokeWidth={1} />
+          {axisTicks(max, 4).map((t, i) => (
+            <Line key={`g${i}`} x1={0} y1={yFor(t)} x2={width} y2={yFor(t)} stroke={c.gridLine} strokeWidth={1} />
           ))}
 
           {bars.map((bar, i) => {

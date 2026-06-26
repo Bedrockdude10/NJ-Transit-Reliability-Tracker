@@ -6,6 +6,7 @@ import { theme } from "../../lib/theme";
 import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
 import { CsvExportButton } from "../../components/CsvExportButton";
+import { ModeledBanner } from "../../components/Indicators";
 import { Heatmap } from "../../components/charts/Heatmap";
 import { DelayHistogram } from "../../components/metrics";
 import { Table } from "../../components/Table";
@@ -25,6 +26,10 @@ export default function StationDetail() {
   return (
     <Screen>
       <PageTitle title={summary.data?.stopName ?? id} subtitle="Station reliability detail" />
+      <ModeledBanner>
+        Per-station arrival delays are modeled sample data until the live GTFS-Realtime feed is connected. The
+        station name and lines are real (from GTFS); the delays are illustrative.
+      </ModeledBanner>
       <Row>
         <WindowPicker
           value={windowKey}

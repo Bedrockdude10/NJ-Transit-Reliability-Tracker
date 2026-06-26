@@ -136,11 +136,17 @@ export function buildOfficialComparison(
     return weightSum > 0 ? round1(valueSum / weightSum) : null;
   };
 
+  const tripsOperated = metrics.reduce((s, m) => s + m.tripsOperated, 0);
+  const cancellations = metrics.reduce((s, m) => s + m.cancellations, 0);
+  const scheduled = tripsOperated + cancellations;
   return {
     thresholdSeconds: NJT_OFFICIAL_THRESHOLD_SECONDS,
     otpPercent: weightedAverage((m) => m.otpPercent) ?? 0,
     otpPercentAmtrakAdjusted: weightedAverage((m) => m.otpPercentAmtrakAdjusted),
     monthsCovered: new Set(metrics.map((m) => `${m.year}-${m.month}`)).size,
+    tripsOperated,
+    cancellations,
+    cancellationRatePercent: scheduled > 0 ? round1((cancellations / scheduled) * 100) : 0,
   };
 }
 

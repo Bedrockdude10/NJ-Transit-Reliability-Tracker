@@ -7,6 +7,7 @@ import { useChartColors } from "../lib/useChartColors";
 import { windowToRange, type WindowKey } from "../lib/windows";
 import { useApi } from "../hooks/useApi";
 import { CsvExportButton } from "../components/CsvExportButton";
+import { ModeledBadge } from "../components/Indicators";
 import { Gauge } from "../components/charts/Gauge";
 import { Heatmap } from "../components/charts/Heatmap";
 import { DelayHistogram, OtpComparison } from "../components/metrics";
@@ -54,16 +55,20 @@ export default function SystemOverview() {
 
       {s ? (
         <>
-          {/* Hero: the headline NJT figure next to the stricter measured reality. */}
+          {/* Hero: the headline NJT figure next to the stricter (modeled) reality. */}
           <Card>
             <Eyebrow>How on-time is NJ Transit, really?</Eyebrow>
             <View style={styles.hero}>
-              <Gauge value={headline} color={otpColorAt(chartColors, headline)} label={formatPercent(Math.round(headline))} caption={njt !== null ? "NJT official · 6 min" : "Measured · ≤15 min"} />
+              <Gauge value={headline} color={otpColorAt(chartColors, headline)} label={formatPercent(Math.round(headline))} caption={njt !== null ? "NJT official · 6 min" : "Modeled · ≤15 min"} />
               <View style={styles.heroText}>
                 <Text style={styles.heroLede}>
-                  NJT counts a train “on time” if it arrives within <Text style={styles.bold}>6 minutes</Text> of schedule. Measured
-                  against stricter thresholds, the picture changes:
+                  NJT counts a train “on time” if it arrives within <Text style={styles.bold}>6 minutes</Text> of schedule. At stricter
+                  thresholds the picture changes — though until live data is connected these are <Text style={styles.bold}>modeled</Text>:
                 </Text>
+                <View style={styles.heroBadgeRow}>
+                  <ModeledBadge />
+                  <Text style={styles.heroBadgeNote}>illustrative until GTFS-Realtime</Text>
+                </View>
                 <Row>
                   {strict5 !== null ? <StatTile label="On time ≤5 min" value={formatPercent(strict5)} color={otpColor(strict5)} accent={otpColor(strict5)} /> : null}
                   {within15 !== null ? <StatTile label="On time ≤15 min" value={formatPercent(within15)} color={otpColor(within15)} accent={otpColor(within15)} /> : null}
@@ -73,13 +78,12 @@ export default function SystemOverview() {
             </View>
           </Card>
 
+          {/* Real, NJT-reported operations for the period. */}
           <Row>
-            <StatTile label="Trips operated" value={formatInt(s.overall.tripsOperated)} accent={theme.colors.accent} />
-            <StatTile label="Cancelled" value={formatInt(s.overall.tripsCancelled)} color={theme.colors.bad} />
-            <StatTile label="Cancellation rate" value={formatPercent(s.overall.cancellationRatePercent)} />
-            <StatTile label="Median delay" value={formatDelayShort(s.overall.medianDelaySeconds)} />
-            <StatTile label="P90 delay" value={formatDelayShort(s.overall.p90DelaySeconds)} color={theme.colors.warn} accent={theme.colors.warn} />
-            {s.fleetMdbf ? <StatTile label="Fleet MDBF" value={`${formatInt(s.fleetMdbf.avgMiles)} mi`} hint="miles between failures (NJT)" /> : null}
+            <StatTile label="Trips operated (NJT)" value={s.njtOfficial ? formatInt(s.njtOfficial.tripsOperated) : "—"} accent={theme.colors.accent} hint={s.njtOfficial ? `${s.njtOfficial.monthsCovered} mo published` : "no NJT data this period"} />
+            <StatTile label="Cancellations (NJT)" value={s.njtOfficial ? formatInt(s.njtOfficial.cancellations) : "—"} color={theme.colors.bad} />
+            <StatTile label="Cancellation rate (NJT)" value={s.njtOfficial ? formatPercent(s.njtOfficial.cancellationRatePercent) : "—"} />
+            {s.fleetMdbf ? <StatTile label="Fleet MDBF (NJT)" value={`${formatInt(s.fleetMdbf.avgMiles)} mi`} hint="miles between failures" /> : null}
           </Row>
 
           {best && worst && best.id !== worst.id ? (
@@ -89,11 +93,16 @@ export default function SystemOverview() {
             </Row>
           ) : null}
 
-          <Card title="On-time performance vs. NJT" subtitle="Independent OTP at strict thresholds against NJT's loose 6-minute figure">
+          <Card title="On-time performance vs. NJT" subtitle="Independent OTP at strict thresholds against NJT's loose 6-minute figure" right={<ModeledBadge />}>
             <OtpComparison thresholds={s.overall.thresholds} njtOfficial={s.njtOfficial} />
+            <Row>
+              <StatTile label="Median delay" value={formatDelayShort(s.overall.medianDelaySeconds)} />
+              <StatTile label="P90 delay" value={formatDelayShort(s.overall.p90DelaySeconds)} color={theme.colors.warn} accent={theme.colors.warn} />
+              <StatTile label="Avg delay" value={formatDelayShort(s.overall.avgDelaySeconds)} />
+            </Row>
           </Card>
 
-          <Card title="Delay distribution" subtitle="Trips by terminal lateness — the long tail a single percentage hides">
+          <Card title="Delay distribution" subtitle="Trips by terminal lateness — the long tail a single percentage hides" right={<ModeledBadge />}>
             <DelayHistogram distribution={s.overall.delayDistribution} />
           </Card>
 
@@ -112,11 +121,11 @@ export default function SystemOverview() {
         </>
       ) : null}
 
-      <Card title="Average delay by day of week">
+      <Card title="Average delay by day of week" right={<ModeledBadge />}>
         {dow.data ? <Heatmap cells={dow.data.buckets.map((b) => ({ label: b.label, value: b.avgDelaySeconds, observations: b.observations }))} /> : <Loading />}
       </Card>
 
-      <Card title="Average delay by hour of day">
+      <Card title="Average delay by hour of day" right={<ModeledBadge />}>
         {hour.data ? <Heatmap cells={hour.data.buckets.map((b) => ({ label: b.label.replace(":00", ""), value: b.avgDelaySeconds, observations: b.observations }))} /> : <Loading />}
       </Card>
 
@@ -133,5 +142,7 @@ const styles = StyleSheet.create({
   hero: { flexDirection: "row", flexWrap: "wrap", alignItems: "center", gap: theme.spacing(5) },
   heroText: { flex: 1, minWidth: 260, gap: theme.spacing(3) },
   heroLede: { color: theme.colors.textMuted, fontSize: theme.fontSize.md, lineHeight: 23 },
+  heroBadgeRow: { flexDirection: "row", alignItems: "center", gap: theme.spacing(2) },
+  heroBadgeNote: { color: theme.colors.textFaint, fontSize: theme.fontSize.xs },
   bold: { color: theme.colors.text, fontWeight: "700" },
 });

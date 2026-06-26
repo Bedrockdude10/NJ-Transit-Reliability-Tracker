@@ -61,16 +61,16 @@ export function LineChart({
             </Defs>
 
             {/* gridlines + y labels */}
-            {ticks.map((t) => {
+            {ticks.map((t, i) => {
               const y = PAD_TOP + plotH * (1 - t / maxValue);
               return (
-                <Line key={t} x1={Y_AXIS_W} y1={y} x2={width} y2={y} stroke={c.gridLine} strokeWidth={1} />
+                <Line key={`g${i}`} x1={Y_AXIS_W} y1={y} x2={width} y2={y} stroke={c.gridLine} strokeWidth={1} />
               );
             })}
-            {ticks.map((t) => {
+            {ticks.map((t, i) => {
               const y = PAD_TOP + plotH * (1 - t / maxValue);
               return (
-                <SvgText key={`l${t}`} x={Y_AXIS_W - 6} y={y + 3} fill={c.textFaint} fontSize={9} textAnchor="end">
+                <SvgText key={`l${i}`} x={Y_AXIS_W - 6} y={y + 3} fill={c.textFaint} fontSize={9} textAnchor="end">
                   {t}
                   {unit}
                 </SvgText>

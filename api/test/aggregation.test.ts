@@ -90,6 +90,17 @@ describe("buildOfficialComparison", () => {
     expect(result?.monthsCovered).toBe(2);
     expect(result?.thresholdSeconds).toBe(360);
   });
+
+  it("sums real NJT operations totals and computes a cancellation rate", () => {
+    const result = buildOfficialComparison([
+      { year: 2025, month: 6, lineName: "NEC", otpPercent: 80, otpPercentAmtrakAdjusted: null, tripsOperated: 190, cancellations: 10, cancellationCauses: null },
+      { year: 2025, month: 7, lineName: "NEC", otpPercent: 90, otpPercentAmtrakAdjusted: null, tripsOperated: 290, cancellations: 10, cancellationCauses: null },
+    ]);
+    expect(result?.tripsOperated).toBe(480);
+    expect(result?.cancellations).toBe(20);
+    // 20 / (480 + 20) = 4%
+    expect(result?.cancellationRatePercent).toBe(4);
+  });
 });
 
 describe("buildCancellations", () => {

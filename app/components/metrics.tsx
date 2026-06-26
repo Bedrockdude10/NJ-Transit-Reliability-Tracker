@@ -65,8 +65,9 @@ export function GapCallout({ strictPercent, njtPercent }: { strictPercent: numbe
   return (
     <View style={styles.callout}>
       <Text style={styles.calloutText}>
-        NJT reports <Text style={styles.njt}>{njtPercent}%</Text> on-time (6 min). Measured at a 5-minute threshold it’s{" "}
-        <Text style={styles.strict}>{strictPercent}%</Text> — a <Text style={styles.gap}>{gap}-point</Text> gap.
+        NJT reports <Text style={styles.njt}>{njtPercent}%</Text> on-time (6 min). At a 5-minute threshold it would be{" "}
+        <Text style={styles.strict}>{strictPercent}%</Text> — a <Text style={styles.gap}>{gap}-point</Text> gap.{" "}
+        <Text style={styles.modeledNote}>(modeled until live data)</Text>
       </Text>
     </View>
   );
@@ -79,4 +80,5 @@ const styles = StyleSheet.create({
   njt: { color: theme.colors.njt, fontWeight: "700" },
   strict: { color: theme.colors.accent, fontWeight: "700" },
   gap: { color: theme.colors.bad, fontWeight: "700" },
+  modeledNote: { color: theme.colors.textFaint, fontStyle: "italic", fontSize: theme.fontSize.sm },
 });

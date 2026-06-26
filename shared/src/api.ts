@@ -37,6 +37,10 @@ export interface NjtOfficialComparison {
   otpPercent: number;
   otpPercentAmtrakAdjusted: number | null;
   monthsCovered: number;
+  /** Real, NJT-reported operations totals over the covered months. */
+  tripsOperated: number;
+  cancellations: number;
+  cancellationRatePercent: number;
 }
 
 export interface CancellationCauseResult {

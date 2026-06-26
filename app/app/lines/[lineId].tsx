@@ -7,7 +7,7 @@ import { theme, otpColor, otpColorAt } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
 import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
-import { GradeBadge, TrendBadge } from "../../components/Indicators";
+import { GradeBadge, ModeledBadge, TrendBadge } from "../../components/Indicators";
 import { Sparkline } from "../../components/charts/Sparkline";
 import { CsvExportButton } from "../../components/CsvExportButton";
 import { LineChart } from "../../components/charts/LineChart";
@@ -87,19 +87,20 @@ export default function LineDetail() {
           />
 
           <Row>
-            <StatTile label="Trips operated" value={formatInt(summary.data.overall.tripsOperated)} />
-            <StatTile label="Cancelled" value={formatInt(summary.data.overall.tripsCancelled)} color={theme.colors.bad} />
-            <StatTile label="Avg delay" value={formatDelaySeconds(summary.data.overall.avgDelaySeconds)} />
-            <StatTile label="P90 delay" value={formatDelaySeconds(summary.data.overall.p90DelaySeconds)} color={theme.colors.warn} />
+            <StatTile label="Trips operated (NJT)" value={summary.data.njtOfficial ? formatInt(summary.data.njtOfficial.tripsOperated) : "—"} accent={theme.colors.accent} hint={summary.data.njtOfficial ? `${summary.data.njtOfficial.monthsCovered} mo published` : "no NJT data this period"} />
+            <StatTile label="Cancellations (NJT)" value={summary.data.njtOfficial ? formatInt(summary.data.njtOfficial.cancellations) : "—"} color={theme.colors.bad} />
+            <StatTile label="Cancellation rate (NJT)" value={summary.data.njtOfficial ? formatPercent(summary.data.njtOfficial.cancellationRatePercent) : "—"} />
           </Row>
 
-          <Card>
-            <SectionTitle>On-time performance vs. NJT</SectionTitle>
+          <Card title="On-time performance vs. NJT" right={<ModeledBadge />}>
             <OtpComparison thresholds={summary.data.overall.thresholds} njtOfficial={summary.data.njtOfficial} />
+            <Row>
+              <StatTile label="Avg delay" value={formatDelaySeconds(summary.data.overall.avgDelaySeconds)} />
+              <StatTile label="P90 delay" value={formatDelaySeconds(summary.data.overall.p90DelaySeconds)} color={theme.colors.warn} accent={theme.colors.warn} />
+            </Row>
           </Card>
 
-          <Card>
-            <SectionTitle>Inbound vs. outbound</SectionTitle>
+          <Card title="Inbound vs. outbound" right={<ModeledBadge />}>
             <Row>
               <StatTile
                 label="Inbound OTP ≤15m"
@@ -116,8 +117,7 @@ export default function LineDetail() {
             </Row>
           </Card>
 
-          <Card>
-            <SectionTitle>Delay distribution</SectionTitle>
+          <Card title="Delay distribution" right={<ModeledBadge />}>
             <DelayHistogram distribution={summary.data.overall.delayDistribution} />
           </Card>
 
@@ -145,8 +145,7 @@ export default function LineDetail() {
         </>
       ) : null}
 
-      <Card>
-        <SectionTitle>OTP trend (≤15 min vs. NJT 6 min)</SectionTitle>
+      <Card title="OTP trend (≤15 min vs. NJT 6 min)" right={<ModeledBadge />}>
         {trend.data && trend.data.points.length > 0 ? (
           <LineChart
             series={[
@@ -222,8 +221,7 @@ export default function LineDetail() {
         )}
       </Card>
 
-      <Card>
-        <SectionTitle>Most delayed trips</SectionTitle>
+      <Card title="Most delayed trips" right={<ModeledBadge />}>
         {worst.data ? (
           <Table
             columns={[
