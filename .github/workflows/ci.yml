@@ -4,9 +4,9 @@ name: CI
 # all packages (Node) and the Expo app. Runs on PRs and pushes to main.
 on:
   push:
-    branches: [main]
+    branches: [main, dev]
   pull_request:
-    branches: [main]
+    branches: [main, dev]
 
 concurrency:
   group: ci-${{ github.ref }}
