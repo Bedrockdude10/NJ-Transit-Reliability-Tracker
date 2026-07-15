@@ -116,6 +116,15 @@ export class HttpFeedClient implements FeedClient {
     return this.fetchProto("getAlerts");
   }
 
+  /**
+   * Download NJT's own GTFS static zip (getGTFS). Ingesting this — rather than a
+   * third-party mirror — is what makes the real-time feed's numeric trip/stop
+   * ids resolve against the static network.
+   */
+  fetchGtfsStatic(): Promise<Uint8Array> {
+    return this.fetchProto("getGTFS");
+  }
+
   private async fetchProto(method: string): Promise<Uint8Array> {
     const first = await this.post(method, await this.tokens.get());
     if (first !== INVALID_TOKEN) return first;

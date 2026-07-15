@@ -2,44 +2,25 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import type {
-  GtfsRouteRecord,
   GtfsStopRecord,
   GtfsStopTimeRecord,
   GtfsTripRecord,
   Repositories,
 } from "@njt/db";
-import { findLineById } from "@njt/shared";
 import { parseCsv } from "../csv";
+import { mapRailRoutes } from "../gtfs-static/route-mapping";
 
 /**
  * Importer for NJ Transit's GTFS *static* rail feed (keyless — from the Mobility
- * Database mirror or developer.njtransit.com). It loads the real network into
- * the GTFS tables: routes (mapped to our canonical catalog lines, with NJT's
- * real colors), stops with coordinates, trips, and stop_times. This becomes the
+ * Database mirror or NJT's own getGTFS). It loads the real network into the
+ * GTFS tables: routes (mapped to our canonical catalog lines, with NJT's real
+ * colors), stops with coordinates, trips, and stop_times. This becomes the
  * current GTFS version, so the whole app runs on the real network.
  *
- * GTFS `route_type` 2 = commuter rail (what we ingest); 0 = light rail (handled
- * separately via the performance CSVs). Several rail routes are variants of one
- * line (e.g. NJCL + NJCLL); we collapse them to a single canonical line.
+ * Rail route mapping (route_type 2 / 113, variant collapsing) is shared with
+ * the pipeline via {@link mapRailRoutes}. Light rail (route_type 0) is handled
+ * here as its own catalog, keyed by short name.
  */
-
-/** GTFS `route_short_name` → reference catalog line id. */
-const SHORT_NAME_TO_LINE_ID: Record<string, string> = {
-  ATLC: "atlantic-city",
-  BNTN: "montclair-boonton",
-  BNTNM: "montclair-boonton",
-  MNBN: "main-bergen",
-  MNBNP: "port-jervis",
-  MNE: "morris-essex",
-  MNEG: "gladstone",
-  MRL: "meadowlands",
-  NEC: "northeast-corridor",
-  NJCL: "north-jersey-coast",
-  NJCLL: "north-jersey-coast",
-  PASC: "pascack-valley",
-  PRIN: "princeton-shuttle",
-  RARV: "raritan-valley",
-};
 
 /** GTFS `route_short_name` → light rail line (route_type 0). */
 const LIGHT_RAIL_BY_SHORT: Record<string, { routeId: string; lineName: string }> = {
@@ -78,24 +59,15 @@ export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImpo
   const read = (name: string) => readFileSync(join(gtfsDir, name), "utf8");
 
   // --- routes: rail → canonical catalog lines; light rail → its own lines ----
-  const canonicalRoutes = new Map<string, GtfsRouteRecord>(); // canonical routeId -> record
-  const realToCanonical = new Map<string, string>(); // GTFS route_id -> canonical routeId
-  for (const row of parseCsv(read("routes.txt"))) {
-    const short = row.route_short_name ?? "";
-    if (row.route_type === "2") {
-      const line = findLineById(SHORT_NAME_TO_LINE_ID[short] ?? "");
-      if (!line) continue;
-      realToCanonical.set(row.route_id!, line.defaultRouteId);
-      if (!canonicalRoutes.has(line.defaultRouteId)) {
-        canonicalRoutes.set(line.defaultRouteId, { routeId: line.defaultRouteId, lineName: line.name, color: row.route_color || null, mode: "rail" });
-      }
-    } else if (row.route_type === "0") {
-      const lr = LIGHT_RAIL_BY_SHORT[short];
-      if (!lr) continue;
-      realToCanonical.set(row.route_id!, lr.routeId);
-      if (!canonicalRoutes.has(lr.routeId)) {
-        canonicalRoutes.set(lr.routeId, { routeId: lr.routeId, lineName: lr.lineName, color: row.route_color || null, mode: "light_rail" });
-      }
+  const rawRoutes = parseCsv(read("routes.txt"));
+  const { canonicalRoutes, realToCanonical } = mapRailRoutes(rawRoutes);
+  for (const row of rawRoutes) {
+    if (row.route_type !== "0") continue;
+    const lr = LIGHT_RAIL_BY_SHORT[row.route_short_name ?? ""];
+    if (!lr) continue;
+    realToCanonical.set(row.route_id!, lr.routeId);
+    if (!canonicalRoutes.has(lr.routeId)) {
+      canonicalRoutes.set(lr.routeId, { routeId: lr.routeId, lineName: lr.lineName, color: row.route_color || null, mode: "light_rail" });
     }
   }
 

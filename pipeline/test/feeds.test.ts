@@ -141,6 +141,17 @@ describe("HttpFeedClient", () => {
     expect(getToken).toHaveBeenCalledTimes(1);
   });
 
+  it("fetchGtfsStatic POSTs the token to getGTFS and returns the zip bytes", async () => {
+    const zip = new Uint8Array([0x50, 0x4b, 0x03, 0x04]); // PK zip magic
+    const store = memoryStore({ token: "TOK", fetchedAtMs: clockNow });
+    const fetchImpl = vi.fn(async (_url: string, _init: RequestInit) => protoResponse(zip));
+    const tokens = new TokenManager(config(), store, fetchImpl as unknown as typeof fetch, clock, silentLogger);
+    const client = new HttpFeedClient(config(), tokens, fetchImpl as unknown as typeof fetch);
+
+    expect(await client.fetchGtfsStatic()).toEqual(zip);
+    expect(fetchImpl.mock.calls[0]![0]).toBe(`${BASE}/getGTFS`);
+  });
+
   it("throws on a non-token JSON error", async () => {
     const store = memoryStore({ token: "TOK", fetchedAtMs: clockNow });
     const fetchImpl = vi.fn(async () => jsonResponse({ errorMessage: "Something else" }));
