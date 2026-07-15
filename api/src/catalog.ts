@@ -64,10 +64,13 @@ export function resolveLine(repos: Repositories, lineId: string): ResolvedLine {
 export function listStations(repos: Repositories): { stopId: string; stopName: string; lines: string[] }[] {
   const version = repos.gtfs.currentVersion();
   if (!version) return [];
+  // Resolve route_id → line name once, in memory, rather than one query per
+  // (station, route) pair.
+  const lineByRoute = new Map(repos.gtfs.routes(version.versionId).map((r) => [r.routeId, r.lineName]));
   return repos.gtfs.stationsWithLines(version.versionId).map((station) => ({
     stopId: station.stopId,
     stopName: station.stopName,
-    lines: [...new Set(station.lines.map((routeId) => repos.gtfs.lineNameForRoute(version.versionId, routeId) ?? routeId))],
+    lines: [...new Set(station.lines.map((routeId) => lineByRoute.get(routeId) ?? routeId))],
   }));
 }
 

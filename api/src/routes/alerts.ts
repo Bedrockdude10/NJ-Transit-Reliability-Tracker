@@ -1,5 +1,6 @@
 import type { Repositories } from "@njt/db";
 import {
+  RAIL_LINES,
   gtfsStopTimeToEpochSeconds,
   type AlertFrequencyLine,
   type AlertFrequencyResponse,
@@ -7,7 +8,6 @@ import {
   type AlertListResponse,
 } from "@njt/shared";
 import { Hono } from "hono";
-import { resolveLine } from "../catalog";
 import { resolveRange } from "../dates";
 
 function startOfDayMs(date: string): number {
@@ -59,9 +59,18 @@ export function alertRoutes(repos: Repositories): Hono {
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const rows = repos.alerts.frequency(startOfDayMs(range.from), endOfDayMs(range.to));
 
+    // Resolve the GTFS version and route_id → line name once, matching the
+    // fallback chain of resolveLine (GTFS route → reference catalog → id).
+    const version = repos.gtfs.currentVersion();
+    const nameByRoute = new Map(
+      version ? repos.gtfs.routes(version.versionId).map((r) => [r.routeId, r.lineName] as const) : [],
+    );
+    const resolveName = (routeId: string): string =>
+      nameByRoute.get(routeId) ?? RAIL_LINES.find((l) => l.defaultRouteId === routeId)?.name ?? routeId;
+
     const byRoute = new Map<string, AlertFrequencyLine>();
     for (const row of rows) {
-      const lineName = resolveLine(repos, row.route).name;
+      const lineName = resolveName(row.route);
       const entry = byRoute.get(row.route) ?? { lineName, counts: {}, total: 0 };
       entry.counts[row.effectType] = (entry.counts[row.effectType] ?? 0) + row.count;
       entry.total += row.count;

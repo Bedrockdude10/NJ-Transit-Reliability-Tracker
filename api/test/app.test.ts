@@ -17,8 +17,10 @@ import type {
   SystemSummaryResponse,
   WorstTripsResponse,
 } from "@njt/shared";
+import { createRepositories, openDatabase } from "@njt/db";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
+import { createApp } from "../src/app";
 import { SEED_DATE, seededApp } from "./seed";
 
 const RANGE = `from=${SEED_DATE}&to=${SEED_DATE}`;
@@ -125,6 +127,19 @@ describe("API integration", () => {
     expect(body.trips[0]).toMatchObject({ tripId: "T1", avgTerminalDelaySeconds: 1200 });
   });
 
+  it("GET /lines/:id/heatmap returns average-delay cells for the line", async () => {
+    const { body } = await getJson<HeatmapResponse>(`/lines/NE/heatmap?${RANGE}`);
+    expect(body.type).toBe("hour_of_day");
+    expect(body.buckets.find((b) => b.bucket === 8)?.avgDelaySeconds).toBe(60); // 600 / 10
+  });
+
+  it("GET /lines/:id/history returns seasonality + annual from NJT official data", async () => {
+    const { body } = await getJson<HistoryResponse>("/lines/NE/history");
+    expect(body.scopeLabel).toBe("Northeast Corridor Line");
+    expect(body.seasonality.find((m) => m.month === 7)?.avgOtpPercent).toBe(88.5);
+    expect(body.annual.find((y) => y.year === 2025)?.avgOtpPercent).toBe(88.5);
+  });
+
   it("GET /lightrail/summary returns OTP, per-line MDBF, and a trend", async () => {
     const { body } = await getJson<LightRailSummaryResponse>("/lightrail/summary?from=2025-07-01&to=2025-07-31");
     expect(body.otpPercent).toBe(96.5);
@@ -176,6 +191,15 @@ describe("API integration", () => {
     expect((await app.request(`/connections?inbound_trip_id=T1&${RANGE}`)).status).toBe(400);
   });
 
+  it("GET /connections reports the no-observations path for an unknown triple", async () => {
+    const { body } = await getJson<ConnectionResponse>(
+      `/connections?inbound_trip_id=X&transfer_stop_id=Y&outbound_trip_id=Z&${RANGE}`,
+    );
+    expect(body.observations).toBe(0);
+    expect(body.successRatePercent).toBe(0);
+    expect(body.summaryText).toContain("No observations yet");
+  });
+
   it("GET /connections/top auto-populates the highest-frequency transfers", async () => {
     const { body } = await getJson<ConnectionTopResponse>("/connections/top");
     expect(body.transfers[0]).toMatchObject({ transferStopId: "NWK", transferStopName: "Newark Penn", observations: 40 });
@@ -205,6 +229,24 @@ describe("API integration", () => {
     expect(await line.text()).toContain("Northeast Corridor Line");
 
     expect((await app.request(`/export?entity=bogus&${RANGE}`)).status).toBe(400);
+  });
+
+  it("GET /export?entity=station returns CSV and requires an id", async () => {
+    const station = await app.request(`/export?entity=station&id=NWK&${RANGE}`);
+    expect(station.status).toBe(200);
+    expect(station.headers.get("Content-Type")).toContain("text/csv");
+    expect(await station.text()).toContain("Newark Penn");
+
+    expect((await app.request(`/export?entity=station&${RANGE}`)).status).toBe(400);
+  });
+
+  it("GET /map returns an empty payload before any GTFS version is ingested", async () => {
+    const empty = createApp(createRepositories(openDatabase()));
+    const res = await empty.request("/map?from=2025-07-01&to=2025-07-31");
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as MapResponse;
+    expect(body.stations).toEqual([]);
+    expect(body.lines).toEqual([]);
   });
 
   it("returns 404 for unknown routes", async () => {
