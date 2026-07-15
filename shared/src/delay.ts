@@ -42,7 +42,8 @@ export function buildDelayDistribution(
   const counts: Record<string, number> = {};
   for (const bucket of DELAY_BUCKETS) counts[bucket.label] = 0;
   for (const delay of delaysSeconds) {
-    counts[bucketForDelay(delay).label] = (counts[bucketForDelay(delay).label] ?? 0) + 1;
+    const label = bucketForDelay(delay).label;
+    counts[label] = counts[label]! + 1;
   }
   return counts;
 }
