@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { reliabilityGrade } from "../lib/grade";
+import { measurementStatus } from "../lib/measurement";
 import { theme } from "../lib/theme";
 
 /** Letter-grade chip for an OTP percentage (A–F), tinted by grade. */
@@ -43,32 +44,56 @@ export function TrendBadge({
 }
 
 /**
- * "MODELED" pill — marks a metric as illustrative sample data (not a real
- * measurement) until the live GTFS-Realtime feed is connected. Pass via a
- * Card's `right` slot or inline beside a section title.
+ * Live-collection pill — marks an INDEPENDENT (measured) metric as sourced from
+ * the live GTFS-Realtime feed. Green "◆ LIVE" once collection has started (a
+ * `collectionStartDate` exists), muted "◇ NO DATA YET" before. Pass via a Card's
+ * `right` slot or inline beside a section title.
  */
-export function ModeledBadge() {
+export function LiveBadge({ collectionStartDate }: { collectionStartDate: string | null | undefined }) {
+  const { live, badge } = measurementStatus(collectionStartDate);
   return (
-    <View style={styles.modeled}>
-      <Text style={styles.modeledText}>◇ MODELED</Text>
+    <View style={[styles.badge, live ? styles.badgeLive : styles.badgeIdle]}>
+      <Text style={[styles.badgeText, live ? styles.badgeTextLive : styles.badgeTextIdle]}>
+        {live ? "◆" : "◇"} {badge}
+      </Text>
     </View>
   );
 }
 
-/** Full-width banner for screens whose data is entirely modeled until live RT. */
-export function ModeledBanner({ children }: { children: ReactNode }) {
+/**
+ * Full-width banner for screens whose data comes from the live feed. States the
+ * honest collection status ("measuring since <date>" or "not started yet") and
+ * takes optional `children` to note what's real regardless (e.g. GTFS names).
+ */
+export function LiveBanner({
+  collectionStartDate,
+  children,
+}: {
+  collectionStartDate: string | null | undefined;
+  children?: ReactNode;
+}) {
+  const { live, label } = measurementStatus(collectionStartDate);
   return (
-    <View style={styles.banner}>
-      <ModeledBadge />
-      <Text style={styles.bannerText}>{children}</Text>
+    <View style={[styles.banner, live ? styles.bannerLive : styles.bannerIdle]}>
+      <LiveBadge collectionStartDate={collectionStartDate} />
+      <Text style={styles.bannerText}>
+        {label}
+        {children ? <Text> {children}</Text> : null}
+      </Text>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  modeled: { backgroundColor: theme.colors.warnSoft, borderColor: theme.colors.warn, borderWidth: 1, borderRadius: theme.radii.pill, paddingHorizontal: theme.spacing(2), paddingVertical: 2, alignSelf: "flex-start" },
-  modeledText: { color: theme.colors.warn, fontSize: theme.fontSize.xs, fontWeight: "800", letterSpacing: 0.4 },
-  banner: { flexDirection: "row", alignItems: "center", gap: theme.spacing(3), flexWrap: "wrap", backgroundColor: theme.colors.warnSoft, borderColor: theme.colors.warn, borderWidth: 1, borderRadius: theme.radii.md, padding: theme.spacing(3) },
+  badge: { borderWidth: 1, borderRadius: theme.radii.pill, paddingHorizontal: theme.spacing(2), paddingVertical: 2, alignSelf: "flex-start" },
+  badgeLive: { backgroundColor: theme.colors.goodSoft, borderColor: theme.colors.good },
+  badgeIdle: { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
+  badgeText: { fontSize: theme.fontSize.xs, fontWeight: "800", letterSpacing: 0.4 },
+  badgeTextLive: { color: theme.colors.good },
+  badgeTextIdle: { color: theme.colors.textFaint },
+  banner: { flexDirection: "row", alignItems: "center", gap: theme.spacing(3), flexWrap: "wrap", borderWidth: 1, borderRadius: theme.radii.md, padding: theme.spacing(3) },
+  bannerLive: { backgroundColor: theme.colors.goodSoft, borderColor: theme.colors.good },
+  bannerIdle: { backgroundColor: theme.colors.surfaceAlt, borderColor: theme.colors.border },
   bannerText: { color: theme.colors.text, fontSize: theme.fontSize.sm, flex: 1, lineHeight: 19 },
   grade: { borderRadius: theme.radii.md, borderWidth: 1.5, alignItems: "center", justifyContent: "center" },
   gradeText: { fontWeight: "800", letterSpacing: -0.5 },

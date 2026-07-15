@@ -1,5 +1,7 @@
 /** Small API-wide helpers. */
 
+import { HEATMAP_TYPES, type HeatmapType } from "@njt/shared";
+
 /** An error carrying an HTTP status, thrown by handlers and mapped to JSON. */
 export class ApiError extends Error {
   constructor(
@@ -31,4 +33,21 @@ export function slugify(name: string): string {
 /** Round to one decimal place — percentages and average-delay values. */
 export function round1(value: number): number {
   return Math.round(value * 10) / 10;
+}
+
+/**
+ * Parse a `?limit=` query value: falls back when absent/invalid/<1, floors,
+ * and clamps to a maximum of 100.
+ */
+export function parseLimit(value: string | undefined, fallback: number): number {
+  const n = value ? Number(value) : fallback;
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(Math.floor(n), 100);
+}
+
+/** Parse a `?type=` heatmap query value, defaulting to `hour_of_day`. */
+export function parseHeatmapType(value: string | undefined): HeatmapType {
+  const type = value ?? "hour_of_day";
+  if (!HEATMAP_TYPES.includes(type as HeatmapType)) badRequest(`type must be one of ${HEATMAP_TYPES.join(", ")}`);
+  return type as HeatmapType;
 }

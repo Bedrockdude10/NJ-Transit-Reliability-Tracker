@@ -1,6 +1,7 @@
 import type { GtfsRouteRecord, GtfsStopRecord, GtfsStopTimeRecord, GtfsTripRecord } from "@njt/db";
 import { strFromU8, unzipSync } from "fflate";
 import { parseCsv } from "../csv";
+import { mapRailRoutes } from "./route-mapping";
 
 export interface GtfsStaticData {
   routes: GtfsRouteRecord[];
@@ -8,9 +9,6 @@ export interface GtfsStaticData {
   trips: GtfsTripRecord[];
   stopTimes: GtfsStopTimeRecord[];
 }
-
-/** GTFS `route_type` for rail. v1 is rail-only (buses are a non-goal). */
-const RAIL_ROUTE_TYPE = "2";
 
 /** Unzip a GTFS static archive into `{ "routes.txt": contents, ... }`. */
 export function unzipGtfs(zip: Uint8Array): Record<string, string> {
@@ -21,32 +19,28 @@ export function unzipGtfs(zip: Uint8Array): Record<string, string> {
 }
 
 /**
- * Parse GTFS static text files into catalog records, filtered to rail routes
- * and the trips/stops/stop_times they reference.
+ * Parse GTFS static text files into catalog records: rail routes mapped to the
+ * canonical catalog lines (so real-time trip/route ids resolve to the same
+ * lines as the official metrics), and the trips/stops/stop_times they use.
  */
 export function parseGtfsStatic(files: Record<string, string>): GtfsStaticData {
   const rawRoutes = files["routes.txt"] ? parseCsv(files["routes.txt"]) : [];
-  const railRouteIds = new Set(
-    rawRoutes.filter((r) => (r.route_type ?? "") === RAIL_ROUTE_TYPE).map((r) => r.route_id),
-  );
-
-  const routes: GtfsRouteRecord[] = rawRoutes
-    .filter((r) => railRouteIds.has(r.route_id))
-    .map((r) => ({
-      routeId: r.route_id ?? "",
-      lineName: r.route_long_name || r.route_short_name || r.route_id || "",
-    }));
+  const { canonicalRoutes, realToCanonical } = mapRailRoutes(rawRoutes);
+  const routes: GtfsRouteRecord[] = [...canonicalRoutes.values()];
 
   const rawTrips = files["trips.txt"] ? parseCsv(files["trips.txt"]) : [];
-  const trips: GtfsTripRecord[] = rawTrips
-    .filter((t) => railRouteIds.has(t.route_id ?? ""))
-    .map((t) => ({
+  const trips: GtfsTripRecord[] = [];
+  for (const t of rawTrips) {
+    const canonical = realToCanonical.get(t.route_id ?? "");
+    if (!canonical) continue;
+    trips.push({
       tripId: t.trip_id ?? "",
-      routeId: t.route_id ?? "",
+      routeId: canonical,
       serviceId: t.service_id || null,
       directionId: t.direction_id === "" || t.direction_id === undefined ? null : Number(t.direction_id),
       tripHeadsign: t.trip_headsign || null,
-    }));
+    });
+  }
   const railTripIds = new Set(trips.map((t) => t.tripId));
 
   const rawStopTimes = files["stop_times.txt"] ? parseCsv(files["stop_times.txt"]) : [];

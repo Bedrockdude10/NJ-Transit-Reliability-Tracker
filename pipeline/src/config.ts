@@ -5,12 +5,18 @@
  */
 export interface PipelineConfig {
   dbPath: string;
-  gtfsRtApiKey: string | undefined;
+  /**
+   * NJT GTFS-RT Web API (raildata.njtransit.com). Auth is token-based: POST
+   * username/password to `${baseUrl}/getToken`, then POST that token to the
+   * feed endpoints. See `pipeline/src/feeds.ts`.
+   */
+  railData: {
+    username: string | undefined;
+    password: string | undefined;
+    baseUrl: string;
+  };
   xmlApiKey: string | undefined;
   urls: {
-    tripUpdates: string;
-    vehiclePositions: string;
-    serviceAlerts: string;
     xml: string;
     gtfsStatic: string;
     officialCsv: string;
@@ -36,12 +42,13 @@ function num(value: string | undefined, fallback: number): number {
 export function loadConfig(env: NodeJS.ProcessEnv = process.env): PipelineConfig {
   return {
     dbPath: env.NJT_DB_PATH ?? "./data/njt.sqlite",
-    gtfsRtApiKey: env.NJT_GTFS_RT_API_KEY,
+    railData: {
+      username: env.NJT_RAIL_DATA_USERNAME,
+      password: env.NJT_RAIL_DATA_PASSWORD,
+      baseUrl: (env.NJT_RAIL_DATA_BASE_URL ?? "https://raildata.njtransit.com/api/GTFSRT").replace(/\/+$/, ""),
+    },
     xmlApiKey: env.NJT_XML_API_KEY,
     urls: {
-      tripUpdates: env.NJT_TRIP_UPDATES_URL ?? "",
-      vehiclePositions: env.NJT_VEHICLE_POSITIONS_URL ?? "",
-      serviceAlerts: env.NJT_SERVICE_ALERTS_URL ?? "",
       xml: env.NJT_XML_URL ?? "",
       gtfsStatic: env.NJT_GTFS_STATIC_URL ?? "",
       officialCsv: env.NJT_OFFICIAL_CSV_URL ?? "",

@@ -1,8 +1,9 @@
 import { mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { createRepositories, openDatabase } from "@njt/db";
+import { systemClock } from "./clock";
 import { loadConfig } from "./config";
-import { HttpFeedClient } from "./feeds";
+import { HttpFeedClient, TokenManager, type TokenStore } from "./feeds";
 import { Ingestor } from "./ingestor";
 import { consoleLogger } from "./logger";
 import { RateLimiter } from "./rate-limiter";
@@ -22,11 +23,38 @@ async function main(): Promise<void> {
   const db = openDatabase(config.dbPath);
   const repos = createRepositories(db);
   const rateLimiter = new RateLimiter(repos.health);
-  const client = new HttpFeedClient(config);
+
+  // Token cached in pipeline_meta so redeploys don't spend the getToken quota.
+  const tokenStore: TokenStore = {
+    read() {
+      const raw = repos.health.getMeta("njt_rail_token");
+      if (!raw) return null;
+      try {
+        const parsed = JSON.parse(raw) as { token: string; fetchedAtMs: number };
+        return parsed.token ? parsed : null;
+      } catch {
+        return null;
+      }
+    },
+    write(token, fetchedAtMs) {
+      repos.health.setMeta("njt_rail_token", JSON.stringify({ token, fetchedAtMs }));
+    },
+  };
+  const tokens = new TokenManager(config, tokenStore, fetch, systemClock, consoleLogger);
+  const client = new HttpFeedClient(config, tokens);
   const ingestor = new Ingestor({ repos, client, config, rateLimiter, logger: consoleLogger });
 
-  // One-time syncs at startup, if configured.
-  if (config.urls.gtfsStatic) {
+  // One-time syncs at startup. Prefer NJT's own GTFS (getGTFS) so the static
+  // network shares ids with the real-time feed; fall back to a plain URL.
+  // loadGtfsStatic dedupes by checksum, so re-fetching on every boot is cheap.
+  if (config.railData.username && config.railData.password) {
+    try {
+      const zip = await client.fetchGtfsStatic();
+      ingestor.syncGtfsStatic(zip);
+    } catch (error) {
+      consoleLogger.error("startup getGTFS sync failed", { error: String(error) });
+    }
+  } else if (config.urls.gtfsStatic) {
     try {
       const res = await fetch(config.urls.gtfsStatic);
       ingestor.syncGtfsStatic(new Uint8Array(await res.arrayBuffer()));

@@ -34,13 +34,13 @@ export function toLineItem(
 export function listLines(repos: Repositories): LineListItem[] {
   const version = repos.gtfs.currentVersion();
   if (!version) return [];
+  // One query for every line's latest published month, rather than one
+  // full-history query per line (N+1).
+  const latestByLine = repos.official.latestPerLine();
   return repos.gtfs
     .routes(version.versionId)
     .filter((r) => r.mode !== "light_rail")
-    .map((r) => {
-      const history = repos.official.getAllForLine(r.lineName);
-      return toLineItem(r.routeId, r.lineName, history.at(-1) ?? null, r.color ?? null);
-    });
+    .map((r) => toLineItem(r.routeId, r.lineName, latestByLine.get(r.lineName) ?? null, r.color ?? null));
 }
 
 export interface ResolvedLine {
@@ -64,10 +64,13 @@ export function resolveLine(repos: Repositories, lineId: string): ResolvedLine {
 export function listStations(repos: Repositories): { stopId: string; stopName: string; lines: string[] }[] {
   const version = repos.gtfs.currentVersion();
   if (!version) return [];
+  // Resolve route_id → line name once, in memory, rather than one query per
+  // (station, route) pair.
+  const lineByRoute = new Map(repos.gtfs.routes(version.versionId).map((r) => [r.routeId, r.lineName]));
   return repos.gtfs.stationsWithLines(version.versionId).map((station) => ({
     stopId: station.stopId,
     stopName: station.stopName,
-    lines: [...new Set(station.lines.map((routeId) => repos.gtfs.lineNameForRoute(version.versionId, routeId) ?? routeId))],
+    lines: [...new Set(station.lines.map((routeId) => lineByRoute.get(routeId) ?? routeId))],
   }));
 }
 

@@ -1,0 +1,47 @@
+name: CI
+
+# Green gate for every change: strict typecheck + the full test suite across
+# all packages (Node) and the Expo app. Runs on PRs and pushes to main.
+on:
+  push:
+    branches: [main, dev]
+  pull_request:
+    branches: [main, dev]
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          # Match the dev runtime: node:sqlite is available unflagged on 25.
+          node-version: "25"
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck (node packages)
+        run: npm run typecheck
+
+      - name: Typecheck (app)
+        run: npm run typecheck --workspace app
+
+      - name: Test (node packages)
+        run: npm test
+
+      - name: Test (app components)
+        run: npm test --workspace app
+
+      # Runs the same web bundle Cloudflare builds (expo export). Catches
+      # bundling/resolution errors — including case-sensitivity issues that a
+      # case-insensitive macOS dev machine hides — before they reach deploy.
+      - name: Build web (expo export)
+        run: npm run build:web --workspace app

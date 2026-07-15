@@ -442,18 +442,23 @@ export class AggregateRepository {
       }));
   }
 
-  /** Highest-frequency transfer triples overall (PRD success criterion #4). */
-  topConnectionTriples(limit: number): ConnectionTripleAgg[] {
+  /**
+   * Highest-frequency transfer triples over a service-date window (PRD success
+   * criterion #4). The window bounds the GROUP BY so cost doesn't grow
+   * unbounded with accumulated history.
+   */
+  topConnectionTriples(limit: number, from: string, to: string): ConnectionTripleAgg[] {
     return this.db.all<ConnectionTripleAgg>(
       /* sql */ `
         SELECT inbound_trip_id AS inboundTripId, transfer_stop_id AS transferStopId,
                outbound_trip_id AS outboundTripId, SUM(observations) AS observations
         FROM connection_aggregates
+        WHERE service_date BETWEEN :from AND :to
         GROUP BY inbound_trip_id, transfer_stop_id, outbound_trip_id
         ORDER BY observations DESC
         LIMIT :limit
       `,
-      { limit },
+      { limit, from, to },
     );
   }
 }

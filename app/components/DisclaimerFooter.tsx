@@ -7,8 +7,8 @@ import { useApi } from "../hooks/useApi";
 import { StatusDot } from "./ui";
 
 /**
- * Persistent footer on every screen: a live/modeled collection indicator, last
- * ingest time, and the required disclaimer (PRD compliance).
+ * Persistent footer on every screen: a live-collection indicator, last ingest
+ * time, and the required disclaimer (PRD compliance).
  */
 export function DisclaimerFooter() {
   const { data } = useApi(() => api.health(), []);
@@ -20,7 +20,7 @@ export function DisclaimerFooter() {
       <View style={styles.statusRow}>
         <View style={styles.status}>
           <StatusDot color={live ? theme.colors.good : theme.colors.warn} pulse={live} />
-          <Text style={styles.statusText}>{live ? "Live collection" : "Independent data: modeled (no GTFS-RT key)"}</Text>
+          <Text style={styles.statusText}>{live ? "Live collection" : "Independent data: not collecting yet"}</Text>
         </View>
         <Text style={styles.meta}>
           {data?.collectionStartDate ? `Since ${data.collectionStartDate}` : "Not started"}

@@ -125,6 +125,31 @@ describe("AggregateRepository", () => {
     const rows = repos.aggregates.getConnectionRows("IN1", "STX", "OUT1", "2025-07-01", "2025-07-31");
     expect(rows).toHaveLength(1);
     expect(rows[0]?.byDayOfWeek["2"]?.successes).toBe(18);
-    expect(repos.aggregates.topConnectionTriples(5)[0]?.observations).toBe(20);
+    expect(repos.aggregates.topConnectionTriples(5, "2025-07-01", "2025-07-31")[0]?.observations).toBe(20);
+  });
+
+  it("topConnectionTriples respects the service-date window and sums within it", () => {
+    const base = {
+      inboundTripId: "IN1",
+      transferStopId: "STX",
+      outboundTripId: "OUT1",
+      peakObservations: 0,
+      peakSuccesses: 0,
+      offPeakObservations: 0,
+      offPeakSuccesses: 0,
+      byDayOfWeek: {},
+      inboundDelayDistribution: {},
+    };
+    // Two in-window days for the same triple (should sum) plus one out-of-window day.
+    repos.aggregates.upsertConnectionDaily({ ...base, serviceDate: "2025-07-15", observations: 20, successes: 18 });
+    repos.aggregates.upsertConnectionDaily({ ...base, serviceDate: "2025-07-16", observations: 5, successes: 4 });
+    repos.aggregates.upsertConnectionDaily({ ...base, serviceDate: "2025-06-01", observations: 100, successes: 90 });
+
+    const inWindow = repos.aggregates.topConnectionTriples(5, "2025-07-01", "2025-07-31");
+    expect(inWindow).toHaveLength(1);
+    expect(inWindow[0]?.observations).toBe(25); // 20 + 16's day, excludes the June 1 row
+
+    const empty = repos.aggregates.topConnectionTriples(5, "2025-08-01", "2025-08-31");
+    expect(empty).toEqual([]);
   });
 });

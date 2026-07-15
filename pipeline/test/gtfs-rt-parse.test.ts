@@ -85,9 +85,17 @@ describe("parseTripUpdates", () => {
     expect(events.every((e) => e.tripCancelled)).toBe(true);
     expect(events.map((e) => e.stopId)).toEqual(["NWK", "NYP"]);
   });
+
+  it("returns no events for an empty body (NJT sends 200 + 0 bytes)", () => {
+    expect(parseTripUpdates(new Uint8Array(), ctx, opts)).toEqual([]);
+  });
 });
 
 describe("parseServiceAlerts", () => {
+  it("returns no alerts for an empty body", () => {
+    expect(parseServiceAlerts(new Uint8Array(), { now: 0 })).toEqual([]);
+  });
+
   it("maps effect, routes, stops, and translated text", () => {
     const buffer = encode([
       {

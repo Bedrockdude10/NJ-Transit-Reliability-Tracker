@@ -14,12 +14,27 @@ const FILES = {
 };
 
 describe("parseGtfsStatic", () => {
-  it("keeps only rail routes and their trips, stops, and stop_times", () => {
+  it("keeps only rail routes (mapped to canonical lines) and their trips/stops", () => {
     const data = parseGtfsStatic(FILES);
-    expect(data.routes).toEqual([{ routeId: "NE", lineName: "Northeast Corridor" }]);
+    expect(data.routes).toEqual([{ routeId: "NE", lineName: "Northeast Corridor Line", color: null, mode: "rail" }]);
     expect(data.trips.map((t) => t.tripId)).toEqual(["T1"]);
+    expect(data.trips[0]?.routeId).toBe("NE"); // canonical
     expect(data.stopTimes.every((st) => st.tripId === "T1")).toBe(true);
     expect(data.stops.map((s) => s.stopId).sort()).toEqual(["NWK", "NYP"]); // bus stop B1 excluded
+  });
+
+  it("maps NJT's own route_type 113 rail routes and preserves numeric ids", () => {
+    // Mirrors the real getGTFS feed: route 6 = Main Line, trip 2131873, stop 63.
+    const files = {
+      "routes.txt": "route_id,route_long_name,route_short_name,route_type,route_color\n6,Main Line,MAIN,113,FFD411\n",
+      "trips.txt": "trip_id,route_id,service_id,direction_id,trip_headsign\n2131873,6,249232,1,Port Jervis\n",
+      "stop_times.txt": "trip_id,stop_id,stop_sequence,arrival_time,departure_time\n2131873,63,1,01:58:00,01:58:00\n",
+      "stops.txt": "stop_id,stop_name,stop_lat,stop_lon\n63,Hoboken,40.734843,-74.028046\n",
+    };
+    const data = parseGtfsStatic(files);
+    expect(data.routes).toEqual([{ routeId: "MN", lineName: "Main/Bergen County Line", color: "FFD411", mode: "rail" }]);
+    expect(data.trips[0]).toMatchObject({ tripId: "2131873", routeId: "MN" });
+    expect(data.stops.map((s) => s.stopId)).toEqual(["63"]);
   });
 });
 

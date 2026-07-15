@@ -1,9 +1,7 @@
 import type { Repositories } from "@njt/db";
 import {
-  HEATMAP_TYPES,
   SYSTEM_SCOPE_ID,
   type HeatmapResponse,
-  type HeatmapType,
   type HistoryResponse,
   type SystemSummaryResponse,
 } from "@njt/shared";
@@ -18,19 +16,11 @@ import {
   buildOtpSummary,
   buildSeasonality,
 } from "../aggregation";
+import { monthRange, resolveRange } from "../dates";
+import { parseHeatmapType } from "../util";
 
 /** Inclusive month bounds wide enough to cover all published history. */
 const ALL_MONTHS = { from: { year: 2000, month: 1 }, to: { year: 2100, month: 12 } };
-import { monthRange, resolveRange } from "../dates";
-import { badRequest } from "../util";
-
-function parseHeatmapType(value: string | undefined): HeatmapType {
-  const type = value ?? "hour_of_day";
-  if (!HEATMAP_TYPES.includes(type as HeatmapType)) {
-    badRequest(`type must be one of ${HEATMAP_TYPES.join(", ")}`);
-  }
-  return type as HeatmapType;
-}
 
 /** /system/summary and /system/heatmap — system-wide rollups. */
 export function systemRoutes(repos: Repositories): Hono {

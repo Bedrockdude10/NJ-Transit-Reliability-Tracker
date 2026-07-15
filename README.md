@@ -37,20 +37,19 @@ Requires **Node 22+** (developed on Node 25). Install once from the repo root:
 npm install
 ```
 
-### Seed demo data
+### Load the real data
 
-The real-time GTFS-RT pipeline needs live NJT credentials, but everything else uses **keyless** real data plus synthetic *independent* measurements. The recommended local setup, in order:
+Everything uses **real** data. The keyless imports set up the network + NJT's published figures; the independent measurement comes from the live GTFS-RT feed (needs NJT credentials — see below). There is **no synthetic data**. The recommended local setup, in order:
 
 ```bash
 npm run import:gtfs        # real GTFS static network: stops+coords, lines+colors, trips (NJT_GTFS_DIR, default ./data)
-npm run seed               # synthetic independent events + aggregates, generated ON the real network
 npm run import:official    # real NJT monthly OTP/cancellations per line + light rail (NJT_PERFORMANCE_DIR, default ./data)
 ```
 
-- **GTFS static** is keyless — download the NJ Transit *Rail* feed from the Mobility Database (`mobilitydatabase.org`) or `developer.njtransit.com` and unzip it under `./data/` (e.g. `./data/mdb-…/`). This drives the real station map, line list, and geometry. If you skip it, `seed` falls back to a self-contained synthetic catalog so the app still renders.
+- **GTFS static** is keyless — download the NJ Transit *Rail* feed from the Mobility Database (`mobilitydatabase.org`) or `developer.njtransit.com` and unzip it under `./data/` (e.g. `./data/mdb-…/`). This drives the real station map, line list, and geometry. With NJT credentials the pipeline instead fetches NJT's own GTFS (`getGTFS`) at startup, whose ids match the real-time feed.
 - **Official figures** are also keyless — download the per-line rail CSVs from `njtransit.com/performance-data-download` into `./data/`.
 
-So a complete local demo is `npm run import:gtfs && npm run seed && npm run import:official`: the real network and NJT's real published numbers, with synthetic independent measurements standing in until a GTFS-RT key turns on live collection. (Seeding never fabricates official figures — those only come from the importer.)
+So a complete local setup is `npm run import:gtfs && npm run import:official` plus the pipeline with credentials. Until live collection runs, the independent measurement is simply empty — the app shows NJT's real published numbers and labels the independent metrics as still accruing rather than inventing data.
 
 ### Run the components
 
