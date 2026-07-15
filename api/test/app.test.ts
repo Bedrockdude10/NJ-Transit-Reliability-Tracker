@@ -201,8 +201,14 @@ describe("API integration", () => {
   });
 
   it("GET /connections/top auto-populates the highest-frequency transfers", async () => {
-    const { body } = await getJson<ConnectionTopResponse>("/connections/top");
+    const { body } = await getJson<ConnectionTopResponse>(`/connections/top?${RANGE}`);
     expect(body.transfers[0]).toMatchObject({ transferStopId: "NWK", transferStopName: "Newark Penn", observations: 40 });
+  });
+
+  it("GET /connections/top bounds results to the requested service-date window", async () => {
+    // The seed triple lives on 2025-07-15; a window that ends before it is empty.
+    const { body } = await getJson<ConnectionTopResponse>("/connections/top?from=2025-01-01&to=2025-01-31");
+    expect(body.transfers).toEqual([]);
   });
 
   it("GET /alerts filters by line and lists the log", async () => {
@@ -251,5 +257,67 @@ describe("API integration", () => {
 
   it("returns 404 for unknown routes", async () => {
     expect((await app.request("/nope")).status).toBe(404);
+  });
+});
+
+// The /lines and /map handlers batch official metrics across all lines in a
+// single query (grouped in memory) rather than one query per line. With more
+// than one line present, each line must still get its own latest month / OTP.
+describe("multi-line official batching", () => {
+  function multiLineApp(): Hono {
+    const repos = createRepositories(openDatabase());
+    const NEC = "Northeast Corridor Line";
+    const NJCL = "North Jersey Coast Line";
+    repos.gtfs.insertVersion({ versionId: "v1", effectiveFrom: 0, effectiveTo: null, checksum: "c1", ingestedAtMs: 0 });
+    repos.gtfs.replaceRoutes("v1", [
+      { routeId: "NE", lineName: NEC, color: "DD3439" },
+      { routeId: "NC", lineName: NJCL, color: "00A6E2" },
+    ]);
+    repos.gtfs.replaceStops("v1", [
+      { stopId: "NWK", stopName: "Newark Penn", stopLat: 40.7347, stopLon: -74.1644 },
+      { stopId: "LBH", stopName: "Long Branch", stopLat: 40.2969, stopLon: -73.9857 },
+    ]);
+    repos.gtfs.replaceTrips("v1", [
+      { tripId: "T1", routeId: "NE", directionId: 0 },
+      { tripId: "T2", routeId: "NC", directionId: 0 },
+    ]);
+    repos.gtfs.replaceStopTimes("v1", [
+      { tripId: "T1", stopId: "NWK", stopSequence: 1, arrivalTime: "08:00:00", departureTime: "08:01:00" },
+      { tripId: "T2", stopId: "LBH", stopSequence: 1, arrivalTime: "09:00:00", departureTime: "09:01:00" },
+    ]);
+    const metric = (year: number, month: number, lineName: string, otp: number) =>
+      repos.official.upsert({
+        year,
+        month,
+        lineName,
+        otpPercent: otp,
+        otpPercentAmtrakAdjusted: null,
+        tripsOperated: 1000,
+        cancellations: 0,
+        cancellationCauses: null,
+      });
+    // NEC has a later month (July) than NJCL's latest (June); the per-line
+    // "latest" must not bleed across lines.
+    metric(2025, 6, NEC, 80);
+    metric(2025, 7, NEC, 88.5);
+    metric(2025, 6, NJCL, 90);
+    return createApp(repos);
+  }
+
+  it("GET /lines gives each line its own latest month", async () => {
+    const res = await multiLineApp().request("/lines");
+    const body = (await res.json()) as LineListResponse;
+    const nec = body.lines.find((l) => l.id === "NE");
+    const njcl = body.lines.find((l) => l.id === "NC");
+    expect(nec).toMatchObject({ njtOtpPercent: 88.5, njtLatestMonth: "2025-07" });
+    expect(njcl).toMatchObject({ njtOtpPercent: 90, njtLatestMonth: "2025-06" });
+  });
+
+  it("GET /map gives each line its own official OTP over the range", async () => {
+    const res = await multiLineApp().request("/map?from=2025-06-01&to=2025-07-31");
+    const body = (await res.json()) as MapResponse;
+    // NEC weighted over June+July = (80 + 88.5) / 2 = 84.25 → 84.3
+    expect(body.lines.find((l) => l.lineId === "NE")?.njtOtpPercent).toBe(84.3);
+    expect(body.lines.find((l) => l.lineId === "NC")?.njtOtpPercent).toBe(90);
   });
 });
