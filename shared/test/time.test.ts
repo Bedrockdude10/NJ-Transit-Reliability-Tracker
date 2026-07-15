@@ -3,10 +3,13 @@ import { PEAK_WINDOWS } from "../src/constants";
 import {
   addDays,
   dateRange,
+  getLocalParts,
   gtfsStopTimeToEpochSeconds,
   isPeak,
   localDayOfWeek,
   localHourOfDay,
+  localPartsToEpochSeconds,
+  parseDateString,
   parseGtfsTimeToSeconds,
   toLocalDateString,
 } from "../src/time";
@@ -81,6 +84,32 @@ describe("isPeak", () => {
   it("is false on weekends", () => {
     // 2025-07-19 is a Saturday; 12:00 UTC == 08:00 EDT
     expect(isPeak(sec(Date.UTC(2025, 6, 19, 12, 0, 0)), PEAK_WINDOWS)).toBe(false);
+  });
+});
+
+describe("localPartsToEpochSeconds", () => {
+  it("round-trips through getLocalParts (EDT and EST)", () => {
+    const summer = { year: 2025, month: 7, day: 15, hour: 8, minute: 30, second: 0 };
+    // 08:30 EDT == 12:30 UTC.
+    const summerEpoch = localPartsToEpochSeconds(summer);
+    expect(summerEpoch).toBe(sec(Date.UTC(2025, 6, 15, 12, 30, 0)));
+    expect(getLocalParts(summerEpoch)).toEqual(summer);
+
+    const winter = { year: 2025, month: 1, day: 15, hour: 8, minute: 30, second: 0 };
+    // 08:30 EST == 13:30 UTC.
+    const winterEpoch = localPartsToEpochSeconds(winter);
+    expect(winterEpoch).toBe(sec(Date.UTC(2025, 0, 15, 13, 30, 0)));
+    expect(getLocalParts(winterEpoch)).toEqual(winter);
+  });
+});
+
+describe("parseDateString", () => {
+  it("parses a valid ISO date", () => {
+    expect(parseDateString("2025-01-01")).toEqual({ year: 2025, month: 1, day: 1 });
+  });
+
+  it("throws on a non-dashed date", () => {
+    expect(() => parseDateString("2025/01/01")).toThrow();
   });
 });
 

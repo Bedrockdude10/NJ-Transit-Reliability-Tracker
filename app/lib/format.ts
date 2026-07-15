@@ -1,14 +1,14 @@
 /** Display formatters. Pure functions — no React Native imports. */
 
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 /** Human delay: "on time", "2m 30s late", "1m early", or "—" for unknown. */
 export function formatDelaySeconds(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return "—";
   if (Math.abs(seconds) <= 30) return "on time";
-  const abs = Math.abs(seconds);
-  const minutes = Math.floor(abs / 60);
-  const rem = Math.round(abs % 60);
+  const total = Math.round(Math.abs(seconds));
+  const minutes = Math.floor(total / 60);
+  const rem = total % 60;
   const core = minutes > 0 ? (rem > 0 ? `${minutes}m ${rem}s` : `${minutes}m`) : `${rem}s`;
   return seconds < 0 ? `${core} early` : `${core} late`;
 }
@@ -20,9 +20,9 @@ export function formatDelaySeconds(seconds: number | null | undefined): string {
 export function formatDelayShort(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return "—";
   if (Math.abs(seconds) <= 30) return "0";
-  const abs = Math.abs(seconds);
-  const minutes = Math.floor(abs / 60);
-  const rem = Math.round(abs % 60);
+  const total = Math.round(Math.abs(seconds));
+  const minutes = Math.floor(total / 60);
+  const rem = total % 60;
   const core = minutes > 0 ? (rem > 0 ? `${minutes}m ${rem}s` : `${minutes}m`) : `${rem}s`;
   return seconds < 0 ? `−${core}` : core;
 }

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { areaPath, axisTicks, barLayout, gaugeArc, heatColor, linePath, linePoints, niceMax, smoothPath } from "../charts";
+import { areaPath, axisTicks, barLayout, gaugeArc, heatColor, linePath, linePoints, niceMax, polarToCartesian, smoothPath } from "../charts";
 
 describe("niceMax", () => {
   it("rounds up to 1/2/5 x 10^n", () => {
@@ -7,6 +7,11 @@ describe("niceMax", () => {
     expect(niceMax(7)).toBe(10);
     expect(niceMax(42)).toBe(50);
     expect(niceMax(140)).toBe(200);
+  });
+
+  it("guards non-positive input to 1", () => {
+    expect(niceMax(-5)).toBe(1);
+    expect(niceMax(-0.001)).toBe(1);
   });
 });
 
@@ -17,6 +22,19 @@ describe("barLayout", () => {
     expect(bars[0]).toMatchObject({ x: 0, width: 50, height: 25, y: 25 }); // 5/10 of 50
     expect(bars[1]).toMatchObject({ x: 50, width: 50, height: 50, y: 0 });
   });
+
+  it("applies the default gap (4) and derives a nice max when unspecified", () => {
+    const bars = barLayout([10, 20], { width: 100, height: 50 });
+    // gap defaults to 4 → barWidth = (100 - 4) / 2 = 48; max = niceMax(20) = 20.
+    expect(bars[0]).toMatchObject({ x: 0, width: 48, height: 25, y: 25 });
+    expect(bars[1]).toMatchObject({ x: 52, width: 48, height: 50, y: 0 });
+  });
+
+  it("emits zero-height bars when max is non-positive", () => {
+    const bars = barLayout([5, 8], { width: 100, height: 50, maxValue: 0 });
+    expect(bars[0]).toMatchObject({ height: 0, y: 50 });
+    expect(bars[1]).toMatchObject({ height: 0, y: 50 });
+  });
 });
 
 describe("linePoints / linePath", () => {
@@ -26,6 +44,12 @@ describe("linePoints / linePath", () => {
     expect(points[1]).toEqual({ x: 100, y: 0 });
     expect(linePath(points)).toBe("M0.00,50.00 L100.00,0.00");
   });
+
+  it("places a single value at x=0 (step is 0)", () => {
+    const points = linePoints([5], { width: 100, height: 50 });
+    expect(points).toHaveLength(1);
+    expect(points[0]).toEqual({ x: 0, y: 0 }); // 5 of niceMax(5)=5 → full height
+  });
 });
 
 describe("heatColor", () => {
@@ -33,6 +57,22 @@ describe("heatColor", () => {
     expect(heatColor(0, 100)).toBe("rgb(52, 211, 153)"); // green
     expect(heatColor(50, 100)).toBe("rgb(251, 191, 36)"); // amber at the midpoint
     expect(heatColor(100, 100)).toBe("rgb(248, 113, 113)"); // red
+  });
+
+  it("clamps values above max to red", () => {
+    expect(heatColor(150, 100)).toBe("rgb(248, 113, 113)");
+  });
+
+  it("treats a non-positive max as green (t=0)", () => {
+    expect(heatColor(5, 0)).toBe("rgb(52, 211, 153)");
+  });
+});
+
+describe("polarToCartesian", () => {
+  it("returns numeric x/y for a 0° (12 o'clock) point", () => {
+    const p = polarToCartesian(50, 50, 40, 0);
+    expect(p.x).toBeCloseTo(50, 6);
+    expect(p.y).toBeCloseTo(10, 6);
   });
 });
 
