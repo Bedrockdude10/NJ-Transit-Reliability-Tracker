@@ -220,3 +220,5 @@ web-build/
 *.sqlite-shm
 /data/
 /gtfs-cache/
+# agent worktrees (isolation)
+.claude/worktrees/
