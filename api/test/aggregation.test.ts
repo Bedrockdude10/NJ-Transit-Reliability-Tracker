@@ -25,6 +25,24 @@ describe("percentileFromDistribution", () => {
     // 100 trips all in the 0-5 min bucket [0, 300): p50 -> halfway -> 150s
     expect(percentileFromDistribution({ "0-5 min": 100 }, 50)).toBe(150);
   });
+
+  it("estimates p90 by interpolating within the containing bucket", () => {
+    // 100 obs, p90 target = 90. 85 land before "10-15 min" [600, 900), so the
+    // target sits 5/10 into it → 600 + 0.5 * (900 - 600) = 750.
+    const counts = { early: 10, "0-5 min": 60, "5-10 min": 15, "10-15 min": 10, "15-30 min": 5 };
+    expect(percentileFromDistribution(counts, 90)).toBe(750);
+  });
+
+  it("clamps the open-ended 60+ bucket (null max) to min + 1800", () => {
+    // All mass in "60+ min" (minSeconds 3600, maxSeconds null). p50 target 5/10
+    // → 0.5 into a bucket clamped to [3600, 5400): 3600 + 0.5 * 1800 = 4500.
+    expect(percentileFromDistribution({ "60+ min": 10 }, 50)).toBe(4500);
+  });
+
+  it("clamps the open-ended early bucket (−Infinity min) to 0", () => {
+    // "early" has minSeconds −Infinity, maxSeconds 0 → collapses to 0.
+    expect(percentileFromDistribution({ early: 10 }, 50)).toBe(0);
+  });
 });
 
 describe("buildOtpSummary", () => {

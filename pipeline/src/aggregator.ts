@@ -99,7 +99,11 @@ export function computeAggregates(
     } else if (delay !== null) {
       acc.operated += 1;
       acc.sumDelay += delay;
-      for (const t of OTP_THRESHOLDS_SECONDS) if (isOnTime(delay, t)) acc.onTime[String(t)] = (acc.onTime[String(t)] ?? 0) + 1;
+      for (const t of OTP_THRESHOLDS_SECONDS) {
+        // onTime is pre-seeded by emptyOnTime(), so every threshold key exists.
+        const tKey = String(t);
+        if (isOnTime(delay, t)) acc.onTime[tKey] = acc.onTime[tKey]! + 1;
+      }
     }
     otpAcc.set(key, acc);
   };
@@ -125,8 +129,11 @@ export function computeAggregates(
     }
   };
 
+  // Group once; reused by the per-trip rollups and station amplification.
+  const byTrip = groupByTrip(events);
+
   // --- Per-trip rollups (OTP, distribution, heatmap, trip terminal delay) ----
-  for (const [tripId, tripEvents] of groupByTrip(events)) {
+  for (const [tripId, tripEvents] of byTrip) {
     const terminal = tripEvents[tripEvents.length - 1];
     if (!terminal) continue;
     const cancelled = tripEvents.some((e) => e.tripCancelled);
@@ -159,7 +166,7 @@ export function computeAggregates(
   }
 
   // --- Station rollups (per stop) + amplification (consecutive stops) --------
-  const station = computeStationAggregates(events, serviceDate, tz, lateThreshold);
+  const station = computeStationAggregates(events, byTrip, serviceDate, tz, lateThreshold);
 
   // --- Connections -----------------------------------------------------------
   const connections = computeConnections(events, serviceDate, tz, maxWindow, minBuffer);
@@ -196,6 +203,7 @@ export function computeAggregates(
 
 function computeStationAggregates(
   events: readonly TripStopEvent[],
+  byTrip: Map<string, TripStopEvent[]>,
   serviceDate: string,
   tz: string,
   lateThreshold: number,
@@ -238,7 +246,7 @@ function computeStationAggregates(
   }
 
   // Amplification: arrived within 5 min here, then late at the next stop.
-  for (const tripEvents of groupByTrip(events).values()) {
+  for (const tripEvents of byTrip.values()) {
     for (let i = 0; i < tripEvents.length - 1; i++) {
       const cur = tripEvents[i];
       const next = tripEvents[i + 1];
@@ -303,17 +311,50 @@ function computeConnections(
   }
   const acc = new Map<string, ConnAcc>();
 
-  for (const [stopId, stopEvents] of byStop) {
-    const arrivals = stopEvents.filter((e) => !e.tripCancelled && e.scheduledArrival !== null && e.observedArrival !== null);
-    const departures = stopEvents.filter((e) => !e.tripCancelled && e.scheduledDeparture !== null);
+  // Narrowed views so the sweep works on non-null times without `as number`.
+  interface Arrival {
+    tripId: string;
+    scheduledArrival: number;
+    observedArrival: number;
+  }
+  interface Departure {
+    tripId: string;
+    scheduledDeparture: number;
+  }
 
+  for (const [stopId, stopEvents] of byStop) {
+    const arrivals: Arrival[] = [];
+    const departures: Departure[] = [];
+    for (const e of stopEvents) {
+      if (e.tripCancelled) continue;
+      if (e.scheduledArrival !== null && e.observedArrival !== null) {
+        arrivals.push({ tripId: e.tripId, scheduledArrival: e.scheduledArrival, observedArrival: e.observedArrival });
+      }
+      if (e.scheduledDeparture !== null) {
+        departures.push({ tripId: e.tripId, scheduledDeparture: e.scheduledDeparture });
+      }
+    }
+    // Sort once, then sweep a two-pointer window [schedArr, schedArr + maxWindow]
+    // over the departures for each arrival (arrivals ascending ⇒ window start
+    // only ever advances). Replaces the old O(arrivals × departures) loop.
+    arrivals.sort((a, b) => a.scheduledArrival - b.scheduledArrival);
+    departures.sort((a, b) => a.scheduledDeparture - b.scheduledDeparture);
+
+    let lo = 0;
     for (const inbound of arrivals) {
-      const schedArr = inbound.scheduledArrival as number;
-      const actualArr = inbound.observedArrival as number;
-      for (const outbound of departures) {
+      const schedArr = inbound.scheduledArrival;
+      const actualArr = inbound.observedArrival;
+      while (lo < departures.length) {
+        const d = departures[lo];
+        if (!d || d.scheduledDeparture >= schedArr) break;
+        lo++;
+      }
+      for (let j = lo; j < departures.length; j++) {
+        const outbound = departures[j];
+        if (!outbound) break;
+        const dep = outbound.scheduledDeparture;
+        if (dep > schedArr + maxWindow) break; // past the window; later deps are too
         if (outbound.tripId === inbound.tripId) continue;
-        const dep = outbound.scheduledDeparture as number;
-        if (dep < schedArr || dep > schedArr + maxWindow) continue; // outside transfer window
 
         const key = `${inbound.tripId}|${stopId}|${outbound.tripId}`;
         const c =
