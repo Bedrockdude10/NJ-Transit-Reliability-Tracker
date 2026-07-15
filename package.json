@@ -19,6 +19,7 @@
     "typecheck": "tsc --noEmit -p tsconfig.json",
     "test": "vitest run",
     "test:watch": "vitest",
+    "coverage": "vitest run --coverage",
     "pipeline": "tsx pipeline/src/main.ts",
     "api": "tsx api/src/main.ts",
     "import:gtfs": "tsx pipeline/src/gtfs/import.ts",
@@ -30,6 +31,7 @@
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "@vitest/coverage-v8": "3.2.6",
     "tsx": "^4.19.2",
     "typescript": "^5.7.2",
     "vitest": "^3.0.0"
