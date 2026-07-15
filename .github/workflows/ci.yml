@@ -39,3 +39,9 @@ jobs:
 
       - name: Test (app components)
         run: npm test --workspace app
+
+      # Runs the same web bundle Cloudflare builds (expo export). Catches
+      # bundling/resolution errors — including case-sensitivity issues that a
+      # case-insensitive macOS dev machine hides — before they reach deploy.
+      - name: Build web (expo export)
+        run: npm run build:web --workspace app
