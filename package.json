@@ -21,11 +21,10 @@
     "test:watch": "vitest",
     "pipeline": "tsx pipeline/src/main.ts",
     "api": "tsx api/src/main.ts",
-    "seed": "tsx pipeline/src/seed/seed.ts",
     "import:gtfs": "tsx pipeline/src/gtfs/import.ts",
     "build:geo": "tsx pipeline/src/geo/build-outline.ts",
     "import:official": "tsx pipeline/src/official/import.ts",
-    "bootstrap": "npm run import:gtfs && npm run import:official && npm run seed",
+    "bootstrap": "npm run import:gtfs && npm run import:official",
     "start:server": "node deploy/start.mjs",
     "app": "npm run start --workspace app"
   },
