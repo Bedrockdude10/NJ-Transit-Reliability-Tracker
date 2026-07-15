@@ -15,8 +15,8 @@ function P({ lead, children }: { lead?: string; children: ReactNode }) {
 
 /**
  * Methodology / About — a static explainer of what each metric means, where the
- * data comes from, and what's real vs. modeled. No API calls; pure content so
- * the page renders even when the backend is down.
+ * data comes from, and what's official vs. independently measured. No API calls;
+ * pure content so the page renders even when the backend is down.
  */
 export default function About() {
   return (
@@ -66,23 +66,22 @@ export default function About() {
           mean-distance-between-failures (MDBF), back to 2017.
         </P>
         <P lead="GTFS-Realtime + alerts (real, needs a key):">
-          live trip updates and service alerts. When a feed key is configured, the tracker collects per-train
-          arrivals continuously and the independent OTP, heatmaps, and connection reliability become measured rather
-          than modeled.
+          live trip updates and service alerts. The tracker collects per-train arrivals continuously, and the
+          independent OTP, heatmaps, and connection reliability are measured directly from that live feed.
         </P>
       </Card>
 
       <View style={styles.callout}>
-        <Text style={styles.calloutTitle}>Real vs. modeled — read this</Text>
+        <Text style={styles.calloutTitle}>Official vs. independently measured — read this</Text>
         <P>
-          <Text style={styles.realTag}>REAL</Text> NJT official OTP, cancellations & causes, MDBF, light-rail OTP,
-          and the entire GTFS network (stations, lines, colors, coordinates).
+          <Text style={styles.realTag}>NJT OFFICIAL</Text> NJT's published OTP, cancellations & causes, MDBF,
+          light-rail OTP, and the entire GTFS network (stations, lines, colors, coordinates). Always real.
         </P>
         <P>
-          <Text style={styles.synthTag}>MODELED</Text> the independent per-train OTP, delay distributions,
-          time-of-day heatmaps, connection reliability, and worst-trip rankings are generated from a synthetic
-          schedule-realistic model until a GTFS-Realtime key is collecting live data. They demonstrate the
-          methodology; they are not yet measurements of real trains.
+          <Text style={styles.measuredTag}>MEASURED (LIVE)</Text> the independent per-train OTP, delay
+          distributions, time-of-day heatmaps, connection reliability, and worst-trip rankings are computed from the
+          live GTFS-Realtime feed. There is no synthetic sample data: these views are honestly empty and show
+          “No data yet” until enough real trains have been observed, then fill in as measurement accrues.
         </P>
       </View>
 
@@ -142,5 +141,5 @@ const styles = StyleSheet.create({
   },
   calloutTitle: { color: theme.colors.text, fontSize: theme.fontSize.lg, fontWeight: "800" },
   realTag: { color: theme.colors.good, fontWeight: "800" },
-  synthTag: { color: theme.colors.warn, fontWeight: "800" },
+  measuredTag: { color: theme.colors.accent, fontWeight: "800" },
 });
