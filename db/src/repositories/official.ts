@@ -107,6 +107,26 @@ export class OfficialMetricRepository {
       .map(toMetric);
   }
 
+  /**
+   * The single most-recent published metric for every line, in one query — the
+   * `/lines` list only needs each line's latest month, so this replaces an N+1
+   * of one full-history query per line.
+   */
+  latestPerLine(): Map<string, OfficialNjtMetric> {
+    const rows = this.db
+      .all<MetricRow>(
+        /* sql */ `
+        SELECT t.* FROM official_njt_metrics t
+        JOIN (
+          SELECT line_name, MAX(year * 12 + month - 1) AS mi
+          FROM official_njt_metrics GROUP BY line_name
+        ) m ON t.line_name = m.line_name AND (t.year * 12 + t.month - 1) = m.mi
+      `,
+      )
+      .map(toMetric);
+    return new Map(rows.map((r) => [r.lineName, r]));
+  }
+
   // --- Fleet MDBF (systemwide mean distance between failures) ---------------
 
   upsertMdbf(metric: FleetMdbfMetric): void {

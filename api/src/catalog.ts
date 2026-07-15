@@ -34,13 +34,13 @@ export function toLineItem(
 export function listLines(repos: Repositories): LineListItem[] {
   const version = repos.gtfs.currentVersion();
   if (!version) return [];
+  // One query for every line's latest published month, rather than one
+  // full-history query per line (N+1).
+  const latestByLine = repos.official.latestPerLine();
   return repos.gtfs
     .routes(version.versionId)
     .filter((r) => r.mode !== "light_rail")
-    .map((r) => {
-      const history = repos.official.getAllForLine(r.lineName);
-      return toLineItem(r.routeId, r.lineName, history.at(-1) ?? null, r.color ?? null);
-    });
+    .map((r) => toLineItem(r.routeId, r.lineName, latestByLine.get(r.lineName) ?? null, r.color ?? null));
 }
 
 export interface ResolvedLine {

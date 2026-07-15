@@ -1,5 +1,11 @@
 import type { Repositories } from "@njt/db";
-import { findLineByName, type MapLine, type MapResponse, type MapStation } from "@njt/shared";
+import {
+  findLineByName,
+  type MapLine,
+  type MapResponse,
+  type MapStation,
+  type OfficialNjtMetric,
+} from "@njt/shared";
 import { Hono } from "hono";
 import { buildOfficialComparison } from "../aggregation";
 import { monthRange, resolveRange } from "../dates";
@@ -25,6 +31,15 @@ export function mapRoutes(repos: Repositories): Hono {
     const lightRailOtp =
       lrOtpRows.length > 0 ? round1(lrOtpRows.reduce((s, r) => s + r.otpPercent, 0) / lrOtpRows.length) : null;
 
+    // All lines' official metrics in one ranged query, grouped by line name in
+    // memory (rather than one getForLineRange per route).
+    const officialByLine = new Map<string, OfficialNjtMetric[]>();
+    for (const m of repos.official.getAllForRange(months.from, months.to)) {
+      const list = officialByLine.get(m.lineName);
+      if (list) list.push(m);
+      else officialByLine.set(m.lineName, [m]);
+    }
+
     const lines: MapLine[] = repos.gtfs.routes(version.versionId).map((route) => {
       const path = repos.gtfs.representativeStopSequence(version.versionId, route.routeId).map((s) => s.stopId);
       for (const id of path) stationIds.add(id);
@@ -32,7 +47,7 @@ export function mapRoutes(repos: Repositories): Hono {
 
       const official = isLightRail
         ? null
-        : buildOfficialComparison(repos.official.getForLineRange(route.lineName, months.from, months.to));
+        : buildOfficialComparison(officialByLine.get(route.lineName) ?? []);
       const otpRows = isLightRail ? [] : repos.aggregates.getOtpDailyRows("line", route.routeId, "all", range.from, range.to);
       const operated = otpRows.reduce((s, r) => s + r.tripsOperated, 0);
       const onTime15 = otpRows.reduce((s, r) => s + (r.onTimeCounts[ON_TIME_15_MIN] ?? 0), 0);
