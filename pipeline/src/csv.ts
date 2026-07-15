@@ -53,13 +53,14 @@ export function parseCsv(input: string): Record<string, string>[] {
   const rows = parseCsvRows(input);
   const header = rows[0];
   if (!header) return [];
+  const keys = header.map((h) => h.trim());
   return rows
     .slice(1)
     .filter((cells) => !(cells.length === 1 && cells[0] === ""))
     .map((cells) => {
       const record: Record<string, string> = {};
-      header.forEach((key, i) => {
-        record[key.trim()] = (cells[i] ?? "").trim();
+      keys.forEach((key, i) => {
+        record[key] = (cells[i] ?? "").trim();
       });
       return record;
     });
