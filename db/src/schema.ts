@@ -298,4 +298,12 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE gtfs_routes ADD COLUMN route_mode TEXT NOT NULL DEFAULT 'rail';
     `,
   },
+  {
+    id: "006_gtfs_trips_route_index",
+    up: /* sql */ `
+      -- Speeds gtfs.representativeStopSequence (used by /map): find a route's
+      -- trips without scanning all trips in a version.
+      CREATE INDEX idx_trips_route ON gtfs_trips(version_id, route_id);
+    `,
+  },
 ];

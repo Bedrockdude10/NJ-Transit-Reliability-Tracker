@@ -1,10 +1,8 @@
 import type { Repositories } from "@njt/db";
 import {
-  HEATMAP_TYPES,
   NJT_OFFICIAL_THRESHOLD_SECONDS,
   parseDateString,
   type HeatmapResponse,
-  type HeatmapType,
   type HistoryResponse,
   type LineListResponse,
   type LineMonthlyResponse,
@@ -27,7 +25,7 @@ import {
 } from "../aggregation";
 import { listLines, resolveLine } from "../catalog";
 import { monthRange, resolveRange } from "../dates";
-import { badRequest, round1 } from "../util";
+import { parseHeatmapType, parseLimit, round1 } from "../util";
 
 const ON_TIME_15_MIN = "900";
 
@@ -76,18 +74,6 @@ function buildTrend(rows: readonly OtpDailyRow[], interval: "daily" | "weekly", 
   return [...byWeek.entries()]
     .sort(([a], [b]) => a.localeCompare(b))
     .map(([date, acc]) => trendPoint(date, acc.operated, acc.cancelled, acc.onTime15, njtFor(date)));
-}
-
-function parseLimit(value: string | undefined, fallback: number): number {
-  const n = value ? Number(value) : fallback;
-  if (!Number.isFinite(n) || n < 1) return fallback;
-  return Math.min(Math.floor(n), 100);
-}
-
-function parseHeatmapType(value: string | undefined): HeatmapType {
-  const type = value ?? "hour_of_day";
-  if (!HEATMAP_TYPES.includes(type as HeatmapType)) badRequest(`type must be one of ${HEATMAP_TYPES.join(", ")}`);
-  return type as HeatmapType;
 }
 
 export function lineRoutes(repos: Repositories): Hono {

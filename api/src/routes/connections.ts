@@ -11,7 +11,7 @@ import { Hono } from "hono";
 import { buildDistributionResult, mergeCountMaps } from "../aggregation";
 import { stopName } from "../catalog";
 import { resolveRange } from "../dates";
-import { badRequest, round1 } from "../util";
+import { badRequest, parseLimit, round1 } from "../util";
 
 function rate(observations: number, successes: number): ConnectionRateResult {
   return {
@@ -99,7 +99,7 @@ export function connectionRoutes(repos: Repositories): Hono {
 
   // Highest-frequency transfer triples, to auto-populate the UI picker.
   router.get("/top", (c) => {
-    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 10) || 10, 1), 100);
+    const limit = parseLimit(c.req.query("limit"), 10);
     const response: ConnectionTopResponse = {
       transfers: repos.aggregates.topConnectionTriples(limit).map((t) => ({
         inboundTripId: t.inboundTripId,

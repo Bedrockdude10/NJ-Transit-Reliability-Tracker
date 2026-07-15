@@ -10,7 +10,7 @@ import { Hono } from "hono";
 import { buildDistributionResult, buildHeatmap, mergeCountMaps } from "../aggregation";
 import { listStations, stopName } from "../catalog";
 import { resolveRange } from "../dates";
-import { round1 } from "../util";
+import { parseLimit, round1 } from "../util";
 
 export function stationRoutes(repos: Repositories): Hono {
   const router = new Hono();
@@ -64,7 +64,7 @@ export function stationRoutes(repos: Repositories): Hono {
   router.get("/:stopId/top-delayed-trips", (c) => {
     const stopId = c.req.param("stopId");
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
-    const limit = Math.min(Math.max(Number(c.req.query("limit") ?? 10) || 10, 1), 100);
+    const limit = parseLimit(c.req.query("limit"), 10);
 
     interface Acc {
       routeId: string;
@@ -82,20 +82,21 @@ export function stationRoutes(repos: Repositories): Hono {
       byTrip.set(e.tripId, acc);
     }
 
+    const stationName = stopName(repos, stopId);
     const trips: WorstTrip[] = [...byTrip.entries()]
       .map(([tripId, a]) => ({
         tripId,
         routeId: a.routeId,
         lineName: a.lineName,
         direction: a.direction,
-        terminalStopName: stopName(repos, stopId),
+        terminalStopName: stationName,
         avgTerminalDelaySeconds: round1(a.sum / a.count),
         observations: a.count,
       }))
       .sort((x, y) => y.avgTerminalDelaySeconds - x.avgTerminalDelaySeconds)
       .slice(0, limit);
 
-    const response: WorstTripsResponse = { scopeLabel: stopName(repos, stopId), from: range.from, to: range.to, trips };
+    const response: WorstTripsResponse = { scopeLabel: stationName, from: range.from, to: range.to, trips };
     return c.json(response);
   });
 
