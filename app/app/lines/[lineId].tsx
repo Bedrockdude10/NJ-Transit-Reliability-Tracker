@@ -3,11 +3,12 @@ import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
 import { formatDelaySeconds, formatInt, formatMonth, formatPercent } from "../../lib/format";
+import { hasMeasuredOtp } from "../../lib/measurement";
 import { theme, otpColor, otpColorAt } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
 import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
-import { GradeBadge, ModeledBadge, TrendBadge } from "../../components/Indicators";
+import { GradeBadge, LiveBadge, TrendBadge } from "../../components/Indicators";
 import { Sparkline } from "../../components/charts/Sparkline";
 import { CsvExportButton } from "../../components/CsvExportButton";
 import { LineChart } from "../../components/charts/LineChart";
@@ -15,7 +16,7 @@ import { HistoryCharts } from "../../components/HistoryCharts";
 import { DelayHistogram, GapCallout, OtpComparison } from "../../components/metrics";
 import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
-import { Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
+import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
 
 export default function LineDetail() {
   const { lineId } = useLocalSearchParams<{ lineId: string }>();
@@ -30,6 +31,9 @@ export default function LineDetail() {
   const worst = useApi(() => api.lineWorst(id, range, 10), [id, range.from, range.to]);
   const monthly = useApi(() => api.lineMonthly(id), [id]);
   const history = useApi(() => api.lineHistory(id), [id]);
+  const health = useApi(() => api.health(), []);
+  const collectionStartDate = health.data?.collectionStartDate ?? null;
+  const measured = hasMeasuredOtp(summary.data?.overall);
 
   const njtValues = trend.data?.points.map((p) => p.njtOfficialOtpPercent ?? 0) ?? [];
   const hasNjt = njtValues.some((v) => v > 0);
@@ -84,6 +88,7 @@ export default function LineDetail() {
           <GapCallout
             strictPercent={summary.data.overall.thresholds[0]?.otpPercent ?? 0}
             njtPercent={summary.data.njtOfficial?.otpPercent ?? null}
+            measured={measured}
           />
 
           <Row>
@@ -92,32 +97,38 @@ export default function LineDetail() {
             <StatTile label="Cancellation rate (NJT)" value={summary.data.njtOfficial ? formatPercent(summary.data.njtOfficial.cancellationRatePercent) : "—"} />
           </Row>
 
-          <Card title="On-time performance vs. NJT" right={<ModeledBadge />}>
-            <OtpComparison thresholds={summary.data.overall.thresholds} njtOfficial={summary.data.njtOfficial} />
-            <Row>
-              <StatTile label="Avg delay" value={formatDelaySeconds(summary.data.overall.avgDelaySeconds)} />
-              <StatTile label="P90 delay" value={formatDelaySeconds(summary.data.overall.p90DelaySeconds)} color={theme.colors.warn} accent={theme.colors.warn} />
-            </Row>
+          <Card title="On-time performance vs. NJT" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
+            <OtpComparison thresholds={summary.data.overall.thresholds} njtOfficial={summary.data.njtOfficial} measured={measured} />
+            {measured ? (
+              <Row>
+                <StatTile label="Avg delay" value={formatDelaySeconds(summary.data.overall.avgDelaySeconds)} />
+                <StatTile label="P90 delay" value={formatDelaySeconds(summary.data.overall.p90DelaySeconds)} color={theme.colors.warn} accent={theme.colors.warn} />
+              </Row>
+            ) : null}
           </Card>
 
-          <Card title="Inbound vs. outbound" right={<ModeledBadge />}>
-            <Row>
-              <StatTile
-                label="Inbound OTP ≤15m"
-                value={formatPercent(summary.data.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
-                color={otpColor(summary.data.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
-                hint={`${formatInt(summary.data.inbound.tripsOperated)} trips`}
-              />
-              <StatTile
-                label="Outbound OTP ≤15m"
-                value={formatPercent(summary.data.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
-                color={otpColor(summary.data.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
-                hint={`${formatInt(summary.data.outbound.tripsOperated)} trips`}
-              />
-            </Row>
+          <Card title="Inbound vs. outbound" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
+            {measured ? (
+              <Row>
+                <StatTile
+                  label="Inbound OTP ≤15m"
+                  value={formatPercent(summary.data.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
+                  color={otpColor(summary.data.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
+                  hint={`${formatInt(summary.data.inbound.tripsOperated)} trips`}
+                />
+                <StatTile
+                  label="Outbound OTP ≤15m"
+                  value={formatPercent(summary.data.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
+                  color={otpColor(summary.data.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
+                  hint={`${formatInt(summary.data.outbound.tripsOperated)} trips`}
+                />
+              </Row>
+            ) : (
+              <EmptyState title="No data yet" hint="Directional on-time rates appear once the live feed has recorded trips." />
+            )}
           </Card>
 
-          <Card title="Delay distribution" right={<ModeledBadge />}>
+          <Card title="Delay distribution" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
             <DelayHistogram distribution={summary.data.overall.delayDistribution} />
           </Card>
 
@@ -145,7 +156,7 @@ export default function LineDetail() {
         </>
       ) : null}
 
-      <Card title="OTP trend (≤15 min vs. NJT 6 min)" right={<ModeledBadge />}>
+      <Card title="OTP trend (≤15 min vs. NJT 6 min)" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
         {trend.data && trend.data.points.length > 0 ? (
           <LineChart
             series={[
@@ -154,7 +165,7 @@ export default function LineDetail() {
             ]}
           />
         ) : (
-          <Muted>No trend data for this period.</Muted>
+          <EmptyState title="No data yet" hint="A daily OTP trend appears once the live feed has recorded trips for this period." />
         )}
       </Card>
 
@@ -221,8 +232,10 @@ export default function LineDetail() {
         )}
       </Card>
 
-      <Card title="Most delayed trips" right={<ModeledBadge />}>
-        {worst.data ? (
+      <Card title="Most delayed trips" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
+        {!worst.data ? (
+          <Loading />
+        ) : worst.data.trips.length > 0 ? (
           <Table
             columns={[
               { key: "tripId", label: "Trip", flex: 1.4 },
@@ -238,7 +251,7 @@ export default function LineDetail() {
             }))}
           />
         ) : (
-          <Loading />
+          <EmptyState title="No data yet" hint="Worst-trip rankings appear once the live feed has recorded trips for this period." />
         )}
       </Card>
 

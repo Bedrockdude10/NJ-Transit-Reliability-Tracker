@@ -2,14 +2,15 @@ import type { ConnectionTopItem } from "@njt/shared";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
+import { hasConnectionData } from "../../lib/measurement";
 import { theme } from "../../lib/theme";
 import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
 import { DelayHistogram } from "../../components/metrics";
-import { ModeledBanner } from "../../components/Indicators";
+import { LiveBanner } from "../../components/Indicators";
 import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
-import { Badge, Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
+import { Badge, Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -20,6 +21,8 @@ export default function Connections() {
   const [selected, setSelected] = useState<ConnectionTopItem | null>(null);
 
   const top = useApi(() => api.connectionsTop(10), []);
+  const health = useApi(() => api.health(), []);
+  const collectionStartDate = health.data?.collectionStartDate ?? null;
   const conn = useApi(
     () =>
       selected
@@ -36,10 +39,10 @@ export default function Connections() {
   return (
     <Screen>
       <PageTitle title="Connection Reliability" subtitle="How often a timed transfer actually works" />
-      <ModeledBanner>
-        Connection reliability is modeled sample data until the live GTFS-Realtime feed is connected — it
-        demonstrates the methodology, not real transfer outcomes yet.
-      </ModeledBanner>
+      <LiveBanner collectionStartDate={collectionStartDate}>
+        Connection reliability is measured from the live GTFS-Realtime feed — transfer outcomes accrue as trains
+        are observed.
+      </LiveBanner>
       <WindowPicker
         value={windowKey}
         onChange={(key, d) => {
@@ -52,6 +55,9 @@ export default function Connections() {
         <SectionTitle>Highest-frequency transfers</SectionTitle>
         {top.loading ? <Loading /> : null}
         {top.error ? <ErrorView message={top.error} onRetry={top.reload} /> : null}
+        {top.data && top.data.transfers.length === 0 ? (
+          <EmptyState title="No data yet" hint="Frequent transfers appear once the live feed has observed connecting trains." />
+        ) : null}
         {top.data?.transfers.map((t) => {
           const active = selected?.inboundTripId === t.inboundTripId && selected?.outboundTripId === t.outboundTripId && selected?.transferStopId === t.transferStopId;
           return (
@@ -74,7 +80,10 @@ export default function Connections() {
             {selected.inboundTripId} → {selected.outboundTripId} at {selected.transferStopName}
           </SectionTitle>
           {conn.loading ? <Loading /> : null}
-          {conn.data ? (
+          {conn.data && !hasConnectionData(conn.data) ? (
+            <EmptyState title="No data yet" hint="This transfer has no observed connection attempts for the selected period." />
+          ) : null}
+          {conn.data && hasConnectionData(conn.data) ? (
             <>
               <Row>
                 <StatTile

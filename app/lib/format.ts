@@ -42,6 +42,13 @@ export function formatShortDate(date: string): string {
   return `${MONTHS[Number(m[2]) - 1] ?? "?"} ${Number(m[3])}`;
 }
 
+/** "2025-07-15" -> "Jul 15, 2025". */
+export function formatDay(date: string): string {
+  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  if (!m) return date;
+  return `${MONTHS[Number(m[2]) - 1] ?? "?"} ${Number(m[3])}, ${m[1]}`;
+}
+
 /** "2025-07-15" -> "Jul 2025". */
 export function formatMonth(date: string): string {
   const m = /^(\d{4})-(\d{2})/.exec(date);

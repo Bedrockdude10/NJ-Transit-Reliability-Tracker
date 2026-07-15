@@ -6,6 +6,6 @@ describe("About / Methodology page", () => {
     const { getByText } = render(<About />);
     expect(getByText("On-time performance (OTP)")).toBeTruthy();
     expect(getByText("Data sources")).toBeTruthy();
-    expect(getByText("Real vs. modeled — read this")).toBeTruthy();
+    expect(getByText("Official vs. independently measured — read this")).toBeTruthy();
   });
 });

@@ -373,7 +373,7 @@ function LineTip({ line, onOpen }: { line: MapLine; onOpen: () => void }) {
         <Text style={[styles.statVal, { color: line.njtOtpPercent !== null ? otpColor(line.njtOtpPercent) : theme.colors.textMuted }]}>{formatPercent(line.njtOtpPercent)}</Text>
       </View>
       <View style={styles.statRow}>
-        <Text style={styles.statLabel}>Independent ≤15 min (modeled)</Text>
+        <Text style={styles.statLabel}>Independent ≤15 min</Text>
         <Text style={styles.statVal}>{formatPercent(line.projectOtpPercent15Min)}</Text>
       </View>
       <Pressable onPress={onOpen}><Text style={styles.tipLink}>{line.mode === "light_rail" ? "Open light rail →" : "Open line detail →"}</Text></Pressable>
