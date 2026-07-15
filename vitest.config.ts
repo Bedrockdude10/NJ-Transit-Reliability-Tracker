@@ -9,6 +9,26 @@ const nodePackages = ["shared", "db", "pipeline", "api"] as const;
 
 export default defineConfig({
   test: {
+    coverage: {
+      provider: "v8",
+      reporter: ["text", "text-summary"],
+      all: true,
+      include: [
+        "shared/src/**/*.ts",
+        "db/src/**/*.ts",
+        "pipeline/src/**/*.ts",
+        "api/src/**/*.ts",
+        "app/lib/**/*.ts",
+      ],
+      exclude: [
+        "**/*.test.ts",
+        "**/*.d.ts",
+        "**/dist/**",
+        "**/node_modules/**",
+        "**/*.gen.ts",
+        "**/generated/**",
+      ],
+    },
     projects: [
       ...nodePackages.map((name) => ({
         test: {
