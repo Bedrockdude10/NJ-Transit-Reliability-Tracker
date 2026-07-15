@@ -1,5 +1,5 @@
 // Container supervisor: runs the read-only API always, and the ingest pipeline
-// only once GTFS-RT is configured (NJT_TRIP_UPDATES_URL set). Both processes
+// only once GTFS-RT is configured (NJT_RAIL_DATA_USERNAME set). Both processes
 // share one SQLite file on the mounted volume (WAL = concurrent reader+writer).
 // If either child exits, we tear down so the platform restarts the machine.
 import { spawn } from "node:child_process";
@@ -33,9 +33,9 @@ process.on("SIGTERM", () => shutdown(0));
 process.on("SIGINT", () => shutdown(0));
 
 run("api");
-if (process.env.NJT_TRIP_UPDATES_URL) {
+if (process.env.NJT_RAIL_DATA_USERNAME) {
   run("pipeline");
   console.log("[supervisor] API + pipeline started.");
 } else {
-  console.log("[supervisor] API started. Pipeline disabled — set NJT_TRIP_UPDATES_URL (and the GTFS-RT key) to enable live collection.");
+  console.log("[supervisor] API started. Pipeline disabled — set NJT_RAIL_DATA_USERNAME/PASSWORD to enable live collection.");
 }

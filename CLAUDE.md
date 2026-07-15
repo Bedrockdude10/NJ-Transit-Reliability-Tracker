@@ -63,7 +63,7 @@ npm run web --workspace app      # Expo web dev server (ios/android scripts too)
 
 ## Deployment
 
-See [DEPLOY.md](DEPLOY.md). Tier 1: pipeline + API ship as **one container** (`Dockerfile` → `deploy/start.mjs` supervisor) sharing one SQLite file on a **persistent volume** (`fly.toml`, region `ewr`); the pipeline only starts when `NJT_TRIP_UPDATES_URL` is set, so the API can launch first. The Expo web app exports static (`web.output: "single"` + `app/public/_redirects` SPA fallback) to Cloudflare Pages with `EXPO_PUBLIC_API_URL` pointing at the API. Never scale the machine to zero (continuous polling). `npm run bootstrap` = import GTFS + official + seed on the server.
+See [DEPLOY.md](DEPLOY.md). Tier 1: pipeline + API ship as **one container** (`Dockerfile` → `deploy/start.mjs` supervisor) sharing one SQLite file on a **persistent volume** (`fly.toml`, region `ewr`); the pipeline only starts when `NJT_RAIL_DATA_USERNAME` is set, so the API can launch first. The Expo web app exports static (`web.output: "single"` + `app/public/_redirects` SPA fallback) to Cloudflare Pages with `EXPO_PUBLIC_API_URL` pointing at the API. Never scale the machine to zero (continuous polling). `npm run bootstrap` = import GTFS + official + seed on the server.
 
 ## Conventions
 

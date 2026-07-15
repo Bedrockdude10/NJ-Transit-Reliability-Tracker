@@ -86,6 +86,9 @@ function firstTranslation(text: { translation?: { text?: string | null }[] | nul
  * they're derived from the predicted time minus the reported delay.
  */
 export function parseTripUpdates(buffer: Uint8Array, ctx: ScheduleContext, opts: ParseOptions): TripStopEvent[] {
+  // NJT returns an empty body when the feed has no entities (200, 0 bytes);
+  // that's an empty feed, not a decode error.
+  if (buffer.length === 0) return [];
   const feed = tr.FeedMessage.decode(buffer);
   const events: TripStopEvent[] = [];
 
@@ -154,6 +157,8 @@ export function parseTripUpdates(buffer: Uint8Array, ctx: ScheduleContext, opts:
 
 /** Decode a ServiceAlerts FeedMessage into {@link ServiceAlert}s. */
 export function parseServiceAlerts(buffer: Uint8Array, opts: { now: number }): ServiceAlert[] {
+  // Empty body = no active alerts (a successful poll), not a decode error.
+  if (buffer.length === 0) return [];
   const feed = tr.FeedMessage.decode(buffer);
   const alerts: ServiceAlert[] = [];
 

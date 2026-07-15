@@ -14,7 +14,7 @@ The pipeline and API share one SQLite file on a **persistent volume** (WAL = one
 ## What's already scaffolded (in this repo)
 
 - `Dockerfile` — builds the server image (pipeline + API only; excludes the Expo app; runs via `tsx`).
-- `deploy/start.mjs` — supervisor: runs the **API always**, and the **pipeline only when `NJT_TRIP_UPDATES_URL` is set** (so you can launch before you have the GTFS-RT key).
+- `deploy/start.mjs` — supervisor: runs the **API always**, and the **pipeline only when `NJT_RAIL_DATA_USERNAME` is set** (so you can launch before you have the GTFS-RT credentials).
 - `fly.toml` — Fly app config with the volume mount, `/health` check, and always-on settings.
 - `.dockerignore` — keeps the build context tiny (no `node_modules`, `data`, `app`).
 - `app/public/_redirects` + `web.output: "single"` — SPA fallback so deep links (`/lines/NE`, `/stations/38293`) work on a static host.
@@ -104,20 +104,19 @@ exit
 ```
 (Or sftp your local `./data` — GTFS dir + CSVs, ~40 MB — then run `bootstrap`.) After either option, the dashboard shows real NJT official figures + synthetic independent data.
 
-## 3. Turn on live collection (when you have the NJT key)
+## 3. Turn on live collection (when you have the NJT credentials)
 
-Register at `developer.njtransit.com` (GTFS-RT) and `datasource.njtransit.com` (XML), then set them as **secrets** (never commit these):
+Register at `developer.njtransit.com` (GTFS-RT) and optionally `datasource.njtransit.com` (XML). NJT's GTFS-RT Web API is **token-based**: the pipeline POSTs your username/password to `getToken` and caches the returned token in `pipeline_meta` (getToken is capped at 10/day, so it refreshes ~once/day — safe across restarts). Set the credentials as **secrets** (never commit these):
 
 ```bash
 fly secrets set \
-  NJT_GTFS_RT_API_KEY=... \
-  NJT_TRIP_UPDATES_URL=... \
-  NJT_VEHICLE_POSITIONS_URL=... \
-  NJT_SERVICE_ALERTS_URL=... \
+  NJT_RAIL_DATA_USERNAME=... \
+  NJT_RAIL_DATA_PASSWORD=... \
+  NJT_RAIL_DATA_BASE_URL=https://raildata.njtransit.com/api/GTFSRT \
   NJT_XML_API_KEY=... \
   NJT_XML_URL=...
 ```
-Setting secrets restarts the machine; `start.mjs` now also launches the pipeline (because `NJT_TRIP_UPDATES_URL` is set). Confirm on the **Pipeline Health** screen / `GET /health`.
+`NJT_RAIL_DATA_BASE_URL` defaults to production; use `https://testraildata.njtransit.com/api/GTFSRT` to verify without spending the production getToken quota. Setting secrets restarts the machine; `start.mjs` now also launches the pipeline (because `NJT_RAIL_DATA_USERNAME` is set). Confirm on the **Pipeline Health** screen / `GET /health`.
 
 ## 4. Web app on Cloudflare (Workers static assets)
 
