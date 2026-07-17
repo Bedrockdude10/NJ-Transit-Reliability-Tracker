@@ -4,7 +4,7 @@ import { api } from "../../lib/api";
 import { formatDelaySeconds, formatPercent } from "../../lib/format";
 import { hasHeatmapData, hasStationData } from "../../lib/measurement";
 import { theme } from "../../lib/theme";
-import { windowToRange, type WindowKey } from "../../lib/windows";
+import { DEFAULT_WINDOW_KEY, windowDays, windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
 import { CsvExportButton } from "../../components/CsvExportButton";
 import { LiveBanner } from "../../components/Indicators";
@@ -17,8 +17,8 @@ import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTit
 export default function StationDetail() {
   const { stopId } = useLocalSearchParams<{ stopId: string }>();
   const id = stopId ?? "";
-  const [windowKey, setWindowKey] = useState<WindowKey>("30d");
-  const [days, setDays] = useState(30);
+  const [windowKey, setWindowKey] = useState<WindowKey>(DEFAULT_WINDOW_KEY);
+  const [days, setDays] = useState(windowDays(DEFAULT_WINDOW_KEY));
   const range = useMemo(() => windowToRange(days), [days]);
 
   const summary = useApi(() => api.stationSummary(id, range), [id, range.from, range.to]);

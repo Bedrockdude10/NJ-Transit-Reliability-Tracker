@@ -1,12 +1,13 @@
 import { useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { OTP_PRIMARY_THRESHOLD_SECONDS, round1 } from "@njt/shared";
 import { api } from "../../lib/api";
 import { formatDelaySeconds, formatInt, formatMonth, formatPercent } from "../../lib/format";
 import { hasMeasuredOtp } from "../../lib/measurement";
 import { theme, otpColor, otpColorAt } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
-import { windowToRange, type WindowKey } from "../../lib/windows";
+import { DEFAULT_WINDOW_KEY, windowDays, windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
 import { GradeBadge, LiveBadge, TrendBadge } from "../../components/Indicators";
 import { Sparkline } from "../../components/charts/Sparkline";
@@ -21,8 +22,8 @@ import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTit
 export default function LineDetail() {
   const { lineId } = useLocalSearchParams<{ lineId: string }>();
   const id = lineId ?? "";
-  const [windowKey, setWindowKey] = useState<WindowKey>("30d");
-  const [days, setDays] = useState(30);
+  const [windowKey, setWindowKey] = useState<WindowKey>(DEFAULT_WINDOW_KEY);
+  const [days, setDays] = useState(windowDays(DEFAULT_WINDOW_KEY));
   const range = useMemo(() => windowToRange(days), [days]);
   const c = useChartColors();
 
@@ -112,14 +113,14 @@ export default function LineDetail() {
               <Row>
                 <StatTile
                   label="Inbound OTP ≤15m"
-                  value={formatPercent(summary.data.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
-                  color={otpColor(summary.data.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
+                  value={formatPercent(summary.data.inbound.thresholds.find((t) => t.thresholdSeconds === OTP_PRIMARY_THRESHOLD_SECONDS)?.otpPercent ?? 0)}
+                  color={otpColor(summary.data.inbound.thresholds.find((t) => t.thresholdSeconds === OTP_PRIMARY_THRESHOLD_SECONDS)?.otpPercent ?? 0)}
                   hint={`${formatInt(summary.data.inbound.tripsOperated)} trips`}
                 />
                 <StatTile
                   label="Outbound OTP ≤15m"
-                  value={formatPercent(summary.data.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
-                  color={otpColor(summary.data.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
+                  value={formatPercent(summary.data.outbound.thresholds.find((t) => t.thresholdSeconds === OTP_PRIMARY_THRESHOLD_SECONDS)?.otpPercent ?? 0)}
+                  color={otpColor(summary.data.outbound.thresholds.find((t) => t.thresholdSeconds === OTP_PRIMARY_THRESHOLD_SECONDS)?.otpPercent ?? 0)}
                   hint={`${formatInt(summary.data.outbound.tripsOperated)} trips`}
                 />
               </Row>
@@ -267,7 +268,7 @@ export default function LineDetail() {
             />
             <StatTile
               label="Attributed to Amtrak"
-              value={`+${Math.round((summary.data.njtOfficial.otpPercentAmtrakAdjusted - summary.data.njtOfficial.otpPercent) * 10) / 10} pts`}
+              value={`+${round1(summary.data.njtOfficial.otpPercentAmtrakAdjusted - summary.data.njtOfficial.otpPercent)} pts`}
               color={theme.colors.njt}
               hint="OTP recovered when Amtrak delays are excluded"
             />

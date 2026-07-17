@@ -3,6 +3,7 @@ import type {
   AlertListResponse,
   ConnectionResponse,
   ConnectionTopResponse,
+  DateRangeParams,
   HealthResponse,
   HeatmapResponse,
   HeatmapType,
@@ -20,10 +21,9 @@ import type {
 } from "@njt/shared";
 import { API_BASE_URL } from "./config";
 
-export interface DateRange {
-  from?: string;
-  to?: string;
-}
+/** Local name for the shared date-range query contract; screens and
+ *  `windows.ts` import `DateRange` from here. */
+export type DateRange = DateRangeParams;
 
 type Params = Record<string, string | number | undefined>;
 

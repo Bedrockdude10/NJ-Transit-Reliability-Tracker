@@ -2,6 +2,10 @@
 
 import { HEATMAP_TYPES, type HeatmapType } from "@njt/shared";
 
+/** Re-exported so API modules keep importing it from `./util`, but there is one
+ * definition (in `@njt/shared`) shared with the app — precision never drifts. */
+export { round1 } from "@njt/shared";
+
 /** An error carrying an HTTP status, thrown by handlers and mapped to JSON. */
 export class ApiError extends Error {
   constructor(
@@ -28,11 +32,6 @@ export function slugify(name: string): string {
     .replace(/&/g, " and ")
     .replace(/[^a-z0-9]+/g, "-")
     .replace(/^-+|-+$/g, "");
-}
-
-/** Round to one decimal place — percentages and average-delay values. */
-export function round1(value: number): number {
-  return Math.round(value * 10) / 10;
 }
 
 /**

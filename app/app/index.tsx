@@ -1,11 +1,12 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { OTP_PRIMARY_THRESHOLD_SECONDS, OTP_STRICT_THRESHOLD_SECONDS, round1 } from "@njt/shared";
 import { api } from "../lib/api";
 import { formatDelayShort, formatInt, formatPercent } from "../lib/format";
 import { hasHeatmapData, hasMeasuredOtp } from "../lib/measurement";
 import { otpColor, otpColorAt, theme } from "../lib/theme";
 import { useChartColors } from "../lib/useChartColors";
-import { windowToRange, type WindowKey } from "../lib/windows";
+import { DEFAULT_WINDOW_KEY, windowDays, windowToRange, type WindowKey } from "../lib/windows";
 import { useApi } from "../hooks/useApi";
 import { CsvExportButton } from "../components/CsvExportButton";
 import { LiveBadge } from "../components/Indicators";
@@ -18,8 +19,8 @@ import { WindowPicker } from "../components/WindowPicker";
 import { Card, EmptyState, Eyebrow, ErrorView, Loading, Muted, PageTitle, Row, SkeletonCard, StatTile, Screen } from "../components/ui";
 
 export default function SystemOverview() {
-  const [windowKey, setWindowKey] = useState<WindowKey>("30d");
-  const [days, setDays] = useState(30);
+  const [windowKey, setWindowKey] = useState<WindowKey>(DEFAULT_WINDOW_KEY);
+  const [days, setDays] = useState(windowDays(DEFAULT_WINDOW_KEY));
   const range = useMemo(() => windowToRange(days), [days]);
   const chartColors = useChartColors();
 
@@ -42,11 +43,11 @@ export default function SystemOverview() {
   const thr = (sec: number) => s?.overall.thresholds.find((t) => t.thresholdSeconds === sec)?.otpPercent ?? null;
   const njt = s?.njtOfficial?.otpPercent ?? null;
   // Independent thresholds are only real once the live feed has recorded trips.
-  const strict5 = measured ? thr(300) : null;
-  const within15 = measured ? thr(900) : null;
+  const strict5 = measured ? thr(OTP_STRICT_THRESHOLD_SECONDS) : null;
+  const within15 = measured ? thr(OTP_PRIMARY_THRESHOLD_SECONDS) : null;
   // Prefer NJT's real figure for the hero; fall back to our measurement; else no data.
   const headline = njt ?? within15;
-  const gap = njt !== null && strict5 !== null ? Math.round((njt - strict5) * 10) / 10 : null;
+  const gap = njt !== null && strict5 !== null ? round1(njt - strict5) : null;
 
   return (
     <Screen>

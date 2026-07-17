@@ -22,6 +22,7 @@
     "coverage": "vitest run --coverage",
     "pipeline": "tsx pipeline/src/main.ts",
     "api": "tsx api/src/main.ts",
+    "dev:seed": "tsx api/src/dev/seed-cli.ts",
     "import:gtfs": "tsx pipeline/src/gtfs/import.ts",
     "build:geo": "tsx pipeline/src/geo/build-outline.ts",
     "import:official": "tsx pipeline/src/official/import.ts",

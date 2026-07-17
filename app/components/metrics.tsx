@@ -1,4 +1,4 @@
-import type { DistributionBucketResult, NjtOfficialComparison, OtpThresholdResult } from "@njt/shared";
+import { round1, type DistributionBucketResult, type NjtOfficialComparison, type OtpThresholdResult } from "@njt/shared";
 import { StyleSheet, Text, View } from "react-native";
 import { hasDistributionData } from "../lib/measurement";
 import { theme, otpColorAt } from "../lib/theme";
@@ -94,7 +94,7 @@ export function GapCallout({
   // The gap is only meaningful once we have an independent measurement to
   // compare against NJT's figure — otherwise `strictPercent` is a hollow 0%.
   if (njtPercent === null || !measured) return null;
-  const gap = Math.round((njtPercent - strictPercent) * 10) / 10;
+  const gap = round1(njtPercent - strictPercent);
   return (
     <View style={styles.callout}>
       <Text style={styles.calloutText}>

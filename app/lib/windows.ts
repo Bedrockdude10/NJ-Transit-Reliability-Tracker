@@ -16,6 +16,20 @@ export const WINDOWS = [
 
 export type WindowKey = (typeof WINDOWS)[number]["key"];
 
+/**
+ * Default window for the primary summary screens (system / line / station).
+ * Deliberately wide: NJT publishes its official metrics monthly and with a lag,
+ * so a short trailing window can miss the latest published month entirely and
+ * the page reads as empty even when the database is full. A year always overlaps
+ * published history, so a populated DB is never blank on load.
+ */
+export const DEFAULT_WINDOW_KEY: WindowKey = "1y";
+
+/** Days for a window key (falls back to the 1-year default). */
+export function windowDays(key: WindowKey): number {
+  return WINDOWS.find((w) => w.key === key)?.days ?? 365;
+}
+
 export function todayString(nowMs: number = Date.now()): string {
   return toLocalDateString(Math.floor(nowMs / 1000));
 }

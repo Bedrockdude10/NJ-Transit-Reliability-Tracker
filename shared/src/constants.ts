@@ -10,6 +10,16 @@ export const NJT_TIMEZONE = "America/New_York";
 export const OTP_THRESHOLDS_SECONDS = [300, 600, 900, 1800, 3600] as const;
 export type OtpThresholdSeconds = (typeof OTP_THRESHOLDS_SECONDS)[number];
 
+/**
+ * The project's headline strict OTP threshold: a train is "on time" only if
+ * within 15 minutes. Drives map reliability coloring, the daily OTP trend, and
+ * the primary on-time tile. Must be a member of {@link OTP_THRESHOLDS_SECONDS}.
+ */
+export const OTP_PRIMARY_THRESHOLD_SECONDS: OtpThresholdSeconds = 900;
+
+/** The strictest OTP tier surfaced in the UI: within 5 minutes. */
+export const OTP_STRICT_THRESHOLD_SECONDS: OtpThresholdSeconds = 300;
+
 /** NJT's own published threshold: "on time" means within 6 minutes. */
 export const NJT_OFFICIAL_THRESHOLD_SECONDS = 360;
 
@@ -39,6 +49,14 @@ export const SYSTEM_SCOPE_ID = "system";
 
 export const HEATMAP_TYPES = ["hour_of_day", "day_of_week"] as const;
 export type HeatmapType = (typeof HEATMAP_TYPES)[number];
+
+/** Day-of-week labels, indexed 0=Sun … 6=Sat (heatmaps, connection breakdowns). */
+export const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+/** Month abbreviations, indexed 0=Jan … 11=Dec (chart axes, date formatting). */
+export const MONTH_ABBR = [
+  "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec",
+] as const;
 
 /**
  * Delay distribution buckets, in seconds. `maxSeconds: null` means open-ended.

@@ -1,6 +1,7 @@
 import type { Repositories } from "@njt/db";
 import {
   NJT_OFFICIAL_THRESHOLD_SECONDS,
+  OTP_PRIMARY_THRESHOLD_SECONDS,
   parseDateString,
   type HeatmapResponse,
   type HistoryResponse,
@@ -27,7 +28,7 @@ import { listLines, resolveLine } from "../catalog";
 import { monthRange, resolveRange } from "../dates";
 import { parseHeatmapType, parseLimit, round1 } from "../util";
 
-const ON_TIME_15_MIN = "900";
+const ON_TIME_15_MIN = String(OTP_PRIMARY_THRESHOLD_SECONDS);
 
 /** Monday (ISO week start) of a YYYY-MM-DD date, as YYYY-MM-DD. */
 function weekStart(date: string): string {

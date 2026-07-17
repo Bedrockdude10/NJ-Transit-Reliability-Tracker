@@ -7,6 +7,16 @@
 import type { Direction } from "./domain";
 import type { HeatmapType } from "./constants";
 
+/**
+ * Optional `from`/`to` date-range query params (`YYYY-MM-DD`). The single
+ * contract for the API's range query: the client sends these, the server
+ * resolves them into a concrete range.
+ */
+export interface DateRangeParams {
+  from?: string;
+  to?: string;
+}
+
 export interface DistributionBucketResult {
   label: string;
   count: number;

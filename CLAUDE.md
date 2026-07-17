@@ -58,6 +58,7 @@ npm run typecheck --workspace app
 npm run import:gtfs              # real GTFS static network (stops/coords/lines/colors/trips) from a local dir
 npm run import:official          # real NJT monthly OTP + cancellations + MDBF + light rail from CSVs in ./data (keyless)
 npm run api                      # start API (env: NJT_DB_PATH, PORT)
+npm run dev:seed                 # LOCAL ONLY: write synthetic recent+historical data to NJT_DB_PATH so the app runs populated (never deploy; clear with deploy/purge-synthetic.mjs)
 npm run pipeline                 # start ingest worker (needs NJT creds; also fetches getGTFS + records live events)
 npm run web --workspace app      # Expo web dev server (ios/android scripts too)
 ```

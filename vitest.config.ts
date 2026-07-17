@@ -27,6 +27,8 @@ export default defineConfig({
         "**/node_modules/**",
         "**/*.gen.ts",
         "**/generated/**",
+        // Local dev fixture / seed CLI — synthetic data, not product code.
+        "api/src/dev/**",
       ],
     },
     projects: [

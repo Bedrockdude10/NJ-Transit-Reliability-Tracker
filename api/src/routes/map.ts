@@ -1,6 +1,7 @@
 import type { Repositories } from "@njt/db";
 import {
   findLineByName,
+  OTP_PRIMARY_THRESHOLD_SECONDS,
   type MapLine,
   type MapResponse,
   type MapStation,
@@ -11,7 +12,7 @@ import { buildOfficialComparison } from "../aggregation";
 import { monthRange, resolveRange } from "../dates";
 import { round1 } from "../util";
 
-const ON_TIME_15_MIN = "900";
+const ON_TIME_15_MIN = String(OTP_PRIMARY_THRESHOLD_SECONDS);
 
 /** GET /map — real network geometry + per-line reliability for the system map. */
 export function mapRoutes(repos: Repositories): Hono {

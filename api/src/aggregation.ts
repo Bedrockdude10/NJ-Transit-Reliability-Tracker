@@ -1,5 +1,6 @@
 import {
   DELAY_BUCKETS,
+  DOW_LABELS,
   NJT_OFFICIAL_THRESHOLD_SECONDS,
   OTP_THRESHOLDS_SECONDS,
   type AnnualOtpYear,
@@ -20,8 +21,6 @@ import {
   type SeasonalityMonth,
 } from "@njt/shared";
 import { round1 } from "./util";
-
-const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
 export function heatmapBucketLabel(type: HeatmapType, bucket: number): string {
   if (type === "day_of_week") return DOW_LABELS[bucket] ?? String(bucket);

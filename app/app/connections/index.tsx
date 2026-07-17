@@ -1,4 +1,4 @@
-import type { ConnectionTopItem } from "@njt/shared";
+import { DOW_LABELS, type ConnectionTopItem } from "@njt/shared";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
@@ -11,8 +11,6 @@ import { LiveBanner } from "../../components/Indicators";
 import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
 import { Badge, Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
-
-const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function Connections() {
   const [windowKey, setWindowKey] = useState<WindowKey>("90d");
@@ -112,7 +110,7 @@ export default function Connections() {
                     { key: "rate", label: "Success", align: "right" },
                     { key: "obs", label: "Obs", align: "right" },
                   ]}
-                  rows={conn.data.byDayOfWeek.map((d) => ({ day: DOW[d.dayOfWeek] ?? String(d.dayOfWeek), rate: `${d.successRatePercent}%`, obs: d.observations }))}
+                  rows={conn.data.byDayOfWeek.map((d) => ({ day: DOW_LABELS[d.dayOfWeek] ?? String(d.dayOfWeek), rate: `${d.successRatePercent}%`, obs: d.observations }))}
                 />
               </View>
 

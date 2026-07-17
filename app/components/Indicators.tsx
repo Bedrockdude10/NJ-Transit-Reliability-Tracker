@@ -1,5 +1,6 @@
 import type { ReactNode } from "react";
 import { StyleSheet, Text, View } from "react-native";
+import { round1 } from "@njt/shared";
 import { reliabilityGrade } from "../lib/grade";
 import { measurementStatus } from "../lib/measurement";
 import { theme } from "../lib/theme";
@@ -37,7 +38,7 @@ export function TrendBadge({
   return (
     <View style={[styles.trend, { backgroundColor: flat ? theme.colors.surfaceAlt : good ? theme.colors.goodSoft : theme.colors.badSoft }]}>
       <Text style={[styles.trendText, { color }]}>
-        {arrow} {flat ? "flat" : `${Math.abs(Math.round(delta * 10) / 10)} ${unit}`}
+        {arrow} {flat ? "flat" : `${Math.abs(round1(delta))} ${unit}`}
       </Text>
     </View>
   );

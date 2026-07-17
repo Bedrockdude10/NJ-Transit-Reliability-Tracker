@@ -1,11 +1,9 @@
 import { StyleSheet, Text, View } from "react-native";
-import type { HistoryResponse } from "@njt/shared";
+import { MONTH_ABBR, type HistoryResponse } from "@njt/shared";
 import { otpColorAt, theme } from "../lib/theme";
 import { useChartColors } from "../lib/useChartColors";
 import type { Palette } from "../lib/palette";
 import { BarChart, type BarDatum } from "./charts/BarChart";
-
-const MONTH_ABBR = ["", "Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
 const pct = (v: number) => `${v}%`;
 const otpBar = (c: Palette, label: string, value: number | null): BarDatum => ({
@@ -20,7 +18,7 @@ export function HistoryCharts({ history }: { history: HistoryResponse }) {
   return (
     <View style={styles.wrap}>
       <Text style={styles.label}>By month of year (seasonality)</Text>
-      <BarChart maxValue={100} formatValue={pct} data={history.seasonality.map((m) => otpBar(c, MONTH_ABBR[m.month] ?? String(m.month), m.avgOtpPercent))} />
+      <BarChart maxValue={100} formatValue={pct} data={history.seasonality.map((m) => otpBar(c, MONTH_ABBR[m.month - 1] ?? String(m.month), m.avgOtpPercent))} />
       <Text style={styles.label}>By year</Text>
       <BarChart maxValue={100} formatValue={pct} data={history.annual.map((y) => otpBar(c, `’${String(y.year).slice(2)}`, y.avgOtpPercent))} />
       {history.mdbfAnnual && history.mdbfAnnual.length > 0 ? (

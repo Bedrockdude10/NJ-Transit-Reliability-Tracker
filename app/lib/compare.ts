@@ -4,7 +4,7 @@
  * side by side. No React Native imports — unit-tested directly.
  */
 
-import type { LineMonthlyResponse } from "@njt/shared";
+import { round1, type LineMonthlyResponse } from "@njt/shared";
 
 export interface ComparisonSeries {
   id: string;
@@ -34,7 +34,7 @@ export interface CompareInput {
 
 function mean(values: number[]): number | null {
   if (values.length === 0) return null;
-  return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10;
+  return round1(values.reduce((a, b) => a + b, 0) / values.length);
 }
 
 /** Build the aligned month axis + per-line series from each line's monthly rows. */
