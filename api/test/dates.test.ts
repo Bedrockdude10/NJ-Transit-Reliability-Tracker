@@ -19,6 +19,19 @@ describe("resolveRange", () => {
     expect(() => resolveRange("2025/01/01", undefined, NOW)).toThrow(ApiError);
   });
 
+  it("rejects impossible calendar dates", () => {
+    expect(() => resolveRange("2024-13-01", undefined, NOW)).toThrow(ApiError); // month 13
+    expect(() => resolveRange("2024-00-10", undefined, NOW)).toThrow(ApiError); // month 0
+    expect(() => resolveRange("2024-13-45", undefined, NOW)).toThrow(ApiError); // both out of range
+    expect(() => resolveRange("2025-02-29", undefined, NOW)).toThrow(ApiError); // not a leap year
+    expect(() => resolveRange("2025-04-31", undefined, NOW)).toThrow(ApiError); // April has 30 days
+    expect(() => resolveRange("2025-01-00", undefined, NOW)).toThrow(ApiError); // day 0
+  });
+
+  it("accepts valid leap-day and month-end dates", () => {
+    expect(resolveRange("2024-02-29", "2024-03-31", NOW)).toEqual({ from: "2024-02-29", to: "2024-03-31" });
+  });
+
   it("rejects an inverted range", () => {
     expect(() => resolveRange("2025-02-01", "2025-01-01", NOW)).toThrow(ApiError);
   });

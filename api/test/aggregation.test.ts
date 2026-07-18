@@ -1,6 +1,7 @@
 import type { DelayDistributionDailyRow, OtpDailyRow } from "@njt/shared";
 import { describe, expect, it } from "vitest";
 import {
+  averageLightRailOtp,
   buildCancellations,
   buildFleetMdbf,
   buildHeatmap,
@@ -13,6 +14,18 @@ import {
 describe("mergeCountMaps", () => {
   it("sums values across maps", () => {
     expect(mergeCountMaps([{ a: 1, b: 2 }, { a: 3, c: 4 }])).toEqual({ a: 4, b: 2, c: 4 });
+  });
+});
+
+describe("averageLightRailOtp", () => {
+  it("returns null with no months and a rounded mean otherwise", () => {
+    expect(averageLightRailOtp([])).toBeNull();
+    expect(
+      averageLightRailOtp([
+        { year: 2025, month: 6, otpPercent: 96 },
+        { year: 2025, month: 7, otpPercent: 97 },
+      ]),
+    ).toBe(96.5);
   });
 });
 

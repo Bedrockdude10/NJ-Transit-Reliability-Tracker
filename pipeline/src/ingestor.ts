@@ -8,7 +8,7 @@ import { recomputeServiceDate } from "./aggregator";
 import { loadGtfsStatic } from "./gtfs-static/load";
 import { loadOfficialMetrics } from "./official/parse";
 import { parseServiceAlerts, parseTripUpdates } from "./gtfs-rt/parse";
-import { createScheduleContext } from "./gtfs-rt/schedule-context";
+import { createScheduleCache, createScheduleContext, type ScheduleCache } from "./gtfs-rt/schedule-context";
 import { type Logger, consoleLogger } from "./logger";
 import { type RateLimiter } from "./rate-limiter";
 
@@ -35,6 +35,8 @@ export class Ingestor {
   private readonly rateLimiter: RateLimiter;
   private readonly clock: Clock;
   private readonly logger: Logger;
+  /** Persistent schedule cache reused across polls; invalidates on version rollover. */
+  private readonly scheduleCache: ScheduleCache = createScheduleCache();
 
   constructor(deps: IngestorDeps) {
     this.repos = deps.repos;
@@ -68,14 +70,15 @@ export class Ingestor {
 
   async pollTripUpdates(): Promise<boolean> {
     const now = this.clock.now();
+    const serviceDate = this.serviceDate(now);
     try {
       const bytes = await this.fetchCounting(() => this.client.fetchTripUpdates());
       this.repos.snapshots.insert({ feedType: "TripUpdates", fetchedAtMs: now, rawBytes: bytes });
 
-      const ctx = createScheduleContext(this.repos.gtfs);
+      const ctx = createScheduleContext(this.repos.gtfs, this.scheduleCache);
       const events = parseTripUpdates(bytes, ctx, {
         now,
-        defaultServiceDate: this.serviceDate(now),
+        defaultServiceDate: serviceDate,
         gtfsStaticVersion: this.repos.gtfs.currentVersion()?.versionId ?? "unknown",
         onTripMismatch: (tripId) => this.logger.warn("trip id mismatch (RT not in static)", { tripId }),
       });
@@ -83,7 +86,7 @@ export class Ingestor {
 
       this.recordGapIfResumed("TripUpdates", now);
       this.repos.health.recordSuccess("TripUpdates", now);
-      this.repos.health.ensureCollectionStart(this.serviceDate(now));
+      this.repos.health.ensureCollectionStart(serviceDate);
       this.logger.info("TripUpdates ingested", { events: events.length });
       return true;
     } catch (error) {

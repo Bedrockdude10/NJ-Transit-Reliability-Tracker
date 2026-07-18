@@ -10,13 +10,14 @@ import { Hono } from "hono";
 import { buildDistributionResult, buildHeatmap, mergeCountMaps } from "../aggregation";
 import { listStations, stopName } from "../catalog";
 import { resolveRange } from "../dates";
-import { parseLimit, round1 } from "../util";
+import { CACHE_CONTROL_DAILY, parseLimit, round1 } from "../util";
 
 export function stationRoutes(repos: Repositories): Hono {
   const router = new Hono();
 
   router.get("/", (c) => {
     const response: StationListResponse = { stations: listStations(repos) };
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
   });
 
@@ -56,6 +57,7 @@ export function stationRoutes(repos: Repositories): Hono {
           amp.arrivedWithin5Min > 0 ? round1((amp.departedLateAfterOnTimeArrival / amp.arrivedWithin5Min) * 100) : 0,
       },
     };
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
   });
 

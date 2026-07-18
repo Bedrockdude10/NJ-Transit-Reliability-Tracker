@@ -52,6 +52,24 @@ describe("gtfsStopTimeToEpochSeconds", () => {
       sec(Date.UTC(2025, 6, 16, 5, 30, 0)),
     );
   });
+
+  it("memoizes local midnight per service date without cross-date leakage", () => {
+    // Repeated resolutions on the same date share the cached midnight anchor and
+    // stay exact for every offset; distinct dates keep independent anchors.
+    for (let i = 0; i < 3; i++) {
+      expect(gtfsStopTimeToEpochSeconds("2025-07-15", "08:30:00")).toBe(
+        sec(Date.UTC(2025, 6, 15, 12, 30, 0)),
+      );
+      expect(gtfsStopTimeToEpochSeconds("2025-07-15", "23:59:59")).toBe(
+        sec(Date.UTC(2025, 6, 16, 3, 59, 59)),
+      );
+    }
+    // A winter date (EST, UTC-5) resolved after the summer one must not reuse
+    // the summer offset — a regression guard for the midnight cache key.
+    expect(gtfsStopTimeToEpochSeconds("2025-01-15", "08:30:00")).toBe(
+      sec(Date.UTC(2025, 0, 15, 13, 30, 0)),
+    );
+  });
 });
 
 describe("local helpers", () => {

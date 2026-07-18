@@ -26,10 +26,9 @@ function toMetric(row: MetricRow): OfficialNjtMetric {
   };
 }
 
-/** A month encoded as a single comparable integer (year * 12 + monthIndex). */
-function monthIndex(year: number, month: number): number {
-  return year * 12 + (month - 1);
-}
+/** Explicit column list for metric reads (B5: no SELECT *). */
+const METRIC_COLUMNS =
+  "year, month, line_name, otp_percent, otp_percent_amtrak_adjusted, trips_operated, cancellations, cancellation_causes";
 
 /** NJT's officially published monthly OTP, used as the comparison baseline. */
 export class OfficialMetricRepository {
@@ -72,11 +71,11 @@ export class OfficialMetricRepository {
     return this.db
       .all<MetricRow>(
         /* sql */ `
-        SELECT * FROM official_njt_metrics
-        WHERE line_name = :line AND (year * 12 + month - 1) BETWEEN :from AND :to
+        SELECT ${METRIC_COLUMNS} FROM official_njt_metrics
+        WHERE line_name = :line AND (year, month) >= (:fromY, :fromM) AND (year, month) <= (:toY, :toM)
         ORDER BY year, month
       `,
-        { line: lineName, from: monthIndex(from.year, from.month), to: monthIndex(to.year, to.month) },
+        { line: lineName, fromY: from.year, fromM: from.month, toY: to.year, toM: to.month },
       )
       .map(toMetric);
   }
@@ -89,11 +88,11 @@ export class OfficialMetricRepository {
     return this.db
       .all<MetricRow>(
         /* sql */ `
-        SELECT * FROM official_njt_metrics
-        WHERE (year * 12 + month - 1) BETWEEN :from AND :to
+        SELECT ${METRIC_COLUMNS} FROM official_njt_metrics
+        WHERE (year, month) >= (:fromY, :fromM) AND (year, month) <= (:toY, :toM)
         ORDER BY year, month, line_name
       `,
-        { from: monthIndex(from.year, from.month), to: monthIndex(to.year, to.month) },
+        { fromY: from.year, fromM: from.month, toY: to.year, toM: to.month },
       )
       .map(toMetric);
   }
@@ -101,7 +100,7 @@ export class OfficialMetricRepository {
   /** Full monthly history for a line (the Line Detail comparison table). */
   getAllForLine(lineName: string): OfficialNjtMetric[] {
     return this.db
-      .all<MetricRow>("SELECT * FROM official_njt_metrics WHERE line_name = :line ORDER BY year, month", {
+      .all<MetricRow>(`SELECT ${METRIC_COLUMNS} FROM official_njt_metrics WHERE line_name = :line ORDER BY year, month`, {
         line: lineName,
       })
       .map(toMetric);
@@ -146,8 +145,8 @@ export class OfficialMetricRepository {
     to: { year: number; month: number },
   ): FleetMdbfMetric[] {
     return this.db.all<FleetMdbfMetric>(
-      "SELECT year, month, mdbf FROM official_fleet_mdbf WHERE (year * 12 + month - 1) BETWEEN :from AND :to ORDER BY year, month",
-      { from: monthIndex(from.year, from.month), to: monthIndex(to.year, to.month) },
+      "SELECT year, month, mdbf FROM official_fleet_mdbf WHERE (year, month) >= (:fromY, :fromM) AND (year, month) <= (:toY, :toM) ORDER BY year, month",
+      { fromY: from.year, fromM: from.month, toY: to.year, toM: to.month },
     );
   }
 }

@@ -219,6 +219,12 @@ describe("API integration", () => {
     expect(none.body.total).toBe(0);
   });
 
+  it("GET /alerts floors fractional page/pageSize (no fractional OFFSET)", async () => {
+    const { body } = await getJson<AlertListResponse>(`/alerts?page=1.5&pageSize=25.9&${RANGE}`);
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(25);
+  });
+
   it("GET /alerts/frequency counts by line and effect", async () => {
     const { body } = await getJson<AlertFrequencyResponse>(`/alerts/frequency?${RANGE}`);
     expect(body.byLine[0]).toMatchObject({ lineName: "Northeast Corridor Line", total: 1 });
@@ -253,6 +259,24 @@ describe("API integration", () => {
     const body = (await res.json()) as MapResponse;
     expect(body.stations).toEqual([]);
     expect(body.lines).toEqual([]);
+  });
+
+  it("sets Cache-Control on stable, expensive endpoints but not /health", async () => {
+    const cached = [
+      `/map?${RANGE}`,
+      "/stations",
+      `/stations/NWK/summary?${RANGE}`,
+      `/system/summary?${RANGE}`,
+      `/lines/NE/summary?${RANGE}`,
+      "/lines/NE/monthly",
+      `/lightrail/summary?${RANGE}`,
+    ];
+    for (const path of cached) {
+      const res = await app.request(path);
+      expect(res.headers.get("Cache-Control"), path).toMatch(/max-age=\d+/);
+    }
+    const health = await app.request("/health");
+    expect(health.headers.get("Cache-Control")).toBeNull();
   });
 
   it("returns 404 for unknown routes", async () => {
@@ -301,6 +325,16 @@ describe("multi-line official batching", () => {
     metric(2025, 6, NEC, 80);
     metric(2025, 7, NEC, 88.5);
     metric(2025, 6, NJCL, 90);
+    // Independent OTP daily rows per line, so /map's batched per-line grouping
+    // (one ranged query, not one per line) must keep each line's figure distinct.
+    repos.aggregates.upsertOtpDaily({
+      scope: "line", scopeId: "NE", serviceDate: "2025-07-15", direction: "all",
+      tripsOperated: 100, tripsCancelled: 0, onTimeCounts: { "900": 90 }, sumDelaySeconds: 0,
+    });
+    repos.aggregates.upsertOtpDaily({
+      scope: "line", scopeId: "NC", serviceDate: "2025-07-15", direction: "all",
+      tripsOperated: 100, tripsCancelled: 0, onTimeCounts: { "900": 75 }, sumDelaySeconds: 0,
+    });
     return createApp(repos);
   }
 
@@ -319,5 +353,8 @@ describe("multi-line official batching", () => {
     // NEC weighted over June+July = (80 + 88.5) / 2 = 84.25 → 84.3
     expect(body.lines.find((l) => l.lineId === "NE")?.njtOtpPercent).toBe(84.3);
     expect(body.lines.find((l) => l.lineId === "NC")?.njtOtpPercent).toBe(90);
+    // Batched per-line project OTP@15min stays distinct: NE 90/100, NC 75/100.
+    expect(body.lines.find((l) => l.lineId === "NE")?.projectOtpPercent15Min).toBe(90);
+    expect(body.lines.find((l) => l.lineId === "NC")?.projectOtpPercent15Min).toBe(75);
   });
 });

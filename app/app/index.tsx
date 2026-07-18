@@ -31,9 +31,13 @@ export default function SystemOverview() {
   const health = useApi(() => api.health(), []);
   const collectionStartDate = health.data?.collectionStartDate ?? null;
 
-  const ranked = (lines.data?.lines ?? [])
-    .filter((l) => l.njtOtpPercent !== null)
-    .sort((a, b) => (b.njtOtpPercent ?? 0) - (a.njtOtpPercent ?? 0));
+  const ranked = useMemo(
+    () =>
+      (lines.data?.lines ?? [])
+        .filter((l) => l.njtOtpPercent !== null)
+        .sort((a, b) => (b.njtOtpPercent ?? 0) - (a.njtOtpPercent ?? 0)),
+    [lines.data],
+  );
   const best = ranked[0];
   const worst = ranked[ranked.length - 1];
 

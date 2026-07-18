@@ -52,6 +52,26 @@ describe("AggregateRepository", () => {
     expect(rows[0]?.tripsOperated).toBe(20);
   });
 
+  it("rolls up monthly OTP in SQL, summing per-threshold counts across days", () => {
+    repos.aggregates.upsertOtpDaily({
+      scope: "line", scopeId: "NE", serviceDate: "2025-07-15", direction: "all",
+      tripsOperated: 100, tripsCancelled: 0, onTimeCounts: { "900": 92 }, sumDelaySeconds: 0,
+    });
+    repos.aggregates.upsertOtpDaily({
+      scope: "line", scopeId: "NE", serviceDate: "2025-07-16", direction: "all",
+      tripsOperated: 50, tripsCancelled: 0, onTimeCounts: { "900": 40 }, sumDelaySeconds: 0,
+    });
+    repos.aggregates.upsertOtpDaily({
+      scope: "line", scopeId: "NE", serviceDate: "2025-06-01", direction: "all",
+      tripsOperated: 20, tripsCancelled: 0, onTimeCounts: { "900": 5 }, sumDelaySeconds: 0,
+    });
+    const monthly = repos.aggregates.getOtpMonthly("line", "NE", "all", "900");
+    expect(monthly).toEqual([
+      { month: "2025-06", tripsOperated: 20, onTimeCount: 5 },
+      { month: "2025-07", tripsOperated: 150, onTimeCount: 132 },
+    ]);
+  });
+
   it("sums heatmap buckets across dates in SQL", () => {
     for (const date of ["2025-07-15", "2025-07-16"]) {
       repos.aggregates.upsertHeatmapDaily({
@@ -151,5 +171,68 @@ describe("AggregateRepository", () => {
 
     const empty = repos.aggregates.topConnectionTriples(5, "2025-08-01", "2025-08-31");
     expect(empty).toEqual([]);
+  });
+
+  const emptyBundle = () => ({
+    otp: [] as Parameters<Repositories["aggregates"]["replaceServiceDate"]>[1]["otp"][number][],
+    distribution: [],
+    heatmap: [],
+    trips: [],
+    stationDaily: [],
+    stationHourly: [],
+    stationDistribution: [],
+    connections: [],
+  });
+
+  it("replaceServiceDate clears prior rows and persists the new bundle", () => {
+    // A stale row for the day that recompute should wipe.
+    repos.aggregates.upsertOtpDaily({
+      scope: "system", scopeId: "system", serviceDate: "2025-07-15", direction: "all",
+      tripsOperated: 999, tripsCancelled: 9, onTimeCounts: { "300": 1 }, sumDelaySeconds: 1,
+    });
+
+    repos.aggregates.replaceServiceDate("2025-07-15", {
+      ...emptyBundle(),
+      otp: [{
+        scope: "line", scopeId: "NE", serviceDate: "2025-07-15", direction: "all",
+        tripsOperated: 100, tripsCancelled: 2, onTimeCounts: { "300": 80 }, sumDelaySeconds: 1200,
+      }],
+      trips: [{
+        tripId: "t1", serviceDate: "2025-07-15", routeId: "NE",
+        lineName: "Northeast Corridor Line", direction: "inbound",
+        terminalStopName: "New York Penn", terminalDelaySeconds: 120,
+      }],
+    });
+
+    // Stale system row gone; the new line row is present.
+    expect(repos.aggregates.getOtpDailyRows("system", "system", "all", "2025-07-15", "2025-07-15")).toHaveLength(0);
+    const otp = repos.aggregates.getOtpDailyRows("line", "NE", "all", "2025-07-15", "2025-07-15");
+    expect(otp).toHaveLength(1);
+    expect(otp[0]?.tripsOperated).toBe(100);
+    expect(repos.aggregates.worstTripsForRoute("NE", "2025-07-15", "2025-07-15", 10)).toHaveLength(1);
+  });
+
+  it("replaceServiceDate is atomic: a failed upsert rolls back the clear", () => {
+    repos.aggregates.upsertOtpDaily({
+      scope: "system", scopeId: "system", serviceDate: "2025-07-15", direction: "all",
+      tripsOperated: 42, tripsCancelled: 0, onTimeCounts: { "300": 40 }, sumDelaySeconds: 100,
+    });
+
+    // A connection row that violates NOT NULL fails on the final upsert.
+    const badConnection = {
+      inboundTripId: null, transferStopId: "STX", outboundTripId: "OUT1",
+      serviceDate: "2025-07-15", observations: 1, successes: 1,
+      peakObservations: 0, peakSuccesses: 0, offPeakObservations: 0, offPeakSuccesses: 0,
+      byDayOfWeek: {}, inboundDelayDistribution: {},
+    } as unknown as Parameters<Repositories["aggregates"]["replaceServiceDate"]>[1]["connections"][number];
+
+    expect(() =>
+      repos.aggregates.replaceServiceDate("2025-07-15", { ...emptyBundle(), connections: [badConnection] }),
+    ).toThrow();
+
+    // The original day survived — the delete rolled back with the failed upsert.
+    const rows = repos.aggregates.getOtpDailyRows("system", "system", "all", "2025-07-15", "2025-07-15");
+    expect(rows).toHaveLength(1);
+    expect(rows[0]?.tripsOperated).toBe(42);
   });
 });

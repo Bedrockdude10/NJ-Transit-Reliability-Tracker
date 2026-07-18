@@ -5,13 +5,12 @@ import {
   type MapResponse,
   type MapStation,
   type OfficialNjtMetric,
+  type OtpDailyRow,
 } from "@njt/shared";
 import { Hono } from "hono";
-import { buildOfficialComparison } from "../aggregation";
+import { ON_TIME_15_MIN, averageLightRailOtp, buildOfficialComparison } from "../aggregation";
 import { monthRange, resolveRange } from "../dates";
-import { round1 } from "../util";
-
-const ON_TIME_15_MIN = "900";
+import { CACHE_CONTROL_DAILY, round1 } from "../util";
 
 /** GET /map — real network geometry + per-line reliability for the system map. */
 export function mapRoutes(repos: Repositories): Hono {
@@ -27,9 +26,7 @@ export function mapRoutes(repos: Repositories): Hono {
     const stationIds = new Set<string>();
 
     // Systemwide light-rail OTP (one figure, shared by the light rail lines).
-    const lrOtpRows = repos.lightRail.getOtpForRange(months.from, months.to);
-    const lightRailOtp =
-      lrOtpRows.length > 0 ? round1(lrOtpRows.reduce((s, r) => s + r.otpPercent, 0) / lrOtpRows.length) : null;
+    const lightRailOtp = averageLightRailOtp(repos.lightRail.getOtpForRange(months.from, months.to));
 
     // All lines' official metrics in one ranged query, grouped by line name in
     // memory (rather than one getForLineRange per route).
@@ -40,6 +37,15 @@ export function mapRoutes(repos: Repositories): Hono {
       else officialByLine.set(m.lineName, [m]);
     }
 
+    // All lines' OTP daily rows in one ranged query, grouped by scope_id
+    // (route id) in memory — rather than one getOtpDailyRows per route (N+1).
+    const otpByRoute = new Map<string, OtpDailyRow[]>();
+    for (const row of repos.aggregates.getOtpDailyRowsForScope("line", "all", range.from, range.to)) {
+      const list = otpByRoute.get(row.scopeId);
+      if (list) list.push(row);
+      else otpByRoute.set(row.scopeId, [row]);
+    }
+
     const lines: MapLine[] = repos.gtfs.routes(version.versionId).map((route) => {
       const path = repos.gtfs.representativeStopSequence(version.versionId, route.routeId).map((s) => s.stopId);
       for (const id of path) stationIds.add(id);
@@ -48,7 +54,7 @@ export function mapRoutes(repos: Repositories): Hono {
       const official = isLightRail
         ? null
         : buildOfficialComparison(officialByLine.get(route.lineName) ?? []);
-      const otpRows = isLightRail ? [] : repos.aggregates.getOtpDailyRows("line", route.routeId, "all", range.from, range.to);
+      const otpRows = isLightRail ? [] : (otpByRoute.get(route.routeId) ?? []);
       const operated = otpRows.reduce((s, r) => s + r.tripsOperated, 0);
       const onTime15 = otpRows.reduce((s, r) => s + (r.onTimeCounts[ON_TIME_15_MIN] ?? 0), 0);
 
@@ -69,6 +75,7 @@ export function mapRoutes(repos: Repositories): Hono {
       .filter((s) => s.lat !== null && s.lon !== null && stationIds.has(s.stopId))
       .map((s) => ({ stopId: s.stopId, stopName: s.stopName, lat: s.lat as number, lon: s.lon as number }));
 
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json({ from: range.from, to: range.to, stations, lines } satisfies MapResponse);
   });
 

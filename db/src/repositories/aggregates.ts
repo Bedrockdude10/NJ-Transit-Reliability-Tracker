@@ -52,6 +52,28 @@ export interface ConnectionTripleAgg {
   outboundTripId: string;
   observations: number;
 }
+export interface OtpMonthlyAgg {
+  /** YYYY-MM (the month prefix of the service dates it aggregates). */
+  month: string;
+  tripsOperated: number;
+  /** Summed on-time count for the requested threshold key. */
+  onTimeCount: number;
+}
+
+/**
+ * A full set of recomputed daily aggregate rows for one service date, as the
+ * pipeline's aggregator produces it. Consumed by {@link AggregateRepository.replaceServiceDate}.
+ */
+export interface ServiceDateAggregates {
+  otp: readonly OtpDailyRow[];
+  distribution: readonly DelayDistributionDailyRow[];
+  heatmap: readonly HeatmapDailyRow[];
+  trips: readonly TripDailyRow[];
+  stationDaily: readonly StationDailyRow[];
+  stationHourly: readonly StationHourlyRow[];
+  stationDistribution: readonly StationDistributionDailyRow[];
+  connections: readonly ConnectionDailyRow[];
+}
 
 /**
  * Read/write access to the pre-computed daily aggregate tables. Writers are
@@ -61,22 +83,49 @@ export interface ConnectionTripleAgg {
 export class AggregateRepository {
   constructor(private readonly db: Database) {}
 
+  /** Aggregate tables keyed by service_date, cleared together on recompute. */
+  private static readonly SERVICE_DATE_TABLES = [
+    "otp_aggregates",
+    "delay_distribution_aggregates",
+    "heatmap_aggregates",
+    "trip_daily_aggregates",
+    "station_daily_aggregates",
+    "station_hourly_aggregates",
+    "station_distribution_aggregates",
+    "connection_aggregates",
+  ] as const;
+
+  /**
+   * Unwrapped delete of every aggregate row for a service date. Callers must
+   * already be inside a transaction (node:sqlite BEGIN does not nest).
+   */
+  private deleteServiceDateRows(serviceDate: string): void {
+    for (const table of AggregateRepository.SERVICE_DATE_TABLES) {
+      this.db.prepare(`DELETE FROM ${table} WHERE service_date = :d`).run({ d: serviceDate });
+    }
+  }
+
   /** Delete every aggregate row for a service date, so it can be recomputed. */
   clearServiceDate(serviceDate: string): void {
-    const tables = [
-      "otp_aggregates",
-      "delay_distribution_aggregates",
-      "heatmap_aggregates",
-      "trip_daily_aggregates",
-      "station_daily_aggregates",
-      "station_hourly_aggregates",
-      "station_distribution_aggregates",
-      "connection_aggregates",
-    ];
+    this.db.transaction(() => this.deleteServiceDateRows(serviceDate));
+  }
+
+  /**
+   * Atomically replace all aggregates for a service date: clear the old rows and
+   * persist the recomputed bundle inside a single transaction, so API readers
+   * never observe a half-cleared day and a failed recompute rolls back cleanly.
+   */
+  replaceServiceDate(serviceDate: string, bundle: ServiceDateAggregates): void {
     this.db.transaction(() => {
-      for (const table of tables) {
-        this.db.prepare(`DELETE FROM ${table} WHERE service_date = :d`).run({ d: serviceDate });
-      }
+      this.deleteServiceDateRows(serviceDate);
+      for (const row of bundle.otp) this.upsertOtpDaily(row);
+      for (const row of bundle.distribution) this.upsertDelayDistributionDaily(row);
+      for (const row of bundle.heatmap) this.upsertHeatmapDaily(row);
+      for (const row of bundle.trips) this.upsertTripDaily(row);
+      for (const row of bundle.stationDaily) this.upsertStationDaily(row);
+      for (const row of bundle.stationHourly) this.upsertStationHourly(row);
+      for (const row of bundle.stationDistribution) this.upsertStationDistributionDaily(row);
+      for (const row of bundle.connections) this.upsertConnectionDaily(row);
     });
   }
 
@@ -106,6 +155,32 @@ export class AggregateRepository {
       });
   }
 
+  /** Explicit column list for OTP daily reads (B5: no SELECT *). */
+  private static readonly OTP_COLUMNS =
+    "scope, scope_id, service_date, direction, trips_operated, trips_cancelled, on_time_counts, sum_delay_seconds";
+
+  private static toOtpRow(row: {
+    scope: string;
+    scope_id: string;
+    service_date: string;
+    direction: string;
+    trips_operated: number;
+    trips_cancelled: number;
+    on_time_counts: string;
+    sum_delay_seconds: number;
+  }): OtpDailyRow {
+    return {
+      scope: row.scope as ScopeKind,
+      scopeId: row.scope_id,
+      serviceDate: row.service_date,
+      direction: row.direction as DirectionFilter,
+      tripsOperated: row.trips_operated,
+      tripsCancelled: row.trips_cancelled,
+      onTimeCounts: parseCountMap(row.on_time_counts),
+      sumDelaySeconds: row.sum_delay_seconds,
+    };
+  }
+
   getOtpDailyRows(
     scope: ScopeKind,
     scopeId: string,
@@ -114,29 +189,70 @@ export class AggregateRepository {
     to: string,
   ): OtpDailyRow[] {
     return this.db
-      .all<{
-        scope: string;
-        scope_id: string;
-        service_date: string;
-        direction: string;
-        trips_operated: number;
-        trips_cancelled: number;
-        on_time_counts: string;
-        sum_delay_seconds: number;
-      }>(
-        "SELECT * FROM otp_aggregates WHERE scope=:scope AND scope_id=:scopeId AND direction=:dir AND service_date BETWEEN :from AND :to ORDER BY service_date",
+      .all<Parameters<typeof AggregateRepository.toOtpRow>[0]>(
+        `SELECT ${AggregateRepository.OTP_COLUMNS} FROM otp_aggregates
+         WHERE scope=:scope AND scope_id=:scopeId AND direction=:dir AND service_date BETWEEN :from AND :to
+         ORDER BY service_date`,
         { scope, scopeId, dir: direction, from, to },
       )
-      .map((row) => ({
-        scope: row.scope as ScopeKind,
-        scopeId: row.scope_id,
-        serviceDate: row.service_date,
-        direction: row.direction as DirectionFilter,
-        tripsOperated: row.trips_operated,
-        tripsCancelled: row.trips_cancelled,
-        onTimeCounts: parseCountMap(row.on_time_counts),
-        sumDelaySeconds: row.sum_delay_seconds,
-      }));
+      .map(AggregateRepository.toOtpRow);
+  }
+
+  /**
+   * OTP daily rows for EVERY scope_id under a scope+direction in one ranged
+   * query. Lets callers that need all lines (e.g. /map) group by scope_id in
+   * memory instead of issuing one {@link getOtpDailyRows} per line (N+1).
+   */
+  getOtpDailyRowsForScope(scope: ScopeKind, direction: DirectionFilter, from: string, to: string): OtpDailyRow[] {
+    return this.db
+      .all<Parameters<typeof AggregateRepository.toOtpRow>[0]>(
+        `SELECT ${AggregateRepository.OTP_COLUMNS} FROM otp_aggregates
+         WHERE scope=:scope AND direction=:dir AND service_date BETWEEN :from AND :to
+         ORDER BY scope_id, service_date`,
+        { scope, dir: direction, from, to },
+      )
+      .map(AggregateRepository.toOtpRow);
+  }
+
+  /**
+   * OTP daily rows for a scope_id across ALL directions in one ranged query.
+   * Lets callers that need every direction (e.g. /lines/:id/summary) group by
+   * direction in memory instead of one {@link getOtpDailyRows} per direction.
+   */
+  getOtpDailyRowsAllDirections(scope: ScopeKind, scopeId: string, from: string, to: string): OtpDailyRow[] {
+    return this.db
+      .all<Parameters<typeof AggregateRepository.toOtpRow>[0]>(
+        `SELECT ${AggregateRepository.OTP_COLUMNS} FROM otp_aggregates
+         WHERE scope=:scope AND scope_id=:scopeId AND service_date BETWEEN :from AND :to
+         ORDER BY direction, service_date`,
+        { scope, scopeId, from, to },
+      )
+      .map(AggregateRepository.toOtpRow);
+  }
+
+  /**
+   * Monthly OTP rollup for a scope, bucketed in SQL (GROUP BY the YYYY-MM
+   * prefix of service_date) rather than pulling every daily row and grouping in
+   * JS. `thresholdKey` is the on-time threshold whose count to sum (a key of
+   * on_time_counts, e.g. "900"). Ordered by month ascending.
+   */
+  getOtpMonthly(
+    scope: ScopeKind,
+    scopeId: string,
+    direction: DirectionFilter,
+    thresholdKey: string,
+  ): OtpMonthlyAgg[] {
+    return this.db.all<OtpMonthlyAgg>(
+      /* sql */ `
+        SELECT substr(service_date, 1, 7) AS month,
+               SUM(trips_operated) AS tripsOperated,
+               SUM(COALESCE(json_extract(on_time_counts, '$."' || :threshold || '"'), 0)) AS onTimeCount
+        FROM otp_aggregates
+        WHERE scope=:scope AND scope_id=:scopeId AND direction=:dir
+        GROUP BY month ORDER BY month
+      `,
+      { scope, scopeId, dir: direction, threshold: thresholdKey },
+    );
   }
 
   // --- Delay distribution ----------------------------------------------------
@@ -161,7 +277,7 @@ export class AggregateRepository {
   ): DelayDistributionDailyRow[] {
     return this.db
       .all<{ scope: string; scope_id: string; service_date: string; counts: string }>(
-        "SELECT * FROM delay_distribution_aggregates WHERE scope=:scope AND scope_id=:scopeId AND service_date BETWEEN :from AND :to ORDER BY service_date",
+        "SELECT scope, scope_id, service_date, counts FROM delay_distribution_aggregates WHERE scope=:scope AND scope_id=:scopeId AND service_date BETWEEN :from AND :to ORDER BY service_date",
         { scope, scopeId, from, to },
       )
       .map((row) => ({
@@ -355,7 +471,7 @@ export class AggregateRepository {
   getStationDistributionRows(stopId: string, from: string, to: string): StationDistributionDailyRow[] {
     return this.db
       .all<{ stop_id: string; service_date: string; counts: string }>(
-        "SELECT * FROM station_distribution_aggregates WHERE stop_id=:stop AND service_date BETWEEN :from AND :to ORDER BY service_date",
+        "SELECT stop_id, service_date, counts FROM station_distribution_aggregates WHERE stop_id=:stop AND service_date BETWEEN :from AND :to ORDER BY service_date",
         { stop: stopId, from, to },
       )
       .map((row) => ({ stopId: row.stop_id, serviceDate: row.service_date, counts: parseCountMap(row.counts) }));
@@ -419,7 +535,10 @@ export class AggregateRepository {
         inbound_delay_distribution: string;
       }>(
         /* sql */ `
-        SELECT * FROM connection_aggregates
+        SELECT inbound_trip_id, transfer_stop_id, outbound_trip_id, service_date, observations, successes,
+               peak_observations, peak_successes, off_peak_observations, off_peak_successes,
+               by_day_of_week, inbound_delay_distribution
+        FROM connection_aggregates
         WHERE inbound_trip_id=:inbound AND transfer_stop_id=:transfer AND outbound_trip_id=:outbound
           AND service_date BETWEEN :from AND :to
         ORDER BY service_date

@@ -10,6 +10,7 @@
  *
  * Spacing, radii, type, and elevation are scheme-independent.
  */
+import { OTP_FAIR_THRESHOLD_PERCENT, OTP_GOOD_THRESHOLD_PERCENT } from "@njt/shared";
 import { DARK, type ColorKey, type Palette } from "./palette";
 
 const cssVars = Object.fromEntries((Object.keys(DARK) as ColorKey[]).map((k) => [k, `var(--njt-${k})`])) as Palette;
@@ -43,21 +44,21 @@ export const theme = {
 
 /** Pick a CSS-variable color for an OTP percentage (higher is better). */
 export function otpColor(percent: number): string {
-  if (percent >= 90) return theme.colors.good;
-  if (percent >= 75) return theme.colors.warn;
+  if (percent >= OTP_GOOD_THRESHOLD_PERCENT) return theme.colors.good;
+  if (percent >= OTP_FAIR_THRESHOLD_PERCENT) return theme.colors.warn;
   return theme.colors.bad;
 }
 
 /** Translucent CSS-variable tint matching otpColor. */
 export function otpColorSoft(percent: number): string {
-  if (percent >= 90) return theme.colors.goodSoft;
-  if (percent >= 75) return theme.colors.warnSoft;
+  if (percent >= OTP_GOOD_THRESHOLD_PERCENT) return theme.colors.goodSoft;
+  if (percent >= OTP_FAIR_THRESHOLD_PERCENT) return theme.colors.warnSoft;
   return theme.colors.badSoft;
 }
 
 /** Concrete OTP color from a resolved palette (for SVG). */
 export function otpColorAt(palette: Palette, percent: number): string {
-  if (percent >= 90) return palette.good;
-  if (percent >= 75) return palette.warn;
+  if (percent >= OTP_GOOD_THRESHOLD_PERCENT) return palette.good;
+  if (percent >= OTP_FAIR_THRESHOLD_PERCENT) return palette.warn;
   return palette.bad;
 }

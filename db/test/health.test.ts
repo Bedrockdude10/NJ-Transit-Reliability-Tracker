@@ -46,4 +46,12 @@ describe("HealthRepository", () => {
   it("returns 100% uptime before collection has started", () => {
     expect(repos.health.uptimePercent(DAY)).toBe(100);
   });
+
+  it("accepts a pre-resolved start date (same result as the internal lookup)", () => {
+    repos.health.ensureCollectionStart("2025-07-15");
+    const startMs = Date.parse("2025-07-15T00:00:00Z");
+    const now = startMs + 100_000;
+    repos.health.recordGap("TripUpdates", startMs + 10_000, startMs + 20_000);
+    expect(repos.health.uptimePercent(now, "2025-07-15")).toBeCloseTo(repos.health.uptimePercent(now), 5);
+  });
 });

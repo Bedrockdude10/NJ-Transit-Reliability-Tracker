@@ -9,6 +9,7 @@ import {
 } from "@njt/shared";
 import { Hono } from "hono";
 import { resolveRange } from "../dates";
+import { parsePositiveInt } from "../util";
 
 function startOfDayMs(date: string): number {
   return gtfsStopTimeToEpochSeconds(date, "00:00:00") * 1000;
@@ -22,8 +23,8 @@ export function alertRoutes(repos: Repositories): Hono {
 
   router.get("/", (c) => {
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
-    const page = Math.max(1, Number(c.req.query("page") ?? 1) || 1);
-    const pageSize = Math.min(Math.max(Number(c.req.query("pageSize") ?? 50) || 50, 1), 200);
+    const page = parsePositiveInt(c.req.query("page"), 1);
+    const pageSize = parsePositiveInt(c.req.query("pageSize"), 50, 200);
 
     const { alerts, total } = repos.alerts.list({
       route: c.req.query("line"),

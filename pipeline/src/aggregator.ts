@@ -1,8 +1,11 @@
 import type { Repositories } from "@njt/db";
 import {
   NJT_TIMEZONE,
+  OTP_STRICT_THRESHOLD_SECONDS,
   OTP_THRESHOLDS_SECONDS,
   PEAK_WINDOWS,
+  TRANSFER_BUFFER_DEFAULT_SECONDS,
+  TRANSFER_WINDOW_DEFAULT_SECONDS,
   bucketForDelay,
   isOnTime,
   isPeak,
@@ -42,7 +45,12 @@ export interface AggregateBundle {
   connections: ConnectionDailyRow[];
 }
 
-const ON_TIME_SECS = 300; // "within 5 minutes" for amplification arrival test
+// Precomputed once: the on-time thresholds paired with their JSON string keys,
+// so the per-event OtpAcc loop never rebuilds `String(t)` (mirrors the
+// countOnTimeByThreshold pattern in shared/src/delay.ts).
+const THRESHOLD_KEYS: readonly (readonly [number, string])[] = OTP_THRESHOLDS_SECONDS.map(
+  (t) => [t, String(t)] as const,
+);
 
 interface OtpAcc {
   scope: ScopeKind;
@@ -56,7 +64,7 @@ interface OtpAcc {
 
 function emptyOnTime(): Record<string, number> {
   const counts: Record<string, number> = {};
-  for (const t of OTP_THRESHOLDS_SECONDS) counts[String(t)] = 0;
+  for (const [, key] of THRESHOLD_KEYS) counts[key] = 0;
   return counts;
 }
 
@@ -82,9 +90,9 @@ export function computeAggregates(
   options: AggregatorOptions = {},
 ): AggregateBundle {
   const tz = options.timeZone ?? NJT_TIMEZONE;
-  const maxWindow = options.maxTransferWindowSeconds ?? 1800;
-  const minBuffer = options.minTransferBufferSeconds ?? 0;
-  const lateThreshold = options.lateThresholdSeconds ?? ON_TIME_SECS;
+  const maxWindow = options.maxTransferWindowSeconds ?? TRANSFER_WINDOW_DEFAULT_SECONDS;
+  const minBuffer = options.minTransferBufferSeconds ?? TRANSFER_BUFFER_DEFAULT_SECONDS;
+  const lateThreshold = options.lateThresholdSeconds ?? OTP_STRICT_THRESHOLD_SECONDS;
 
   const otpAcc = new Map<string, OtpAcc>();
   const distAcc = new Map<string, Record<string, number>>(); // scope|scopeId -> counts
@@ -99,9 +107,8 @@ export function computeAggregates(
     } else if (delay !== null) {
       acc.operated += 1;
       acc.sumDelay += delay;
-      for (const t of OTP_THRESHOLDS_SECONDS) {
+      for (const [t, tKey] of THRESHOLD_KEYS) {
         // onTime is pre-seeded by emptyOnTime(), so every threshold key exists.
-        const tKey = String(t);
         if (isOnTime(delay, t)) acc.onTime[tKey] = acc.onTime[tKey]! + 1;
       }
     }
@@ -232,8 +239,9 @@ function computeStationAggregates(
 
     const at = e.scheduledArrival ?? e.observedArrival;
     if (at !== null) {
-      const hKey = `${e.stopId}|${localHourOfDay(at, tz)}`;
-      const h = hourlyAcc.get(hKey) ?? { stopId: e.stopId, hour: localHourOfDay(at, tz), sum: 0, obs: 0 };
+      const hour = localHourOfDay(at, tz);
+      const hKey = `${e.stopId}|${hour}`;
+      const h = hourlyAcc.get(hKey) ?? { stopId: e.stopId, hour, sum: 0, obs: 0 };
       h.sum += e.delaySeconds;
       h.obs += 1;
       hourlyAcc.set(hKey, h);
@@ -251,7 +259,7 @@ function computeStationAggregates(
       const cur = tripEvents[i];
       const next = tripEvents[i + 1];
       if (!cur || !next || cur.delaySeconds === null || cur.tripCancelled) continue;
-      if (Math.abs(cur.delaySeconds) > ON_TIME_SECS) continue; // arrived on time only
+      if (Math.abs(cur.delaySeconds) > OTP_STRICT_THRESHOLD_SECONDS) continue; // arrived on time only
       const acc = dailyAcc.get(`${cur.stopId}|${cur.lineName}|${cur.direction}`);
       if (!acc) continue;
       acc.within5 += 1;
@@ -344,6 +352,11 @@ function computeConnections(
     for (const inbound of arrivals) {
       const schedArr = inbound.scheduledArrival;
       const actualArr = inbound.observedArrival;
+      // These depend only on the inbound arrival, so compute them once per
+      // arrival rather than per candidate outbound (O(arrivals), not O(pairs)).
+      const peak = isPeak(schedArr, PEAK_WINDOWS, tz);
+      const dow = String(localDayOfWeek(schedArr, tz));
+      const label = bucketForDelay(actualArr - schedArr).label;
       while (lo < departures.length) {
         const d = departures[lo];
         if (!d || d.scheduledDeparture >= schedArr) break;
@@ -362,9 +375,6 @@ function computeConnections(
           { inboundTripId: inbound.tripId, transferStopId: stopId, outboundTripId: outbound.tripId, observations: 0, successes: 0, peakObs: 0, peakSucc: 0, offObs: 0, offSucc: 0, byDow: {}, dist: {} };
 
         const success = actualArr <= dep - minBuffer;
-        const peak = isPeak(schedArr, PEAK_WINDOWS, tz);
-        const dow = String(localDayOfWeek(schedArr, tz));
-        const label = bucketForDelay(actualArr - schedArr).label;
 
         c.observations += 1;
         if (success) c.successes += 1;
@@ -407,13 +417,7 @@ export function recomputeServiceDate(repos: Repositories, serviceDate: string, o
   const events = repos.events.getByServiceDate(serviceDate);
   const bundle = computeAggregates(events, serviceDate, options);
 
-  repos.aggregates.clearServiceDate(serviceDate);
-  for (const row of bundle.otp) repos.aggregates.upsertOtpDaily(row);
-  for (const row of bundle.distribution) repos.aggregates.upsertDelayDistributionDaily(row);
-  for (const row of bundle.heatmap) repos.aggregates.upsertHeatmapDaily(row);
-  for (const row of bundle.trips) repos.aggregates.upsertTripDaily(row);
-  for (const row of bundle.stationDaily) repos.aggregates.upsertStationDaily(row);
-  for (const row of bundle.stationHourly) repos.aggregates.upsertStationHourly(row);
-  for (const row of bundle.stationDistribution) repos.aggregates.upsertStationDistributionDaily(row);
-  for (const row of bundle.connections) repos.aggregates.upsertConnectionDaily(row);
+  // One atomic clear+upsert so API readers never see a half-cleared day and a
+  // failed recompute rolls back cleanly (persistence lives in @njt/db).
+  repos.aggregates.replaceServiceDate(serviceDate, bundle);
 }

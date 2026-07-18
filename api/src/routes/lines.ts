@@ -1,6 +1,7 @@
 import type { Repositories } from "@njt/db";
 import {
   NJT_OFFICIAL_THRESHOLD_SECONDS,
+  monthKey,
   parseDateString,
   type HeatmapResponse,
   type HistoryResponse,
@@ -16,6 +17,7 @@ import {
 } from "@njt/shared";
 import { Hono } from "hono";
 import {
+  ON_TIME_15_MIN,
   buildAnnualOtp,
   buildCancellations,
   buildHeatmap,
@@ -25,9 +27,7 @@ import {
 } from "../aggregation";
 import { listLines, resolveLine } from "../catalog";
 import { monthRange, resolveRange } from "../dates";
-import { parseHeatmapType, parseLimit, round1 } from "../util";
-
-const ON_TIME_15_MIN = "900";
+import { CACHE_CONTROL_DAILY, parseHeatmapType, parseLimit, round1 } from "../util";
 
 /** Monday (ISO week start) of a YYYY-MM-DD date, as YYYY-MM-DD. */
 function weekStart(date: string): string {
@@ -53,7 +53,7 @@ function trendPoint(date: string, operated: number, cancelled: number, onTime15:
 function buildTrend(rows: readonly OtpDailyRow[], interval: "daily" | "weekly", officialByMonth: Map<string, number>): TrendPoint[] {
   const njtFor = (date: string): number | null => {
     const { year, month } = parseDateString(date);
-    return officialByMonth.get(`${year}-${month}`) ?? null;
+    return officialByMonth.get(monthKey(year, month)) ?? null;
   };
 
   if (interval === "daily") {
@@ -88,8 +88,15 @@ export function lineRoutes(repos: Repositories): Hono {
     const { routeId, name } = resolveLine(repos, c.req.param("lineId"));
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const dist = repos.aggregates.getDelayDistributionDailyRows("line", routeId, range.from, range.to);
-    const otpFor = (dir: "all" | "inbound" | "outbound") =>
-      repos.aggregates.getOtpDailyRows("line", routeId, dir, range.from, range.to);
+    // One ranged query across all directions, grouped in memory (was three
+    // getOtpDailyRows differing only by direction).
+    const byDirection = new Map<string, OtpDailyRow[]>();
+    for (const row of repos.aggregates.getOtpDailyRowsAllDirections("line", routeId, range.from, range.to)) {
+      const list = byDirection.get(row.direction);
+      if (list) list.push(row);
+      else byDirection.set(row.direction, [row]);
+    }
+    const otpFor = (dir: "all" | "inbound" | "outbound") => byDirection.get(dir) ?? [];
     const months = monthRange(range);
     const officialMetrics = repos.official.getForLineRange(name, months.from, months.to);
 
@@ -105,6 +112,7 @@ export function lineRoutes(repos: Repositories): Hono {
       njtOfficial: buildOfficialComparison(officialMetrics),
       njtCancellations: buildCancellations(officialMetrics),
     };
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
   });
 
@@ -115,7 +123,7 @@ export function lineRoutes(repos: Repositories): Hono {
     const rows = repos.aggregates.getOtpDailyRows("line", routeId, "all", range.from, range.to);
     const months = monthRange(range);
     const officialByMonth = new Map(
-      repos.official.getForLineRange(name, months.from, months.to).map((m) => [`${m.year}-${m.month}`, m.otpPercent]),
+      repos.official.getForLineRange(name, months.from, months.to).map((m) => [monthKey(m.year, m.month), m.otpPercent]),
     );
     const response: LineTrendResponse = {
       lineId: routeId,
@@ -133,13 +141,11 @@ export function lineRoutes(repos: Repositories): Hono {
   router.get("/:lineId/monthly", (c) => {
     const { routeId, name } = resolveLine(repos, c.req.param("lineId"));
 
+    // Monthly project OTP is bucketed in SQL (GROUP BY the YYYY-MM prefix)
+    // rather than pulling every daily row across all history and re-bucketing.
     const projectByMonth = new Map<string, { operated: number; onTime15: number }>();
-    for (const row of repos.aggregates.getOtpDailyRows("line", routeId, "all", "2017-01-01", "2100-01-01")) {
-      const month = row.serviceDate.slice(0, 7);
-      const acc = projectByMonth.get(month) ?? { operated: 0, onTime15: 0 };
-      acc.operated += row.tripsOperated;
-      acc.onTime15 += row.onTimeCounts[ON_TIME_15_MIN] ?? 0;
-      projectByMonth.set(month, acc);
+    for (const row of repos.aggregates.getOtpMonthly("line", routeId, "all", ON_TIME_15_MIN)) {
+      projectByMonth.set(row.month, { operated: row.tripsOperated, onTime15: row.onTimeCount });
     }
 
     const officialByMonth = new Map<string, OfficialNjtMetric>(
@@ -160,6 +166,7 @@ export function lineRoutes(repos: Repositories): Hono {
     });
 
     const response: LineMonthlyResponse = { lineId: routeId, name, rows };
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
   });
 

@@ -137,10 +137,11 @@ export class HealthRepository {
 
   /**
    * Uptime as the fraction of the collection window not lost to recorded gaps.
-   * Returns 100 when there is no collection window yet.
+   * Returns 100 when there is no collection window yet. `start` defaults to
+   * {@link collectionStartDate}; callers that already resolved it (e.g. /health)
+   * can pass it in to avoid a second lookup.
    */
-  uptimePercent(nowMs: number = Date.now()): number {
-    const start = this.collectionStartDate();
+  uptimePercent(nowMs: number = Date.now(), start: string | null = this.collectionStartDate()): number {
     if (!start) return 100;
     const startMs = Date.parse(`${start}T00:00:00Z`);
     const windowMs = Math.max(nowMs - startMs, 1);

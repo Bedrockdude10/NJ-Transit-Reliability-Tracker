@@ -22,7 +22,7 @@ export default function Compare() {
   const lines = list.data?.lines ?? [];
   const cc = useChartColors();
   // Fallback palette (concrete, for SVG) for lines NJT publishes no color for.
-  const palette = [cc.accent, cc.njt, cc.good, cc.warn, cc.bad];
+  const palette = useMemo(() => [cc.accent, cc.njt, cc.good, cc.warn, cc.bad], [cc]);
 
   const [selected, setSelectedState] = useState<string[] | null>(remembered);
   const setSelected = useCallback((next: string[]) => {
@@ -67,11 +67,15 @@ export default function Compare() {
     }
   };
 
-  const series: LineSeries[] = (comparison?.series ?? []).map((s, i) => ({
-    label: s.name,
-    color: s.color ? `#${s.color}` : palette[i % palette.length]!,
-    values: fillForward(s.values),
-  }));
+  const series: LineSeries[] = useMemo(
+    () =>
+      (comparison?.series ?? []).map((s, i) => ({
+        label: s.name,
+        color: s.color ? `#${s.color}` : palette[i % palette.length]!,
+        values: fillForward(s.values),
+      })),
+    [comparison, palette],
+  );
 
   return (
     <Screen>
