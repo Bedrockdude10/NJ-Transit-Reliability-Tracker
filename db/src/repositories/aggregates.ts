@@ -139,6 +139,39 @@ export class AggregateRepository {
       }));
   }
 
+  /**
+   * OTP daily rows for EVERY scope_id under a scope+direction in one ranged
+   * query. Lets callers that need all lines (e.g. /map) group by scope_id in
+   * memory instead of issuing one {@link getOtpDailyRows} per line (N+1).
+   */
+  getOtpDailyRowsForScope(scope: ScopeKind, direction: DirectionFilter, from: string, to: string): OtpDailyRow[] {
+    return this.db
+      .all<{
+        scope_id: string;
+        service_date: string;
+        direction: string;
+        trips_operated: number;
+        trips_cancelled: number;
+        on_time_counts: string;
+        sum_delay_seconds: number;
+      }>(
+        `SELECT scope_id, service_date, direction, trips_operated, trips_cancelled, on_time_counts, sum_delay_seconds
+         FROM otp_aggregates WHERE scope=:scope AND direction=:dir AND service_date BETWEEN :from AND :to
+         ORDER BY scope_id, service_date`,
+        { scope, dir: direction, from, to },
+      )
+      .map((row) => ({
+        scope,
+        scopeId: row.scope_id,
+        serviceDate: row.service_date,
+        direction: row.direction as DirectionFilter,
+        tripsOperated: row.trips_operated,
+        tripsCancelled: row.trips_cancelled,
+        onTimeCounts: parseCountMap(row.on_time_counts),
+        sumDelaySeconds: row.sum_delay_seconds,
+      }));
+  }
+
   // --- Delay distribution ----------------------------------------------------
 
   upsertDelayDistributionDaily(row: DelayDistributionDailyRow): void {

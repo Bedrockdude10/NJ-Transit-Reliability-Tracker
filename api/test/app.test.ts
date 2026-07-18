@@ -307,6 +307,16 @@ describe("multi-line official batching", () => {
     metric(2025, 6, NEC, 80);
     metric(2025, 7, NEC, 88.5);
     metric(2025, 6, NJCL, 90);
+    // Independent OTP daily rows per line, so /map's batched per-line grouping
+    // (one ranged query, not one per line) must keep each line's figure distinct.
+    repos.aggregates.upsertOtpDaily({
+      scope: "line", scopeId: "NE", serviceDate: "2025-07-15", direction: "all",
+      tripsOperated: 100, tripsCancelled: 0, onTimeCounts: { "900": 90 }, sumDelaySeconds: 0,
+    });
+    repos.aggregates.upsertOtpDaily({
+      scope: "line", scopeId: "NC", serviceDate: "2025-07-15", direction: "all",
+      tripsOperated: 100, tripsCancelled: 0, onTimeCounts: { "900": 75 }, sumDelaySeconds: 0,
+    });
     return createApp(repos);
   }
 
@@ -325,5 +335,8 @@ describe("multi-line official batching", () => {
     // NEC weighted over June+July = (80 + 88.5) / 2 = 84.25 → 84.3
     expect(body.lines.find((l) => l.lineId === "NE")?.njtOtpPercent).toBe(84.3);
     expect(body.lines.find((l) => l.lineId === "NC")?.njtOtpPercent).toBe(90);
+    // Batched per-line project OTP@15min stays distinct: NE 90/100, NC 75/100.
+    expect(body.lines.find((l) => l.lineId === "NE")?.projectOtpPercent15Min).toBe(90);
+    expect(body.lines.find((l) => l.lineId === "NC")?.projectOtpPercent15Min).toBe(75);
   });
 });
