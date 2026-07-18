@@ -13,6 +13,20 @@ export type OtpThresholdSeconds = (typeof OTP_THRESHOLDS_SECONDS)[number];
 /** NJT's own published threshold: "on time" means within 6 minutes. */
 export const NJT_OFFICIAL_THRESHOLD_SECONDS = 360;
 
+/**
+ * The strict headline threshold (5 minutes) at which the project computes its
+ * primary OTP figure, and the arrival window for the connection amplification
+ * test. SSOT for the pipeline's `ON_TIME_SECS` and the default late threshold.
+ */
+export const OTP_STRICT_THRESHOLD_SECONDS = 300;
+
+/**
+ * OTP color-band thresholds (percent). At or above `good` renders green, at or
+ * above `fair` renders amber, below is red. SSOT for `otpColor*` in the app.
+ */
+export const OTP_GOOD_THRESHOLD_PERCENT = 90;
+export const OTP_FAIR_THRESHOLD_PERCENT = 75;
+
 export const DIRECTIONS = ["inbound", "outbound"] as const;
 
 /** Rolling/daily windows the aggregator maintains and the API serves. */
@@ -47,18 +61,20 @@ export type HeatmapType = (typeof HEATMAP_TYPES)[number];
  */
 export interface DelayBucket {
   label: string;
+  /** Compact label for dense axes/legends (SSOT for the app's histogram). */
+  shortLabel: string;
   minSeconds: number;
   maxSeconds: number | null;
 }
 
 export const DELAY_BUCKETS: readonly DelayBucket[] = [
-  { label: "early", minSeconds: Number.NEGATIVE_INFINITY, maxSeconds: 0 },
-  { label: "0-5 min", minSeconds: 0, maxSeconds: 300 },
-  { label: "5-10 min", minSeconds: 300, maxSeconds: 600 },
-  { label: "10-15 min", minSeconds: 600, maxSeconds: 900 },
-  { label: "15-30 min", minSeconds: 900, maxSeconds: 1800 },
-  { label: "30-60 min", minSeconds: 1800, maxSeconds: 3600 },
-  { label: "60+ min", minSeconds: 3600, maxSeconds: null },
+  { label: "early", shortLabel: "early", minSeconds: Number.NEGATIVE_INFINITY, maxSeconds: 0 },
+  { label: "0-5 min", shortLabel: "0–5", minSeconds: 0, maxSeconds: 300 },
+  { label: "5-10 min", shortLabel: "5–10", minSeconds: 300, maxSeconds: 600 },
+  { label: "10-15 min", shortLabel: "10–15", minSeconds: 600, maxSeconds: 900 },
+  { label: "15-30 min", shortLabel: "15–30", minSeconds: 900, maxSeconds: 1800 },
+  { label: "30-60 min", shortLabel: "30–60", minSeconds: 1800, maxSeconds: 3600 },
+  { label: "60+ min", shortLabel: "60+", minSeconds: 3600, maxSeconds: null },
 ] as const;
 
 /**
@@ -74,6 +90,15 @@ export const PEAK_WINDOWS = {
 
 /** Connection sample size below which the UI shows a "preliminary" warning. */
 export const LOW_SAMPLE_THRESHOLD = 30;
+
+/**
+ * Connection reliability defaults: the maximum wait (seconds) between an
+ * inbound arrival and an outbound departure for the pair to count as a
+ * transfer, and the minimum buffer required to call the connection made.
+ * SSOT for the aggregator's `maxTransferWindowSeconds` / `minTransferBufferSeconds`.
+ */
+export const TRANSFER_WINDOW_DEFAULT_SECONDS = 1800;
+export const TRANSFER_BUFFER_DEFAULT_SECONDS = 0;
 
 /** GTFS-RT and XML API daily request budgets (PRD compliance). */
 export const RATE_LIMITS = {
