@@ -1,4 +1,4 @@
-import type { DistributionBucketResult, NjtOfficialComparison, OtpThresholdResult } from "@njt/shared";
+import { DELAY_BUCKETS, type DistributionBucketResult, type NjtOfficialComparison, type OtpThresholdResult } from "@njt/shared";
 import { StyleSheet, Text, View } from "react-native";
 import { hasDistributionData } from "../lib/measurement";
 import { theme, otpColorAt } from "../lib/theme";
@@ -53,15 +53,9 @@ export function OtpComparison({
   );
 }
 
-const SHORT: Record<string, string> = {
-  early: "early",
-  "0-5 min": "0–5",
-  "5-10 min": "5–10",
-  "10-15 min": "10–15",
-  "15-30 min": "15–30",
-  "30-60 min": "30–60",
-  "60+ min": "60+",
-};
+// Compact axis labels are SSOT in @njt/shared (DELAY_BUCKETS[].shortLabel);
+// map full bucket label -> short label rather than re-inlining the pairs.
+const SHORT: Record<string, string> = Object.fromEntries(DELAY_BUCKETS.map((b) => [b.label, b.shortLabel]));
 
 export function DelayHistogram({ distribution }: { distribution: DistributionBucketResult[] }) {
   const c = useChartColors();
