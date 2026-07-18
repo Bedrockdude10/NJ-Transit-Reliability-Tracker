@@ -2,6 +2,14 @@
 
 import { HEATMAP_TYPES, type HeatmapType } from "@njt/shared";
 
+/**
+ * Cache-Control for stable, expensive endpoints backed by daily aggregates.
+ * A short cache window (with a day of stale-while-revalidate) — daily rollups
+ * change at most once per service date, so brief caching is safe. NOT applied
+ * to /health, which must reflect live pipeline state.
+ */
+export const CACHE_CONTROL_DAILY = "public, max-age=3600, stale-while-revalidate=86400";
+
 /** An error carrying an HTTP status, thrown by handlers and mapped to JSON. */
 export class ApiError extends Error {
   constructor(

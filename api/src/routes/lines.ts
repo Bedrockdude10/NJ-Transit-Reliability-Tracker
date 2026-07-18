@@ -27,7 +27,7 @@ import {
 } from "../aggregation";
 import { listLines, resolveLine } from "../catalog";
 import { monthRange, resolveRange } from "../dates";
-import { parseHeatmapType, parseLimit, round1 } from "../util";
+import { CACHE_CONTROL_DAILY, parseHeatmapType, parseLimit, round1 } from "../util";
 
 /** Monday (ISO week start) of a YYYY-MM-DD date, as YYYY-MM-DD. */
 function weekStart(date: string): string {
@@ -112,6 +112,7 @@ export function lineRoutes(repos: Repositories): Hono {
       njtOfficial: buildOfficialComparison(officialMetrics),
       njtCancellations: buildCancellations(officialMetrics),
     };
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
   });
 
@@ -165,6 +166,7 @@ export function lineRoutes(repos: Repositories): Hono {
     });
 
     const response: LineMonthlyResponse = { lineId: routeId, name, rows };
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
   });
 

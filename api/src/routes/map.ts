@@ -10,7 +10,7 @@ import {
 import { Hono } from "hono";
 import { ON_TIME_15_MIN, averageLightRailOtp, buildOfficialComparison } from "../aggregation";
 import { monthRange, resolveRange } from "../dates";
-import { round1 } from "../util";
+import { CACHE_CONTROL_DAILY, round1 } from "../util";
 
 /** GET /map — real network geometry + per-line reliability for the system map. */
 export function mapRoutes(repos: Repositories): Hono {
@@ -75,6 +75,7 @@ export function mapRoutes(repos: Repositories): Hono {
       .filter((s) => s.lat !== null && s.lon !== null && stationIds.has(s.stopId))
       .map((s) => ({ stopId: s.stopId, stopName: s.stopName, lat: s.lat as number, lon: s.lon as number }));
 
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json({ from: range.from, to: range.to, stations, lines } satisfies MapResponse);
   });
 

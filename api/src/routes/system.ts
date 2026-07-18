@@ -17,7 +17,7 @@ import {
   buildSeasonality,
 } from "../aggregation";
 import { ALL_MONTHS, monthRange, resolveRange } from "../dates";
-import { parseHeatmapType } from "../util";
+import { CACHE_CONTROL_DAILY, parseHeatmapType } from "../util";
 
 /** /system/summary and /system/heatmap — system-wide rollups. */
 export function systemRoutes(repos: Repositories): Hono {
@@ -37,6 +37,7 @@ export function systemRoutes(repos: Repositories): Hono {
       njtCancellations: buildCancellations(officialMetrics),
       fleetMdbf: buildFleetMdbf(repos.official.getMdbfForRange(months.from, months.to)),
     };
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
   });
 

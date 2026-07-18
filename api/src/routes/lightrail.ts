@@ -3,6 +3,7 @@ import type { LightRailLineMdbf, LightRailSummaryResponse } from "@njt/shared";
 import { Hono } from "hono";
 import { averageLightRailOtp } from "../aggregation";
 import { monthRange, resolveRange } from "../dates";
+import { CACHE_CONTROL_DAILY } from "../util";
 
 /** GET /lightrail/summary — systemwide light-rail OTP + per-line MDBF. */
 export function lightRailRoutes(repos: Repositories): Hono {
@@ -34,6 +35,7 @@ export function lightRailRoutes(repos: Repositories): Hono {
       lines,
       otpTrend: otpRows.map((r) => ({ month: `${r.year}-${String(r.month).padStart(2, "0")}`, otpPercent: r.otpPercent })),
     };
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
   });
 

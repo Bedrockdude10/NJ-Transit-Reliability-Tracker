@@ -261,6 +261,24 @@ describe("API integration", () => {
     expect(body.lines).toEqual([]);
   });
 
+  it("sets Cache-Control on stable, expensive endpoints but not /health", async () => {
+    const cached = [
+      `/map?${RANGE}`,
+      "/stations",
+      `/stations/NWK/summary?${RANGE}`,
+      `/system/summary?${RANGE}`,
+      `/lines/NE/summary?${RANGE}`,
+      "/lines/NE/monthly",
+      `/lightrail/summary?${RANGE}`,
+    ];
+    for (const path of cached) {
+      const res = await app.request(path);
+      expect(res.headers.get("Cache-Control"), path).toMatch(/max-age=\d+/);
+    }
+    const health = await app.request("/health");
+    expect(health.headers.get("Cache-Control")).toBeNull();
+  });
+
   it("returns 404 for unknown routes", async () => {
     expect((await app.request("/nope")).status).toBe(404);
   });
