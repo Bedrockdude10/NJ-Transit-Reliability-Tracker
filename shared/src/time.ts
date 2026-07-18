@@ -125,6 +125,28 @@ export function parseGtfsTimeToSeconds(time: string): number {
 }
 
 /**
+ * Local-midnight (epoch seconds) of a service date, memoized by
+ * `serviceDate|timeZone`. Resolving it runs two `Intl.formatToParts` passes;
+ * every stop time on a service date shares the same midnight, and each is
+ * resolved twice (arrival + departure), so caching removes near-all of that
+ * `Intl` work during aggregation and schedule resolution.
+ */
+const MIDNIGHT_CACHE = new Map<string, number>();
+
+function localMidnightEpochSeconds(serviceDate: string, timeZone: string): number {
+  const cacheKey = `${serviceDate}|${timeZone}`;
+  const cached = MIDNIGHT_CACHE.get(cacheKey);
+  if (cached !== undefined) return cached;
+  const { year, month, day } = parseDateString(serviceDate);
+  const midnight = localPartsToEpochSeconds(
+    { year, month, day, hour: 0, minute: 0, second: 0 },
+    timeZone,
+  );
+  MIDNIGHT_CACHE.set(cacheKey, midnight);
+  return midnight;
+}
+
+/**
  * Resolve a GTFS stop time (service date + "HH:MM:SS", hours may exceed 24) to
  * an absolute epoch-seconds instant in the given timezone.
  */
@@ -133,14 +155,9 @@ export function gtfsStopTimeToEpochSeconds(
   gtfsTime: string,
   timeZone: string = NJT_TIMEZONE,
 ): number {
-  const { year, month, day } = parseDateString(serviceDate);
   const secondsPastMidnight = parseGtfsTimeToSeconds(gtfsTime);
   // Anchor at local midnight of the service date, then add the GTFS offset.
-  const midnight = localPartsToEpochSeconds(
-    { year, month, day, hour: 0, minute: 0, second: 0 },
-    timeZone,
-  );
-  return midnight + secondsPastMidnight;
+  return localMidnightEpochSeconds(serviceDate, timeZone) + secondsPastMidnight;
 }
 
 /** Day of week for an instant in a timezone. 0 = Sunday … 6 = Saturday. */
