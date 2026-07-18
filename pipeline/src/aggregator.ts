@@ -417,13 +417,7 @@ export function recomputeServiceDate(repos: Repositories, serviceDate: string, o
   const events = repos.events.getByServiceDate(serviceDate);
   const bundle = computeAggregates(events, serviceDate, options);
 
-  repos.aggregates.clearServiceDate(serviceDate);
-  for (const row of bundle.otp) repos.aggregates.upsertOtpDaily(row);
-  for (const row of bundle.distribution) repos.aggregates.upsertDelayDistributionDaily(row);
-  for (const row of bundle.heatmap) repos.aggregates.upsertHeatmapDaily(row);
-  for (const row of bundle.trips) repos.aggregates.upsertTripDaily(row);
-  for (const row of bundle.stationDaily) repos.aggregates.upsertStationDaily(row);
-  for (const row of bundle.stationHourly) repos.aggregates.upsertStationHourly(row);
-  for (const row of bundle.stationDistribution) repos.aggregates.upsertStationDistributionDaily(row);
-  for (const row of bundle.connections) repos.aggregates.upsertConnectionDaily(row);
+  // One atomic clear+upsert so API readers never see a half-cleared day and a
+  // failed recompute rolls back cleanly (persistence lives in @njt/db).
+  repos.aggregates.replaceServiceDate(serviceDate, bundle);
 }

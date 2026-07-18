@@ -61,6 +61,21 @@ export interface OtpMonthlyAgg {
 }
 
 /**
+ * A full set of recomputed daily aggregate rows for one service date, as the
+ * pipeline's aggregator produces it. Consumed by {@link AggregateRepository.replaceServiceDate}.
+ */
+export interface ServiceDateAggregates {
+  otp: readonly OtpDailyRow[];
+  distribution: readonly DelayDistributionDailyRow[];
+  heatmap: readonly HeatmapDailyRow[];
+  trips: readonly TripDailyRow[];
+  stationDaily: readonly StationDailyRow[];
+  stationHourly: readonly StationHourlyRow[];
+  stationDistribution: readonly StationDistributionDailyRow[];
+  connections: readonly ConnectionDailyRow[];
+}
+
+/**
  * Read/write access to the pre-computed daily aggregate tables. Writers are
  * used by the pipeline's aggregator; readers are used by the API, which sums
  * the small daily rows over a requested range (never the raw event table).
@@ -68,22 +83,49 @@ export interface OtpMonthlyAgg {
 export class AggregateRepository {
   constructor(private readonly db: Database) {}
 
+  /** Aggregate tables keyed by service_date, cleared together on recompute. */
+  private static readonly SERVICE_DATE_TABLES = [
+    "otp_aggregates",
+    "delay_distribution_aggregates",
+    "heatmap_aggregates",
+    "trip_daily_aggregates",
+    "station_daily_aggregates",
+    "station_hourly_aggregates",
+    "station_distribution_aggregates",
+    "connection_aggregates",
+  ] as const;
+
+  /**
+   * Unwrapped delete of every aggregate row for a service date. Callers must
+   * already be inside a transaction (node:sqlite BEGIN does not nest).
+   */
+  private deleteServiceDateRows(serviceDate: string): void {
+    for (const table of AggregateRepository.SERVICE_DATE_TABLES) {
+      this.db.prepare(`DELETE FROM ${table} WHERE service_date = :d`).run({ d: serviceDate });
+    }
+  }
+
   /** Delete every aggregate row for a service date, so it can be recomputed. */
   clearServiceDate(serviceDate: string): void {
-    const tables = [
-      "otp_aggregates",
-      "delay_distribution_aggregates",
-      "heatmap_aggregates",
-      "trip_daily_aggregates",
-      "station_daily_aggregates",
-      "station_hourly_aggregates",
-      "station_distribution_aggregates",
-      "connection_aggregates",
-    ];
+    this.db.transaction(() => this.deleteServiceDateRows(serviceDate));
+  }
+
+  /**
+   * Atomically replace all aggregates for a service date: clear the old rows and
+   * persist the recomputed bundle inside a single transaction, so API readers
+   * never observe a half-cleared day and a failed recompute rolls back cleanly.
+   */
+  replaceServiceDate(serviceDate: string, bundle: ServiceDateAggregates): void {
     this.db.transaction(() => {
-      for (const table of tables) {
-        this.db.prepare(`DELETE FROM ${table} WHERE service_date = :d`).run({ d: serviceDate });
-      }
+      this.deleteServiceDateRows(serviceDate);
+      for (const row of bundle.otp) this.upsertOtpDaily(row);
+      for (const row of bundle.distribution) this.upsertDelayDistributionDaily(row);
+      for (const row of bundle.heatmap) this.upsertHeatmapDaily(row);
+      for (const row of bundle.trips) this.upsertTripDaily(row);
+      for (const row of bundle.stationDaily) this.upsertStationDaily(row);
+      for (const row of bundle.stationHourly) this.upsertStationHourly(row);
+      for (const row of bundle.stationDistribution) this.upsertStationDistributionDaily(row);
+      for (const row of bundle.connections) this.upsertConnectionDaily(row);
     });
   }
 
