@@ -113,6 +113,32 @@ export class AggregateRepository {
       });
   }
 
+  /** Explicit column list for OTP daily reads (B5: no SELECT *). */
+  private static readonly OTP_COLUMNS =
+    "scope, scope_id, service_date, direction, trips_operated, trips_cancelled, on_time_counts, sum_delay_seconds";
+
+  private static toOtpRow(row: {
+    scope: string;
+    scope_id: string;
+    service_date: string;
+    direction: string;
+    trips_operated: number;
+    trips_cancelled: number;
+    on_time_counts: string;
+    sum_delay_seconds: number;
+  }): OtpDailyRow {
+    return {
+      scope: row.scope as ScopeKind,
+      scopeId: row.scope_id,
+      serviceDate: row.service_date,
+      direction: row.direction as DirectionFilter,
+      tripsOperated: row.trips_operated,
+      tripsCancelled: row.trips_cancelled,
+      onTimeCounts: parseCountMap(row.on_time_counts),
+      sumDelaySeconds: row.sum_delay_seconds,
+    };
+  }
+
   getOtpDailyRows(
     scope: ScopeKind,
     scopeId: string,
@@ -121,29 +147,13 @@ export class AggregateRepository {
     to: string,
   ): OtpDailyRow[] {
     return this.db
-      .all<{
-        scope: string;
-        scope_id: string;
-        service_date: string;
-        direction: string;
-        trips_operated: number;
-        trips_cancelled: number;
-        on_time_counts: string;
-        sum_delay_seconds: number;
-      }>(
-        "SELECT * FROM otp_aggregates WHERE scope=:scope AND scope_id=:scopeId AND direction=:dir AND service_date BETWEEN :from AND :to ORDER BY service_date",
+      .all<Parameters<typeof AggregateRepository.toOtpRow>[0]>(
+        `SELECT ${AggregateRepository.OTP_COLUMNS} FROM otp_aggregates
+         WHERE scope=:scope AND scope_id=:scopeId AND direction=:dir AND service_date BETWEEN :from AND :to
+         ORDER BY service_date`,
         { scope, scopeId, dir: direction, from, to },
       )
-      .map((row) => ({
-        scope: row.scope as ScopeKind,
-        scopeId: row.scope_id,
-        serviceDate: row.service_date,
-        direction: row.direction as DirectionFilter,
-        tripsOperated: row.trips_operated,
-        tripsCancelled: row.trips_cancelled,
-        onTimeCounts: parseCountMap(row.on_time_counts),
-        sumDelaySeconds: row.sum_delay_seconds,
-      }));
+      .map(AggregateRepository.toOtpRow);
   }
 
   /**
@@ -153,30 +163,29 @@ export class AggregateRepository {
    */
   getOtpDailyRowsForScope(scope: ScopeKind, direction: DirectionFilter, from: string, to: string): OtpDailyRow[] {
     return this.db
-      .all<{
-        scope_id: string;
-        service_date: string;
-        direction: string;
-        trips_operated: number;
-        trips_cancelled: number;
-        on_time_counts: string;
-        sum_delay_seconds: number;
-      }>(
-        `SELECT scope_id, service_date, direction, trips_operated, trips_cancelled, on_time_counts, sum_delay_seconds
-         FROM otp_aggregates WHERE scope=:scope AND direction=:dir AND service_date BETWEEN :from AND :to
+      .all<Parameters<typeof AggregateRepository.toOtpRow>[0]>(
+        `SELECT ${AggregateRepository.OTP_COLUMNS} FROM otp_aggregates
+         WHERE scope=:scope AND direction=:dir AND service_date BETWEEN :from AND :to
          ORDER BY scope_id, service_date`,
         { scope, dir: direction, from, to },
       )
-      .map((row) => ({
-        scope,
-        scopeId: row.scope_id,
-        serviceDate: row.service_date,
-        direction: row.direction as DirectionFilter,
-        tripsOperated: row.trips_operated,
-        tripsCancelled: row.trips_cancelled,
-        onTimeCounts: parseCountMap(row.on_time_counts),
-        sumDelaySeconds: row.sum_delay_seconds,
-      }));
+      .map(AggregateRepository.toOtpRow);
+  }
+
+  /**
+   * OTP daily rows for a scope_id across ALL directions in one ranged query.
+   * Lets callers that need every direction (e.g. /lines/:id/summary) group by
+   * direction in memory instead of one {@link getOtpDailyRows} per direction.
+   */
+  getOtpDailyRowsAllDirections(scope: ScopeKind, scopeId: string, from: string, to: string): OtpDailyRow[] {
+    return this.db
+      .all<Parameters<typeof AggregateRepository.toOtpRow>[0]>(
+        `SELECT ${AggregateRepository.OTP_COLUMNS} FROM otp_aggregates
+         WHERE scope=:scope AND scope_id=:scopeId AND service_date BETWEEN :from AND :to
+         ORDER BY direction, service_date`,
+        { scope, scopeId, from, to },
+      )
+      .map(AggregateRepository.toOtpRow);
   }
 
   /**

@@ -88,8 +88,15 @@ export function lineRoutes(repos: Repositories): Hono {
     const { routeId, name } = resolveLine(repos, c.req.param("lineId"));
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const dist = repos.aggregates.getDelayDistributionDailyRows("line", routeId, range.from, range.to);
-    const otpFor = (dir: "all" | "inbound" | "outbound") =>
-      repos.aggregates.getOtpDailyRows("line", routeId, dir, range.from, range.to);
+    // One ranged query across all directions, grouped in memory (was three
+    // getOtpDailyRows differing only by direction).
+    const byDirection = new Map<string, OtpDailyRow[]>();
+    for (const row of repos.aggregates.getOtpDailyRowsAllDirections("line", routeId, range.from, range.to)) {
+      const list = byDirection.get(row.direction);
+      if (list) list.push(row);
+      else byDirection.set(row.direction, [row]);
+    }
+    const otpFor = (dir: "all" | "inbound" | "outbound") => byDirection.get(dir) ?? [];
     const months = monthRange(range);
     const officialMetrics = repos.official.getForLineRange(name, months.from, months.to);
 
