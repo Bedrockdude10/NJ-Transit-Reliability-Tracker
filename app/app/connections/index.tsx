@@ -1,4 +1,4 @@
-import type { ConnectionTopItem } from "@njt/shared";
+import { OTP_GOOD_THRESHOLD_PERCENT, type ConnectionTopItem } from "@njt/shared";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
@@ -89,7 +89,7 @@ export default function Connections() {
                 <StatTile
                   label="Success rate"
                   value={`${conn.data.successRatePercent}%`}
-                  color={conn.data.successRatePercent >= 90 ? theme.colors.good : theme.colors.warn}
+                  color={conn.data.successRatePercent >= OTP_GOOD_THRESHOLD_PERCENT ? theme.colors.good : theme.colors.warn}
                   hint={`${conn.data.observations} observations`}
                 />
                 <StatTile label="Peak" value={`${conn.data.peak.successRatePercent}%`} hint={`${conn.data.peak.observations} obs`} />
