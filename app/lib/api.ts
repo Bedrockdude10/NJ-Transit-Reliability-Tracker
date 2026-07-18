@@ -19,6 +19,7 @@ import type {
   WorstTripsResponse,
 } from "@njt/shared";
 import { API_BASE_URL } from "./config";
+import { RequestCache } from "./request-cache";
 
 export interface DateRange {
   from?: string;
@@ -36,10 +37,19 @@ export function buildUrl(path: string, params: Params = {}): string {
   return `${API_BASE_URL}${path}${query ? `?${query}` : ""}`;
 }
 
+// Read-only GETs are deduped + briefly cached by URL: concurrent callers (e.g. a
+// screen and the global footer both requesting /health) share one request, and
+// re-running an effect over a list of ids where only one changed hits at most
+// one network request per id.
+const cache = new RequestCache();
+
 async function get<T>(path: string, params?: Params): Promise<T> {
-  const res = await fetch(buildUrl(path, params));
-  if (!res.ok) throw new Error(`API ${res.status} for ${path}`);
-  return (await res.json()) as T;
+  const url = buildUrl(path, params);
+  return cache.get(url, async () => {
+    const res = await fetch(url);
+    if (!res.ok) throw new Error(`API ${res.status} for ${path}`);
+    return (await res.json()) as T;
+  });
 }
 
 /** Typed client for the backend API. One method per endpoint. */
