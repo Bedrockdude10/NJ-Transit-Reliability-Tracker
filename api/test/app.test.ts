@@ -219,6 +219,12 @@ describe("API integration", () => {
     expect(none.body.total).toBe(0);
   });
 
+  it("GET /alerts floors fractional page/pageSize (no fractional OFFSET)", async () => {
+    const { body } = await getJson<AlertListResponse>(`/alerts?page=1.5&pageSize=25.9&${RANGE}`);
+    expect(body.page).toBe(1);
+    expect(body.pageSize).toBe(25);
+  });
+
   it("GET /alerts/frequency counts by line and effect", async () => {
     const { body } = await getJson<AlertFrequencyResponse>(`/alerts/frequency?${RANGE}`);
     expect(body.byLine[0]).toMatchObject({ lineName: "Northeast Corridor Line", total: 1 });

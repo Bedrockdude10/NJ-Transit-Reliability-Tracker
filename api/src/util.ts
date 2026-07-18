@@ -36,13 +36,22 @@ export function round1(value: number): number {
 }
 
 /**
+ * Parse a positive-integer query value (page, pageSize, limit): falls back when
+ * absent/invalid/<1, floors fractional input (so it never yields a fractional
+ * OFFSET/page), and clamps to `max` when one is given.
+ */
+export function parsePositiveInt(value: string | undefined, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
+  const n = value ? Number(value) : fallback;
+  if (!Number.isFinite(n) || n < 1) return fallback;
+  return Math.min(Math.floor(n), max);
+}
+
+/**
  * Parse a `?limit=` query value: falls back when absent/invalid/<1, floors,
  * and clamps to a maximum of 100.
  */
 export function parseLimit(value: string | undefined, fallback: number): number {
-  const n = value ? Number(value) : fallback;
-  if (!Number.isFinite(n) || n < 1) return fallback;
-  return Math.min(Math.floor(n), 100);
+  return parsePositiveInt(value, fallback, 100);
 }
 
 /** Parse a `?type=` heatmap query value, defaulting to `hour_of_day`. */

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { ApiError, badRequest, notFound, parseHeatmapType, parseLimit, round1, slugify } from "../src/util";
+import { ApiError, badRequest, notFound, parseHeatmapType, parseLimit, parsePositiveInt, round1, slugify } from "../src/util";
 
 describe("ApiError + throwers", () => {
   it("badRequest throws a 400 ApiError", () => {
@@ -56,6 +56,25 @@ describe("parseLimit", () => {
     expect(parseLimit("7.9", 25)).toBe(7);
     expect(parseLimit("500", 25)).toBe(100);
     expect(parseLimit("50", 25)).toBe(50);
+  });
+});
+
+describe("parsePositiveInt", () => {
+  it("uses the fallback when absent, invalid, or below 1", () => {
+    expect(parsePositiveInt(undefined, 1)).toBe(1);
+    expect(parsePositiveInt("abc", 50)).toBe(50);
+    expect(parsePositiveInt("0", 1)).toBe(1);
+    expect(parsePositiveInt("-3", 1)).toBe(1);
+  });
+
+  it("floors fractional values (no fractional OFFSET/page)", () => {
+    expect(parsePositiveInt("1.5", 1)).toBe(1);
+    expect(parsePositiveInt("2.9", 1)).toBe(2);
+  });
+
+  it("clamps to the optional max", () => {
+    expect(parsePositiveInt("500", 50, 200)).toBe(200);
+    expect(parsePositiveInt("500", 50)).toBe(500); // no max by default
   });
 });
 
