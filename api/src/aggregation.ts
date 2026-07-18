@@ -2,6 +2,8 @@ import {
   DELAY_BUCKETS,
   NJT_OFFICIAL_THRESHOLD_SECONDS,
   OTP_THRESHOLDS_SECONDS,
+  monthIndex,
+  monthKey,
   type AnnualOtpYear,
   type CancellationCauseResult,
   type DelayDistributionDailyRow,
@@ -10,6 +12,7 @@ import {
   type FleetMdbfMetric,
   type HeatmapBucketResult,
   type HeatmapType,
+  type LightRailOtpMetric,
   type NjtCancellations,
   type NjtOfficialComparison,
   type OfficialCoverage,
@@ -22,6 +25,21 @@ import {
 import { round1 } from "./util";
 
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
+
+/**
+ * On-time threshold key (in seconds, as stored in `on_time_counts`) for the
+ * project's 15-minute OTP figure. SSOT for the routes that report OTP@15min.
+ */
+export const ON_TIME_15_MIN = "900";
+
+/**
+ * Systemwide light-rail OTP: a plain average of the monthly figures (rounded),
+ * or null when no months are present. Shared by /map and /lightrail.
+ */
+export function averageLightRailOtp(rows: readonly LightRailOtpMetric[]): number | null {
+  if (rows.length === 0) return null;
+  return round1(rows.reduce((s, r) => s + r.otpPercent, 0) / rows.length);
+}
 
 export function heatmapBucketLabel(type: HeatmapType, bucket: number): string {
   if (type === "day_of_week") return DOW_LABELS[bucket] ?? String(bucket);
@@ -143,7 +161,7 @@ export function buildOfficialComparison(
     thresholdSeconds: NJT_OFFICIAL_THRESHOLD_SECONDS,
     otpPercent: weightedAverage((m) => m.otpPercent) ?? 0,
     otpPercentAmtrakAdjusted: weightedAverage((m) => m.otpPercentAmtrakAdjusted),
-    monthsCovered: new Set(metrics.map((m) => `${m.year}-${m.month}`)).size,
+    monthsCovered: new Set(metrics.map((m) => monthKey(m.year, m.month))).size,
     tripsOperated,
     cancellations,
     cancellationRatePercent: scheduled > 0 ? round1((cancellations / scheduled) * 100) : 0,
@@ -158,7 +176,7 @@ export function buildCancellations(metrics: readonly OfficialNjtMetric[]): NjtCa
   const byCause: CancellationCauseResult[] = Object.entries(merged)
     .map(([cause, count]) => ({ cause, count, percent: total > 0 ? round1((count / total) * 100) : 0 }))
     .sort((a, b) => b.count - a.count);
-  return { total, byCause, monthsCovered: new Set(metrics.map((m) => `${m.year}-${m.month}`)).size };
+  return { total, byCause, monthsCovered: new Set(metrics.map((m) => monthKey(m.year, m.month))).size };
 }
 
 /** Average fleet MDBF over a set of monthly rows. */
@@ -180,7 +198,7 @@ function weightedOtpByKey(
     const w = m.tripsOperated > 0 ? m.tripsOperated : 1;
     acc.weight += w;
     acc.valueSum += m.otpPercent * w;
-    acc.spans.add(m.year * 12 + m.month);
+    acc.spans.add(monthIndex(m.year, m.month));
     by.set(key, acc);
   }
   return by;
@@ -230,7 +248,7 @@ export function buildOfficialCoverage(metrics: readonly OfficialNjtMetric[]): Of
   const byLine = new Map<string, number[]>(); // lineName -> monthIndexes present
   for (const m of metrics) {
     const list = byLine.get(m.lineName) ?? [];
-    list.push(m.year * 12 + (m.month - 1));
+    list.push(monthIndex(m.year, m.month));
     byLine.set(m.lineName, list);
   }
   const fmt = (idx: number) => `${Math.floor(idx / 12)}-${String((idx % 12) + 1).padStart(2, "0")}`;

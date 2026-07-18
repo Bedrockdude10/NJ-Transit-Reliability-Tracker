@@ -1,6 +1,7 @@
 import type { Repositories } from "@njt/db";
 import {
   NJT_OFFICIAL_THRESHOLD_SECONDS,
+  monthKey,
   parseDateString,
   type HeatmapResponse,
   type HistoryResponse,
@@ -16,6 +17,7 @@ import {
 } from "@njt/shared";
 import { Hono } from "hono";
 import {
+  ON_TIME_15_MIN,
   buildAnnualOtp,
   buildCancellations,
   buildHeatmap,
@@ -26,8 +28,6 @@ import {
 import { listLines, resolveLine } from "../catalog";
 import { monthRange, resolveRange } from "../dates";
 import { parseHeatmapType, parseLimit, round1 } from "../util";
-
-const ON_TIME_15_MIN = "900";
 
 /** Monday (ISO week start) of a YYYY-MM-DD date, as YYYY-MM-DD. */
 function weekStart(date: string): string {
@@ -53,7 +53,7 @@ function trendPoint(date: string, operated: number, cancelled: number, onTime15:
 function buildTrend(rows: readonly OtpDailyRow[], interval: "daily" | "weekly", officialByMonth: Map<string, number>): TrendPoint[] {
   const njtFor = (date: string): number | null => {
     const { year, month } = parseDateString(date);
-    return officialByMonth.get(`${year}-${month}`) ?? null;
+    return officialByMonth.get(monthKey(year, month)) ?? null;
   };
 
   if (interval === "daily") {
@@ -122,7 +122,7 @@ export function lineRoutes(repos: Repositories): Hono {
     const rows = repos.aggregates.getOtpDailyRows("line", routeId, "all", range.from, range.to);
     const months = monthRange(range);
     const officialByMonth = new Map(
-      repos.official.getForLineRange(name, months.from, months.to).map((m) => [`${m.year}-${m.month}`, m.otpPercent]),
+      repos.official.getForLineRange(name, months.from, months.to).map((m) => [monthKey(m.year, m.month), m.otpPercent]),
     );
     const response: LineTrendResponse = {
       lineId: routeId,

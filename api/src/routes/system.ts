@@ -16,11 +16,8 @@ import {
   buildOtpSummary,
   buildSeasonality,
 } from "../aggregation";
-import { monthRange, resolveRange } from "../dates";
+import { ALL_MONTHS, monthRange, resolveRange } from "../dates";
 import { parseHeatmapType } from "../util";
-
-/** Inclusive month bounds wide enough to cover all published history. */
-const ALL_MONTHS = { from: { year: 2000, month: 1 }, to: { year: 2100, month: 12 } };
 
 /** /system/summary and /system/heatmap — system-wide rollups. */
 export function systemRoutes(repos: Repositories): Hono {

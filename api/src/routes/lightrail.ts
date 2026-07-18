@@ -1,8 +1,8 @@
 import type { Repositories } from "@njt/db";
 import type { LightRailLineMdbf, LightRailSummaryResponse } from "@njt/shared";
 import { Hono } from "hono";
+import { averageLightRailOtp } from "../aggregation";
 import { monthRange, resolveRange } from "../dates";
-import { round1 } from "../util";
 
 /** GET /lightrail/summary — systemwide light-rail OTP + per-line MDBF. */
 export function lightRailRoutes(repos: Repositories): Hono {
@@ -13,7 +13,7 @@ export function lightRailRoutes(repos: Repositories): Hono {
     const months = monthRange(range);
 
     const otpRows = repos.lightRail.getOtpForRange(months.from, months.to);
-    const otpPercent = otpRows.length > 0 ? round1(otpRows.reduce((s, r) => s + r.otpPercent, 0) / otpRows.length) : null;
+    const otpPercent = averageLightRailOtp(otpRows);
 
     const byLine = new Map<string, { sum: number; count: number }>();
     for (const row of repos.lightRail.getMdbfForRange(months.from, months.to)) {

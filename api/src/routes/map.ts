@@ -8,11 +8,9 @@ import {
   type OtpDailyRow,
 } from "@njt/shared";
 import { Hono } from "hono";
-import { buildOfficialComparison } from "../aggregation";
+import { ON_TIME_15_MIN, averageLightRailOtp, buildOfficialComparison } from "../aggregation";
 import { monthRange, resolveRange } from "../dates";
 import { round1 } from "../util";
-
-const ON_TIME_15_MIN = "900";
 
 /** GET /map — real network geometry + per-line reliability for the system map. */
 export function mapRoutes(repos: Repositories): Hono {
@@ -28,9 +26,7 @@ export function mapRoutes(repos: Repositories): Hono {
     const stationIds = new Set<string>();
 
     // Systemwide light-rail OTP (one figure, shared by the light rail lines).
-    const lrOtpRows = repos.lightRail.getOtpForRange(months.from, months.to);
-    const lightRailOtp =
-      lrOtpRows.length > 0 ? round1(lrOtpRows.reduce((s, r) => s + r.otpPercent, 0) / lrOtpRows.length) : null;
+    const lightRailOtp = averageLightRailOtp(repos.lightRail.getOtpForRange(months.from, months.to));
 
     // All lines' official metrics in one ranged query, grouped by line name in
     // memory (rather than one getForLineRange per route).

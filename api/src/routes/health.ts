@@ -2,9 +2,8 @@ import type { Repositories } from "@njt/db";
 import type { HealthResponse } from "@njt/shared";
 import { Hono } from "hono";
 import { buildOfficialCoverage } from "../aggregation";
+import { ALL_MONTHS } from "../dates";
 import { round1 } from "../util";
-
-const ALL_MONTHS = { from: { year: 2000, month: 1 }, to: { year: 2100, month: 12 } };
 
 /** GET /health — pipeline operational status + official-data completeness. */
 export function healthRoutes(repos: Repositories): Hono {

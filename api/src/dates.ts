@@ -42,6 +42,9 @@ export interface MonthRange {
   to: { year: number; month: number };
 }
 
+/** Inclusive month bounds wide enough to cover all published history. */
+export const ALL_MONTHS: MonthRange = { from: { year: 2000, month: 1 }, to: { year: 2100, month: 12 } };
+
 /** The inclusive month range covering a date range, for official-metric joins. */
 export function monthRange(range: DateRange): MonthRange {
   const f = parseDateString(range.from);
