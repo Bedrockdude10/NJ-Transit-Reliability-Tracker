@@ -34,6 +34,9 @@ export default function LineDetail() {
   const health = useApi(() => api.health(), []);
   const collectionStartDate = health.data?.collectionStartDate ?? null;
   const measured = hasMeasuredOtp(summary.data?.overall);
+  // Directional ≤15m OTP — computed once instead of a repeated .find() per StatTile.
+  const inbound15 = summary.data?.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;
+  const outbound15 = summary.data?.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;
 
   const njtValues = trend.data?.points.map((p) => p.njtOfficialOtpPercent ?? 0) ?? [];
   const hasNjt = njtValues.some((v) => v > 0);
@@ -112,14 +115,14 @@ export default function LineDetail() {
               <Row>
                 <StatTile
                   label="Inbound OTP ≤15m"
-                  value={formatPercent(summary.data.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
-                  color={otpColor(summary.data.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
+                  value={formatPercent(inbound15)}
+                  color={otpColor(inbound15)}
                   hint={`${formatInt(summary.data.inbound.tripsOperated)} trips`}
                 />
                 <StatTile
                   label="Outbound OTP ≤15m"
-                  value={formatPercent(summary.data.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
-                  color={otpColor(summary.data.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0)}
+                  value={formatPercent(outbound15)}
+                  color={otpColor(outbound15)}
                   hint={`${formatInt(summary.data.outbound.tripsOperated)} trips`}
                 />
               </Row>
