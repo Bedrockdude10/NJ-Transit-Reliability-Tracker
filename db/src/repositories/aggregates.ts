@@ -235,7 +235,7 @@ export class AggregateRepository {
   ): DelayDistributionDailyRow[] {
     return this.db
       .all<{ scope: string; scope_id: string; service_date: string; counts: string }>(
-        "SELECT * FROM delay_distribution_aggregates WHERE scope=:scope AND scope_id=:scopeId AND service_date BETWEEN :from AND :to ORDER BY service_date",
+        "SELECT scope, scope_id, service_date, counts FROM delay_distribution_aggregates WHERE scope=:scope AND scope_id=:scopeId AND service_date BETWEEN :from AND :to ORDER BY service_date",
         { scope, scopeId, from, to },
       )
       .map((row) => ({
@@ -429,7 +429,7 @@ export class AggregateRepository {
   getStationDistributionRows(stopId: string, from: string, to: string): StationDistributionDailyRow[] {
     return this.db
       .all<{ stop_id: string; service_date: string; counts: string }>(
-        "SELECT * FROM station_distribution_aggregates WHERE stop_id=:stop AND service_date BETWEEN :from AND :to ORDER BY service_date",
+        "SELECT stop_id, service_date, counts FROM station_distribution_aggregates WHERE stop_id=:stop AND service_date BETWEEN :from AND :to ORDER BY service_date",
         { stop: stopId, from, to },
       )
       .map((row) => ({ stopId: row.stop_id, serviceDate: row.service_date, counts: parseCountMap(row.counts) }));
@@ -493,7 +493,10 @@ export class AggregateRepository {
         inbound_delay_distribution: string;
       }>(
         /* sql */ `
-        SELECT * FROM connection_aggregates
+        SELECT inbound_trip_id, transfer_stop_id, outbound_trip_id, service_date, observations, successes,
+               peak_observations, peak_successes, off_peak_observations, off_peak_successes,
+               by_day_of_week, inbound_delay_distribution
+        FROM connection_aggregates
         WHERE inbound_trip_id=:inbound AND transfer_stop_id=:transfer AND outbound_trip_id=:outbound
           AND service_date BETWEEN :from AND :to
         ORDER BY service_date

@@ -21,6 +21,13 @@ interface EventRow {
   ingested_at_ms: number;
 }
 
+/** Explicit column list for event reads (B5: no SELECT *); every column is
+ * consumed by {@link toEvent} and the pipeline aggregator. */
+const EVENT_COLUMNS =
+  "trip_id, route_id, line_name, stop_id, stop_name, stop_sequence, direction, service_date, " +
+  "scheduled_arrival, scheduled_departure, observed_arrival, delay_seconds, stop_skipped, " +
+  "trip_cancelled, gtfs_static_version, ingested_at_ms";
+
 function toEvent(row: EventRow): TripStopEvent {
   return {
     tripId: row.trip_id,
@@ -119,7 +126,7 @@ export class TripStopEventRepository {
   getByServiceDate(serviceDate: string): TripStopEvent[] {
     return this.db
       .all<EventRow>(
-        "SELECT * FROM trip_stop_events WHERE service_date = :d ORDER BY trip_id, stop_sequence",
+        `SELECT ${EVENT_COLUMNS} FROM trip_stop_events WHERE service_date = :d ORDER BY trip_id, stop_sequence`,
         { d: serviceDate },
       )
       .map(toEvent);
@@ -129,7 +136,7 @@ export class TripStopEventRepository {
   getByStop(stopId: string, from: string, to: string): TripStopEvent[] {
     return this.db
       .all<EventRow>(
-        "SELECT * FROM trip_stop_events WHERE stop_id = :s AND service_date BETWEEN :from AND :to",
+        `SELECT ${EVENT_COLUMNS} FROM trip_stop_events WHERE stop_id = :s AND service_date BETWEEN :from AND :to`,
         { s: stopId, from, to },
       )
       .map(toEvent);
