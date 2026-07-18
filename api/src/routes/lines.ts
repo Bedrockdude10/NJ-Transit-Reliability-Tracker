@@ -133,13 +133,11 @@ export function lineRoutes(repos: Repositories): Hono {
   router.get("/:lineId/monthly", (c) => {
     const { routeId, name } = resolveLine(repos, c.req.param("lineId"));
 
+    // Monthly project OTP is bucketed in SQL (GROUP BY the YYYY-MM prefix)
+    // rather than pulling every daily row across all history and re-bucketing.
     const projectByMonth = new Map<string, { operated: number; onTime15: number }>();
-    for (const row of repos.aggregates.getOtpDailyRows("line", routeId, "all", "2017-01-01", "2100-01-01")) {
-      const month = row.serviceDate.slice(0, 7);
-      const acc = projectByMonth.get(month) ?? { operated: 0, onTime15: 0 };
-      acc.operated += row.tripsOperated;
-      acc.onTime15 += row.onTimeCounts[ON_TIME_15_MIN] ?? 0;
-      projectByMonth.set(month, acc);
+    for (const row of repos.aggregates.getOtpMonthly("line", routeId, "all", ON_TIME_15_MIN)) {
+      projectByMonth.set(row.month, { operated: row.tripsOperated, onTime15: row.onTimeCount });
     }
 
     const officialByMonth = new Map<string, OfficialNjtMetric>(

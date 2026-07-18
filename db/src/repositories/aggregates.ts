@@ -52,6 +52,13 @@ export interface ConnectionTripleAgg {
   outboundTripId: string;
   observations: number;
 }
+export interface OtpMonthlyAgg {
+  /** YYYY-MM (the month prefix of the service dates it aggregates). */
+  month: string;
+  tripsOperated: number;
+  /** Summed on-time count for the requested threshold key. */
+  onTimeCount: number;
+}
 
 /**
  * Read/write access to the pre-computed daily aggregate tables. Writers are
@@ -170,6 +177,31 @@ export class AggregateRepository {
         onTimeCounts: parseCountMap(row.on_time_counts),
         sumDelaySeconds: row.sum_delay_seconds,
       }));
+  }
+
+  /**
+   * Monthly OTP rollup for a scope, bucketed in SQL (GROUP BY the YYYY-MM
+   * prefix of service_date) rather than pulling every daily row and grouping in
+   * JS. `thresholdKey` is the on-time threshold whose count to sum (a key of
+   * on_time_counts, e.g. "900"). Ordered by month ascending.
+   */
+  getOtpMonthly(
+    scope: ScopeKind,
+    scopeId: string,
+    direction: DirectionFilter,
+    thresholdKey: string,
+  ): OtpMonthlyAgg[] {
+    return this.db.all<OtpMonthlyAgg>(
+      /* sql */ `
+        SELECT substr(service_date, 1, 7) AS month,
+               SUM(trips_operated) AS tripsOperated,
+               SUM(COALESCE(json_extract(on_time_counts, '$."' || :threshold || '"'), 0)) AS onTimeCount
+        FROM otp_aggregates
+        WHERE scope=:scope AND scope_id=:scopeId AND direction=:dir
+        GROUP BY month ORDER BY month
+      `,
+      { scope, scopeId, dir: direction, threshold: thresholdKey },
+    );
   }
 
   // --- Delay distribution ----------------------------------------------------

@@ -52,6 +52,26 @@ describe("AggregateRepository", () => {
     expect(rows[0]?.tripsOperated).toBe(20);
   });
 
+  it("rolls up monthly OTP in SQL, summing per-threshold counts across days", () => {
+    repos.aggregates.upsertOtpDaily({
+      scope: "line", scopeId: "NE", serviceDate: "2025-07-15", direction: "all",
+      tripsOperated: 100, tripsCancelled: 0, onTimeCounts: { "900": 92 }, sumDelaySeconds: 0,
+    });
+    repos.aggregates.upsertOtpDaily({
+      scope: "line", scopeId: "NE", serviceDate: "2025-07-16", direction: "all",
+      tripsOperated: 50, tripsCancelled: 0, onTimeCounts: { "900": 40 }, sumDelaySeconds: 0,
+    });
+    repos.aggregates.upsertOtpDaily({
+      scope: "line", scopeId: "NE", serviceDate: "2025-06-01", direction: "all",
+      tripsOperated: 20, tripsCancelled: 0, onTimeCounts: { "900": 5 }, sumDelaySeconds: 0,
+    });
+    const monthly = repos.aggregates.getOtpMonthly("line", "NE", "all", "900");
+    expect(monthly).toEqual([
+      { month: "2025-06", tripsOperated: 20, onTimeCount: 5 },
+      { month: "2025-07", tripsOperated: 150, onTimeCount: 132 },
+    ]);
+  });
+
   it("sums heatmap buckets across dates in SQL", () => {
     for (const date of ["2025-07-15", "2025-07-16"]) {
       repos.aggregates.upsertHeatmapDaily({
