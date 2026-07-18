@@ -1,61 +1,21 @@
 import { useRouter } from "expo-router";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { type LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, G, Path } from "react-native-svg";
 import { NJ_STATE_OUTLINE, type MapLine, type MapStation } from "@njt/shared";
 import { formatPercent } from "../../lib/format";
+import { applyZoom, buildProjection, clampView, distToSegment, type Pt, type ViewBox } from "../../lib/map-projection";
 import { otpColor, otpColorAt, theme } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
 
 export type MapColorMode = "reliability" | "line";
-
-interface Pt {
-  x: number;
-  y: number;
-}
 
 /** What the user tapped, plus the screen point to anchor the tooltip at. */
 type Selection =
   | { kind: "station"; station: MapStation; at: Pt }
   | { kind: "line"; line: MapLine; at: Pt };
 
-interface ViewBox {
-  scale: number;
-  tx: number;
-  ty: number;
-}
-
 const TOOLTIP_WIDTH = 230;
-const MIN_SCALE = 1;
-const MAX_SCALE = 8;
-
-/** Distance from point p to segment a–b. */
-function distToSegment(p: Pt, a: Pt, b: Pt): number {
-  const dx = b.x - a.x;
-  const dy = b.y - a.y;
-  const len2 = dx * dx + dy * dy;
-  const t = len2 ? Math.max(0, Math.min(1, ((p.x - a.x) * dx + (p.y - a.y) * dy) / len2)) : 0;
-  return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
-}
-
-/** Keep the (scaled) content covering the viewport; lock to origin at 1×. */
-function clampView(v: ViewBox, w: number, h: number): ViewBox {
-  const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, v.scale));
-  if (scale <= 1.0001) return { scale: 1, tx: 0, ty: 0 };
-  return {
-    scale,
-    tx: Math.min(0, Math.max(w * (1 - scale), v.tx)),
-    ty: Math.min(0, Math.max(h * (1 - scale), v.ty)),
-  };
-}
-
-/** Zoom by `factor` keeping the point `focal` (screen space) fixed. */
-function applyZoom(v: ViewBox, focal: Pt, factor: number, w: number, h: number): ViewBox {
-  const scale = Math.max(MIN_SCALE, Math.min(MAX_SCALE, v.scale * factor));
-  const baseX = (focal.x - v.tx) / v.scale;
-  const baseY = (focal.y - v.ty) / v.scale;
-  return clampView({ scale, tx: focal.x - baseX * scale, ty: focal.y - baseY * scale }, w, h);
-}
 
 /**
  * Geographic schematic of the rail network (react-native-svg, web + native).
@@ -85,26 +45,12 @@ export function SystemMap({
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
   // --- projection (base, unzoomed coordinates) -----------------------------
-  const lats = [...stations.map((s) => s.lat), ...NJ_STATE_OUTLINE.map(([, lat]) => lat)];
-  const lons = [...stations.map((s) => s.lon), ...NJ_STATE_OUTLINE.map(([lon]) => lon)];
-  const minLat = Math.min(...lats);
-  const maxLat = Math.max(...lats);
-  const minLon = Math.min(...lons);
-  const maxLon = Math.max(...lons);
-  const k = Math.cos((((minLat + maxLat) / 2) * Math.PI) / 180);
-  const pad = 14;
-  const spanX = Math.max((maxLon - minLon) * k, 1e-6);
-  const spanY = Math.max(maxLat - minLat, 1e-6);
-  const scale = Math.min((width - 2 * pad) / spanX, (height - 2 * pad) / spanY);
-  const offX = (width - spanX * scale) / 2;
-  const offY = (height - spanY * scale) / 2;
-  const project = (lat: number, lon: number): Pt => ({ x: offX + (lon - minLon) * k * scale, y: offY + (maxLat - lat) * scale });
-
-  const coord = new Map(stations.map((s) => [s.stopId, project(s.lat, s.lon)]));
-  const outlineD = NJ_STATE_OUTLINE.map(([lon, lat], i) => {
-    const p = project(lat, lon);
-    return `${i === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
-  }).join(" ") + " Z";
+  // Pure and depends only on the stations + viewport size, so it's memoized
+  // rather than rebuilt on every pan/zoom frame.
+  const { coord, outlineD } = useMemo(
+    () => buildProjection(stations, NJ_STATE_OUTLINE, width, height),
+    [stations, width, height],
+  );
 
   const colorFor = (l: MapLine) =>
     colorMode === "line" ? `#${l.color}` : l.njtOtpPercent !== null ? otpColorAt(c, l.njtOtpPercent) : c.textMuted;
