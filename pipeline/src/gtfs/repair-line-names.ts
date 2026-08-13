@@ -29,24 +29,33 @@ export interface LineNameRepairResult {
 }
 
 /**
- * Rebuild `gtfs_route_aliases` for a version from its archived `routes.txt`.
+ * Rebuild `gtfs_route_aliases` from each version's archived `routes.txt`.
+ *
  * Versions ingested before the alias table existed have no rows, but the raw
- * feed files were archived at ingest, so the mapping is recoverable.
+ * feed files were archived, so the mapping is recoverable. This covers *every*
+ * version, not just the current one: replaying the archive resolves each
+ * snapshot against the schedule effective at the time, so a historical version
+ * without aliases makes the replay label real trips "Unknown line" — undoing
+ * this very repair. A version whose `routes.txt` was never archived (the old
+ * `import:gtfs` path did not store files) simply has nothing to recover.
  */
-function backfillAliases(repos: Repositories, versionId: string): number {
-  const existing = repos.gtfs.routeAliases(versionId);
-  if (existing.length > 0) return 0;
+function backfillAliases(repos: Repositories): number {
+  let written = 0;
+  for (const version of repos.gtfs.allVersions()) {
+    if (repos.gtfs.routeAliases(version.versionId).length > 0) continue;
 
-  const raw = repos.gtfs.readFile(versionId, "routes.txt");
-  if (!raw) return 0;
+    const raw = repos.gtfs.readFile(version.versionId, "routes.txt");
+    if (!raw) continue;
 
-  const { realToCanonical } = mapRailRoutes(parseCsv(new TextDecoder().decode(raw)));
-  const aliases = [...realToCanonical].map(([sourceRouteId, canonicalRouteId]) => ({
-    sourceRouteId,
-    canonicalRouteId,
-  }));
-  repos.gtfs.replaceRouteAliases(versionId, aliases);
-  return aliases.length;
+    const { realToCanonical } = mapRailRoutes(parseCsv(new TextDecoder().decode(raw)));
+    const aliases = [...realToCanonical].map(([sourceRouteId, canonicalRouteId]) => ({
+      sourceRouteId,
+      canonicalRouteId,
+    }));
+    repos.gtfs.replaceRouteAliases(version.versionId, aliases);
+    written += aliases.length;
+  }
+  return written;
 }
 
 export interface RepairOptions {
@@ -60,7 +69,7 @@ export function repairLineNames(repos: Repositories, options?: RepairOptions): L
     return { aliasesBackfilled: 0, relabelled: [], serviceDatesRecomputed: [] };
   }
 
-  const aliasesBackfilled = backfillAliases(repos, version.versionId);
+  const aliasesBackfilled = backfillAliases(repos);
 
   // Real line names, judged against every GTFS version ever ingested *and* the
   // reference catalog — not just the current version. NJT's feed changes shape

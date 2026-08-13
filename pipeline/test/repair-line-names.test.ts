@@ -162,6 +162,29 @@ describe("repairLineNames", () => {
     ]);
   });
 
+  // Replay resolves each snapshot against the schedule effective at the time,
+  // so a *historical* version without aliases makes it relabel real trips
+  // "Unknown line" — undoing this repair. Every version must be covered.
+  it("backfills aliases for superseded versions, not just the current one", () => {
+    const fresh = createRepositories(openDatabase());
+    for (const [versionId, from] of [["old", 0], ["current", 1000]] as const) {
+      fresh.gtfs.insertVersion({ versionId, effectiveFrom: from, effectiveTo: null, checksum: versionId, ingestedAtMs: 0 });
+      fresh.gtfs.storeFile(versionId, "routes.txt", strToU8(FILES["routes.txt"]));
+    }
+    fresh.gtfs.replaceRoutes("current", [{ routeId: "NC", lineName: "North Jersey Coast Line", mode: "rail" }]);
+
+    repairLineNames(fresh);
+
+    expect(fresh.gtfs.canonicalRouteFor("old", "10")).toBe("NC");
+    expect(fresh.gtfs.canonicalRouteFor("current", "10")).toBe("NC");
+  });
+
+  it("leaves a version alone when its routes.txt was never archived", () => {
+    const fresh = createRepositories(openDatabase());
+    fresh.gtfs.insertVersion({ versionId: "no-files", effectiveFrom: 0, effectiveTo: null, checksum: "x", ingestedAtMs: 0 });
+    expect(repairLineNames(fresh).aliasesBackfilled).toBe(0);
+  });
+
   it("backfills route aliases from the archived routes.txt when the table is empty", () => {
     // A version as ingested *before* the alias table existed: routes, the
     // archived raw files, and no aliases.

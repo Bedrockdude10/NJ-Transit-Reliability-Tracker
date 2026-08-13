@@ -105,6 +105,13 @@ export class GtfsRepository {
     return row ? toVersion(row) : null;
   }
 
+  /** Every ingested version, oldest first. */
+  allVersions(): GtfsStaticVersion[] {
+    return this.db
+      .all<VersionRow>("SELECT * FROM gtfs_static_versions ORDER BY effective_from")
+      .map(toVersion);
+  }
+
   findByChecksum(checksum: string): GtfsStaticVersion | null {
     const row = this.db.get<VersionRow>("SELECT * FROM gtfs_static_versions WHERE checksum = :c LIMIT 1", {
       c: checksum,
