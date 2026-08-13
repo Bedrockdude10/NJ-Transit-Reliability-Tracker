@@ -125,10 +125,37 @@ function toEvent(row: EventRow): TripStopEvent {
  * authoritative "final reading" (PRD deduplication rule), while always letting
  * a cancellation and the first non-null delay win.
  */
+/**
+ * Whether an incoming reading should displace the stored one.
+ *
+ * **This mirrors the `WHERE` clause of `UPSERT` below, and the two must agree.**
+ * The SQL arbitrates between live polls; replaying the archive has to make the
+ * same choice in memory before it writes, and a divergence between them would
+ * silently rewrite history with a different answer than live ingest produced.
+ * `events.upsert-parity.test.ts` holds them together.
+ *
+ * The rule is *closest to the scheduled arrival wins*, not last-wins: a poll
+ * taken near the moment a train is due carries a better estimate than one taken
+ * hours earlier, whichever order they happen to arrive in.
+ */
+export function prefersIncomingReading(
+  stored: Pick<TripStopEvent, "delaySeconds" | "scheduledArrival" | "ingestedAtMs">,
+  incoming: Pick<TripStopEvent, "tripCancelled" | "scheduledArrival" | "ingestedAtMs">,
+): boolean {
+  if (incoming.tripCancelled) return true;
+  if (stored.delaySeconds === null) return true;
+  if (incoming.scheduledArrival === null) return true;
+  if (stored.scheduledArrival === null) return false;
+  const incomingDistance = Math.abs(incoming.ingestedAtMs - incoming.scheduledArrival * 1000);
+  const storedDistance = Math.abs(stored.ingestedAtMs - stored.scheduledArrival * 1000);
+  return incomingDistance < storedDistance;
+}
+
 export class TripStopEventRepository {
   constructor(private readonly db: Database) {}
 
-  private static readonly UPSERT = /* sql */ `
+  /** Insert + full column overwrite. Both statements below build on this. */
+  private static readonly WRITE = /* sql */ `
     INSERT INTO trip_stop_events (
       trip_id, route_id, line_name, stop_id, stop_name, stop_sequence, direction,
       service_date, scheduled_arrival, scheduled_departure, observed_arrival,
@@ -152,6 +179,13 @@ export class TripStopEventRepository {
       trip_cancelled      = excluded.trip_cancelled,
       gtfs_static_version = excluded.gtfs_static_version,
       ingested_at_ms      = excluded.ingested_at_ms
+  `;
+
+  /**
+   * Live ingest: keep whichever reading was taken closest to the scheduled
+   * arrival. Mirrored in {@link prefersIncomingReading} — change both together.
+   */
+  private static readonly UPSERT = `${TripStopEventRepository.WRITE}
     WHERE
       excluded.trip_cancelled = 1
       OR trip_stop_events.delay_seconds IS NULL
@@ -159,6 +193,9 @@ export class TripStopEventRepository {
       OR abs(excluded.ingested_at_ms - excluded.scheduled_arrival * 1000)
          < abs(trip_stop_events.ingested_at_ms - trip_stop_events.scheduled_arrival * 1000)
   `;
+
+  /** Replay: the caller already arbitrated, so write what it decided. */
+  private static readonly REPLACE = TripStopEventRepository.WRITE;
 
   private bind(event: TripStopEvent) {
     return {
@@ -187,6 +224,23 @@ export class TripStopEventRepository {
 
   recordMany(events: readonly TripStopEvent[]): void {
     const stmt = this.db.prepare(TripStopEventRepository.UPSERT);
+    this.db.transaction(() => {
+      for (const event of events) stmt.run(this.bind(event));
+    });
+  }
+
+  /**
+   * Overwrite unconditionally — for replaying the archive, which has already
+   * chosen the winning reading in memory (see {@link prefersIncomingReading}).
+   *
+   * Live ingest must not use this. Its guard exists to arbitrate between polls
+   * arriving out of order; a replay is a re-derivation of the whole day and its
+   * result is authoritative, so applying the guard again would block exactly
+   * the corrections a replay exists to make — a parser fix changes field
+   * values, not timings, and would never look "closer to arrival".
+   */
+  replaceMany(events: readonly TripStopEvent[]): void {
+    const stmt = this.db.prepare(TripStopEventRepository.REPLACE);
     this.db.transaction(() => {
       for (const event of events) stmt.run(this.bind(event));
     });
