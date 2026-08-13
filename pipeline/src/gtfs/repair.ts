@@ -1,8 +1,20 @@
+import { existsSync } from "node:fs";
 import { createRepositories, openDatabase } from "@njt/db";
 import { repairLineNames } from "./repair-line-names";
 
 /** CLI: repair events stored under a raw feed route_id instead of a line name. */
 const dbPath = process.env.NJT_DB_PATH ?? "./data/njt.sqlite";
+
+// Unlike the importers, this must never create a database: repairing a fresh
+// empty file silently "succeeds" while the real one goes untouched.
+if (!existsSync(dbPath)) {
+  console.error(
+    `No database at ${dbPath}.\n` +
+      "This repair runs against an existing collection — set NJT_DB_PATH, or run it\n" +
+      "on the server where the pipeline writes (see DEPLOY.md).",
+  );
+  process.exit(1);
+}
 
 const repos = createRepositories(openDatabase(dbPath));
 const result = repairLineNames(repos);
