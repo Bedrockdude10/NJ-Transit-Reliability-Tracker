@@ -23,6 +23,42 @@ interface EventRow {
 
 /** Explicit column list for event reads (B5: no SELECT *); every column is
  * consumed by {@link toEvent} and the pipeline aggregator. */
+/** A train still to call at a stop, for the live departure board. */
+export interface UpcomingDeparture {
+  tripId: string;
+  routeId: string;
+  lineName: string;
+  direction: Direction;
+  stopSequence: number;
+  scheduledArrival: number | null;
+  scheduledDeparture: number | null;
+  /** The feed's current prediction; null for a cancelled trip. */
+  predictedArrival: number | null;
+  delaySeconds: number | null;
+  stopSkipped: boolean;
+  tripCancelled: boolean;
+  /** GTFS trip headsign — the destination shown to riders. */
+  headsign: string | null;
+  /** Ordering key: predicted, else scheduled departure, else scheduled arrival. */
+  dueAt: number;
+}
+
+interface UpcomingDepartureRow {
+  trip_id: string;
+  route_id: string;
+  line_name: string;
+  direction: string;
+  stop_sequence: number;
+  scheduled_arrival: number | null;
+  scheduled_departure: number | null;
+  observed_arrival: number | null;
+  delay_seconds: number | null;
+  stop_skipped: number;
+  trip_cancelled: number;
+  trip_headsign: string | null;
+  due_at: number;
+}
+
 const EVENT_COLUMNS =
   "trip_id, route_id, line_name, stop_id, stop_name, stop_sequence, direction, service_date, " +
   "scheduled_arrival, scheduled_departure, observed_arrival, delay_seconds, stop_skipped, " +
@@ -140,6 +176,56 @@ export class TripStopEventRepository {
         { s: stopId, from, to },
       )
       .map(toEvent);
+  }
+
+  /**
+   * Trains still to call at a stop, soonest first — the data behind a live
+   * departure board.
+   *
+   * Each poll rewrites a trip's stop rows, so a stop the train hasn't reached
+   * yet holds the feed's current *prediction* rather than an observation. The
+   * ordering key falls back through predicted -> scheduled departure ->
+   * scheduled arrival so cancelled trips (no prediction at all) still take
+   * their scheduled slot on the board instead of vanishing from it.
+   */
+  upcomingAtStop(
+    stopId: string,
+    versionId: string | null,
+    fromEpoch: number,
+    toEpoch: number,
+    limit: number,
+  ): UpcomingDeparture[] {
+    const rows = this.db.all<UpcomingDepartureRow>(
+      /* sql */ `
+        SELECT e.trip_id, e.route_id, e.line_name, e.direction, e.stop_sequence,
+               e.scheduled_arrival, e.scheduled_departure, e.observed_arrival,
+               e.delay_seconds, e.stop_skipped, e.trip_cancelled,
+               t.trip_headsign,
+               COALESCE(e.observed_arrival, e.scheduled_departure, e.scheduled_arrival) AS due_at
+        FROM trip_stop_events e
+        LEFT JOIN gtfs_trips t ON t.version_id = :v AND t.trip_id = e.trip_id
+        WHERE e.stop_id = :s
+          AND due_at BETWEEN :from AND :to
+        ORDER BY due_at
+        LIMIT :lim
+      `,
+      { s: stopId, v: versionId ?? "", from: fromEpoch, to: toEpoch, lim: limit },
+    );
+    return rows.map((r) => ({
+      tripId: r.trip_id,
+      routeId: r.route_id,
+      lineName: r.line_name,
+      direction: r.direction as Direction,
+      stopSequence: r.stop_sequence,
+      scheduledArrival: r.scheduled_arrival,
+      scheduledDeparture: r.scheduled_departure,
+      predictedArrival: r.observed_arrival,
+      delaySeconds: r.delay_seconds,
+      stopSkipped: fromSqlBool(r.stop_skipped),
+      tripCancelled: fromSqlBool(r.trip_cancelled),
+      headsign: r.trip_headsign,
+      dueAt: r.due_at,
+    }));
   }
 
   /** Distinct service dates present, ascending. */

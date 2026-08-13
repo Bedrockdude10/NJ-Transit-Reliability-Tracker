@@ -55,6 +55,24 @@ export class RequestCache {
     return promise;
   }
 
+  /**
+   * Like {@link get}, but never serves or stores a cached value — for endpoints
+   * whose whole point is being current (the departure board, live vehicle
+   * positions). Concurrent callers still share one in-flight request, so a
+   * screen and a widget asking at the same moment don't double-fetch; a board
+   * refreshing on a timer simply always gets a fresh answer.
+   */
+  live<T>(key: string, factory: () => Promise<T>): Promise<T> {
+    const pending = this.inflight.get(key);
+    if (pending) return pending as Promise<T>;
+
+    const promise = factory().finally(() => {
+      this.inflight.delete(key);
+    });
+    this.inflight.set(key, promise);
+    return promise;
+  }
+
   /** Drop a single key's cached value and any in-flight tracking. */
   invalidate(key: string): void {
     this.fresh.delete(key);

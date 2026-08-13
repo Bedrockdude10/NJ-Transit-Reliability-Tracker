@@ -60,3 +60,31 @@ describe("RequestCache", () => {
     expect(await cache.get("k", factory)).toBe("v2");
   });
 });
+
+describe("RequestCache.live", () => {
+  it("never serves a cached value, so a polling board always gets fresh data", async () => {
+    const cache = new RequestCache();
+    let calls = 0;
+    const fetcher = () => Promise.resolve(++calls);
+
+    expect(await cache.live("k", fetcher)).toBe(1);
+    expect(await cache.live("k", fetcher)).toBe(2);
+    expect(calls).toBe(2);
+  });
+
+  it("still dedupes concurrent callers", async () => {
+    const cache = new RequestCache();
+    let calls = 0;
+    const fetcher = () => new Promise<number>((r) => setTimeout(() => r(++calls), 5));
+
+    const [a, b] = await Promise.all([cache.live("k", fetcher), cache.live("k", fetcher)]);
+    expect(a).toBe(b);
+    expect(calls).toBe(1);
+  });
+
+  it("does not poison the cached path", async () => {
+    const cache = new RequestCache();
+    await cache.live("k", () => Promise.resolve("live"));
+    expect(await cache.get("k", () => Promise.resolve("cached"))).toBe("cached");
+  });
+});

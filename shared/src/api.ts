@@ -181,6 +181,38 @@ export interface MapVehiclesResponse {
   generatedAtMs: number;
 }
 
+// --- Departures --------------------------------------------------------------
+
+/** How a departure is running, for at-a-glance colouring on the board. */
+export type DepartureStatus = "on_time" | "late" | "early" | "cancelled" | "skipped" | "scheduled";
+
+export interface Departure {
+  tripId: string;
+  lineId: string;
+  lineName: string;
+  direction: Direction;
+  /** GTFS headsign — where the train is going. Null when the trip is unmatched. */
+  destination: string | null;
+  /** Timetabled departure (falls back to arrival), epoch seconds UTC. */
+  scheduledTime: number | null;
+  /** The feed's live prediction, epoch seconds UTC. Null when cancelled. */
+  predictedTime: number | null;
+  /** Positive = late. Null when the feed offers no prediction. */
+  delaySeconds: number | null;
+  /** Whole minutes until `predictedTime`; negative once it is due. */
+  minutesAway: number | null;
+  status: DepartureStatus;
+}
+
+export interface StationDeparturesResponse {
+  stopId: string;
+  stopName: string;
+  departures: Departure[];
+  /** Minutes ahead the board looks. */
+  horizonMinutes: number;
+  generatedAtMs: number;
+}
+
 // --- Light rail --------------------------------------------------------------
 
 export interface LightRailLineMdbf {

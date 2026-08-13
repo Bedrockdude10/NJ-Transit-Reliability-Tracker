@@ -62,6 +62,17 @@ export function parseLimit(value: string | undefined, fallback: number): number 
   return parsePositiveInt(value, fallback, 100);
 }
 
+/**
+ * Parse an integer query value clamped to `[min, max]`, falling back when
+ * absent or unparseable. Unlike {@link parsePositiveInt} this has a floor other
+ * than 1 — a departure-board horizon of 2 minutes is valid input but useless.
+ */
+export function parseBoundedInt(value: string | undefined, fallback: number, min: number, max: number): number {
+  const n = value ? Number(value) : fallback;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(Math.floor(n), min), max);
+}
+
 /** Parse a `?type=` heatmap query value, defaulting to `hour_of_day`. */
 export function parseHeatmapType(value: string | undefined): HeatmapType {
   const type = value ?? "hour_of_day";
