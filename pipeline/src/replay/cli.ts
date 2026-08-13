@@ -47,8 +47,19 @@ console.log(
   `${apply ? "Replaying" : "Previewing replay of"} ${from} .. ${to} from ${repos.snapshots.count("TripUpdates").toLocaleString()} archived TripUpdates polls\n`,
 );
 
+// A count cannot tell a correction from a regression: show what actually moves.
+const sampleLimit = Number(arg("sample") ?? 8);
+const fieldTally = new Map<string, number>();
+let shown = 0;
+
 const result = replayRange(repos, from, to, {
   apply,
+  onDifference: (d) => {
+    for (const f of d.fields) fieldTally.set(f.field, (fieldTally.get(f.field) ?? 0) + 1);
+    if (shown++ >= sampleLimit) return;
+    const summary = d.fields.map((f) => `${f.field}: ${JSON.stringify(f.stored)} -> ${JSON.stringify(f.derived)}`).join(", ");
+    console.log(`      trip ${d.tripId} @ ${d.stopId}  ${summary}`);
+  },
   betweenDates: (d) => {
     const diff = d.changed + d.added;
     console.log(
@@ -69,6 +80,13 @@ console.log(`  reproduced exactly : ${t.unchanged.toLocaleString()}`);
 console.log(`  would change       : ${t.changed.toLocaleString()}`);
 console.log(`  not currently held : ${t.added.toLocaleString()}`);
 console.log(`  stored but not re-derived : ${t.orphaned.toLocaleString()} (left untouched)`);
+
+if (fieldTally.size > 0) {
+  console.log("\nfields that would change:");
+  for (const [field, count] of [...fieldTally].sort((a, b) => b[1] - a[1])) {
+    console.log(`  ${field.padEnd(20)} ${count.toLocaleString()}`);
+  }
+}
 
 if (!apply) {
   console.log("\nPreview only. Re-run with --apply to write.");

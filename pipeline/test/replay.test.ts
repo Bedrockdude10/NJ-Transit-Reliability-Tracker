@@ -1,7 +1,7 @@
 import { createRepositories, openDatabase, type Repositories } from "@njt/db";
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 import { beforeEach, describe, expect, it } from "vitest";
-import { replayRange, replayServiceDate, totalsOf, windowForServiceDate } from "../src/replay/replay";
+import { differingFields, replayRange, replayServiceDate, totalsOf, windowForServiceDate } from "../src/replay/replay";
 
 const { transit_realtime: tr } = GtfsRealtimeBindings;
 
@@ -238,5 +238,40 @@ describe("replayRange", () => {
       added: 0,
       orphaned: 0,
     });
+  });
+});
+
+describe("differingFields", () => {
+  const base = {
+    tripId: "T1",
+    routeId: "NE",
+    lineName: "Northeast Corridor Line",
+    stopId: "NWK",
+    stopName: "Newark Penn",
+    stopSequence: 1,
+    direction: "inbound" as const,
+    serviceDate: DATE,
+    scheduledArrival: 100,
+    scheduledDeparture: 160,
+    observedArrival: 400,
+    delaySeconds: 300,
+    stopSkipped: false,
+    tripCancelled: false,
+    gtfsStaticVersion: "v1",
+    ingestedAtMs: 1,
+  };
+
+  it("names each field that moved, and which way", () => {
+    const derived = { ...base, lineName: "North Jersey Coast Line", delaySeconds: 60 };
+    expect(differingFields(base, derived)).toEqual([
+      { field: "lineName", stored: "Northeast Corridor Line", derived: "North Jersey Coast Line" },
+      { field: "delaySeconds", stored: 300, derived: 60 },
+    ]);
+  });
+
+  it("ignores bookkeeping fields that always differ on a replay", () => {
+    // ingestedAtMs and the GTFS version are not measurements.
+    const derived = { ...base, ingestedAtMs: 999, gtfsStaticVersion: "v2" };
+    expect(differingFields(base, derived)).toEqual([]);
   });
 });
