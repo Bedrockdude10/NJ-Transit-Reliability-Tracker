@@ -13,6 +13,7 @@ import type {
   LineMonthlyResponse,
   MapResponse,
   MapVehiclesResponse,
+  PropagationResponse,
   LineSummaryResponse,
   LineTrendResponse,
   StationDeparturesResponse,
@@ -84,6 +85,8 @@ export const api = {
   lineMonthly: (id: string) => get<LineMonthlyResponse>(`/lines/${encodeURIComponent(id)}/monthly`),
   lineWorst: (id: string, r: DateRange, limit = 10) =>
     get<WorstTripsResponse>(`/lines/${encodeURIComponent(id)}/trips/worst`, { ...r, limit }),
+  linePropagation: (id: string, r: DateRange, direction: "inbound" | "outbound") =>
+    get<PropagationResponse>(`/lines/${encodeURIComponent(id)}/propagation`, { ...r, direction }),
   lineHeatmap: (id: string, r: DateRange, type: HeatmapType) =>
     get<HeatmapResponse>(`/lines/${encodeURIComponent(id)}/heatmap`, { ...r, type }),
   stations: () => get<StationListResponse>("/stations"),

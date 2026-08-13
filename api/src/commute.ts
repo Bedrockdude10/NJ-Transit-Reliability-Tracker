@@ -5,7 +5,7 @@ import {
   getLocalParts,
   type CommuteDeparture,
 } from "@njt/shared";
-import { round1 } from "./util";
+import { pluralize, round1 } from "./util";
 
 /**
  * Turn observed journeys between two stops into the answer riders actually
@@ -133,13 +133,13 @@ export function summarizeCommute(input: {
   const parts: string[] = [];
   if (input.onTimePercent !== null) {
     parts.push(
-      `${input.onTimePercent}% of these trains arrived at ${input.destinationName} within 5 minutes of schedule, over ${input.observations} journeys.`,
+      `${input.onTimePercent}% of these trains arrived at ${input.destinationName} within 5 minutes of schedule, over ${pluralize(input.observations, "journey")}.`,
     );
   } else {
-    parts.push(`${input.observations} journeys observed, but none completed with a measurable arrival time.`);
+    parts.push(`${pluralize(input.observations, "journey")} observed, but none completed with a measurable arrival time.`);
   }
   if (input.p90ArrivalDelaySeconds !== null && input.p90ArrivalDelaySeconds > 0) {
-    parts.push(`One journey in ten arrived at least ${Math.round(input.p90ArrivalDelaySeconds / 60)} minutes late.`);
+    parts.push(`One journey in ten arrived at least ${pluralize(Math.round(input.p90ArrivalDelaySeconds / 60), "minute")} late.`);
   }
   if (input.mostReliable && input.leastReliable && input.mostReliable.label !== input.leastReliable.label) {
     parts.push(

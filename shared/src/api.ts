@@ -213,6 +213,46 @@ export interface StationDeparturesResponse {
   generatedAtMs: number;
 }
 
+// --- Delay propagation --------------------------------------------------------
+
+/** Average delay at one stop along a line's route, in running order. */
+export interface PropagationStop {
+  stopId: string;
+  stopName: string;
+  /** Position along the route, 1-based. */
+  sequence: number;
+  avgDelaySeconds: number | null;
+  observations: number;
+  /**
+   * Change in average delay since the previous stop. Positive = this segment
+   * added delay; negative = trains recovered across it. Null at the first stop.
+   */
+  deltaSeconds: number | null;
+}
+
+/** A stop-to-stop segment ranked by how much delay it adds. */
+export interface PropagationSegment {
+  fromStopName: string;
+  toStopName: string;
+  addedSeconds: number;
+}
+
+export interface PropagationResponse {
+  lineId: string;
+  lineName: string;
+  direction: Direction;
+  from: string;
+  to: string;
+  stops: PropagationStop[];
+  /** Segments that add the most delay, worst first. */
+  worstSegments: PropagationSegment[];
+  /** Segments where trains most reliably make time back. */
+  bestRecoveries: PropagationSegment[];
+  /** Delay at the last stop minus the first — the journey's net accumulation. */
+  netAccumulatedSeconds: number | null;
+  summary: string;
+}
+
 // --- Commute -----------------------------------------------------------------
 
 /** Reliability of one timetabled departure on a commute, over the period. */
