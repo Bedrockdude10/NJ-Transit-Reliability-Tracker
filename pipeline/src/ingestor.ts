@@ -51,6 +51,24 @@ export class Ingestor {
     return toLocalDateString(Math.floor(now / 1000));
   }
 
+  /**
+   * Record a poll failure without ever throwing.
+   *
+   * `recordFailure` is itself a write, so under write contention (a concurrent
+   * maintenance script, say) it can raise SQLITE_BUSY *from inside the catch
+   * block* that was handling the original error. That escapes the handler,
+   * rejects the scheduler tick, and takes the process down — which stops the
+   * supervisor and the whole machine with it. A failed poll must never be able
+   * to do that: the next tick is 30 seconds away and recovers on its own.
+   */
+  private recordFailureSafely(feed: FeedType, now: number): void {
+    try {
+      this.repos.health.recordFailure(feed, now);
+    } catch (error) {
+      this.logger.error("could not record feed failure", { feed, error: String(error) });
+    }
+  }
+
   /** Fetch with retry while counting every attempt against the GTFS-RT budget. */
   private async fetchCounting(fetchOnce: () => Promise<Uint8Array>): Promise<Uint8Array> {
     const now = this.clock.now();
@@ -90,7 +108,7 @@ export class Ingestor {
       this.logger.info("TripUpdates ingested", { events: events.length });
       return true;
     } catch (error) {
-      this.repos.health.recordFailure("TripUpdates", now);
+      this.recordFailureSafely("TripUpdates", now);
       this.logger.error("TripUpdates poll failed", { error: String(error) });
       return false;
     }
@@ -107,7 +125,7 @@ export class Ingestor {
       this.logger.info("ServiceAlerts ingested", { alerts: alerts.length });
       return true;
     } catch (error) {
-      this.repos.health.recordFailure("ServiceAlerts", now);
+      this.recordFailureSafely("ServiceAlerts", now);
       this.logger.error("ServiceAlerts poll failed", { error: String(error) });
       return false;
     }
@@ -129,7 +147,7 @@ export class Ingestor {
       this.logger.info("VehiclePositions ingested", { vehicles: positions.length });
       return true;
     } catch (error) {
-      this.repos.health.recordFailure("VehiclePositions", now);
+      this.recordFailureSafely("VehiclePositions", now);
       this.logger.error("VehiclePositions poll failed", { error: String(error) });
       return false;
     }

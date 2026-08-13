@@ -145,6 +145,33 @@ describe("Ingestor", () => {
     expect(repos.vehicles.count()).toBe(0);
   });
 
+  // Regression: recordFailure runs inside the catch block, so when a concurrent
+  // writer holds the lock it threw *from the error handler*, escaped the catch,
+  // rejected the scheduler tick and killed the process — taking the supervisor
+  // and the whole machine down. A failed poll must degrade, never crash.
+  it("survives a failed poll whose failure-recording also fails", async () => {
+    client.failTripUpdates = true;
+    repos.health.recordFailure = () => {
+      throw new Error("database is locked");
+    };
+
+    await expect(ingestor.pollTripUpdates()).resolves.toBe(false);
+  });
+
+  it("still ingests on the next tick after a locked-database poll", async () => {
+    client.failTripUpdates = true;
+    const original = repos.health.recordFailure.bind(repos.health);
+    repos.health.recordFailure = () => {
+      throw new Error("database is locked");
+    };
+    await ingestor.pollTripUpdates();
+
+    repos.health.recordFailure = original;
+    client.failTripUpdates = false;
+    expect(await ingestor.pollTripUpdates()).toBe(true);
+    expect(repos.events.count()).toBeGreaterThan(0);
+  });
+
   it("flags staleness when TripUpdates has been silent too long", async () => {
     await ingestor.pollTripUpdates(); // last success at NOW
     const lateClock: Clock = { now: () => NOW + 2 * 3_600_000, sleep: () => Promise.resolve() };
