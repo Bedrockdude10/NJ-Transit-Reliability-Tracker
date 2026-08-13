@@ -38,11 +38,6 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** "1 minute" / "3 minutes" — prose in summaries should read as written English. */
-export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
-  return `${count} ${Math.abs(count) === 1 ? singular : plural}`;
-}
-
 /** Round to one decimal place — percentages and average-delay values. */
 export function round1(value: number): number {
   return Math.round(value * 10) / 10;

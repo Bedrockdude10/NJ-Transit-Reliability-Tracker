@@ -54,8 +54,7 @@ export function TrendList({ trends }: { trends: readonly LineTrend[] }) {
         );
       })}
       <Muted>
-        Only changes unlikely to be chance are called; a line running few trains needs a bigger swing before it counts.
-        This is a screen for what deserves a look, not proof of a cause.
+        Only changes unlikely to be chance are called — a line running few trains needs a bigger swing to qualify.
       </Muted>
     </View>
   );

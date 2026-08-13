@@ -6,7 +6,6 @@ import {
   MIN_TRIPS_PER_PERIOD,
   SIGNIFICANCE_Z,
   sumPeriod,
-  summarizeTrends,
   twoProportionZ,
 } from "../src/trends";
 
@@ -102,45 +101,5 @@ describe("sumPeriod", () => {
 
   it("handles an empty period", () => {
     expect(sumPeriod([], "300")).toEqual({ operated: 0, onTime: 0 });
-  });
-});
-
-describe("summarizeTrends", () => {
-  const trend = (over: Partial<import("@njt/shared").LineTrend>): import("@njt/shared").LineTrend => ({
-    lineId: "NE",
-    lineName: "Northeast Corridor Line",
-    recentOtpPercent: 80,
-    priorOtpPercent: 90,
-    deltaPoints: -10,
-    recentTrips: 1000,
-    priorTrips: 1000,
-    direction: "worsening",
-    enoughData: true,
-    ...over,
-  });
-
-  it("says when there is nothing comparable yet", () => {
-    expect(summarizeTrends([trend({ enoughData: false, direction: "stable" })], 14)).toContain("Not enough data yet");
-  });
-
-  it("says plainly when nothing changed", () => {
-    expect(summarizeTrends([trend({ direction: "stable" })], 14)).toContain("No line changed measurably");
-  });
-
-  it("leads with the worst decline and uses correct grammar for one", () => {
-    const s = summarizeTrends([trend({})], 14);
-    expect(s).toContain("One line has got measurably worse");
-    expect(s).toContain("down 10 points");
-  });
-
-  it("counts multiple declines", () => {
-    const s = summarizeTrends([trend({}), trend({ lineId: "NC", lineName: "North Jersey Coast Line", deltaPoints: -4 })], 14);
-    expect(s).toContain("2 lines have got measurably worse");
-    expect(s).toContain("Northeast Corridor Line"); // the steeper of the two
-  });
-
-  it("mentions improvement alongside decline", () => {
-    const s = summarizeTrends([trend({}), trend({ lineName: "Gladstone Branch", direction: "improving", deltaPoints: 6 })], 14);
-    expect(s).toContain("Gladstone Branch improved most, up 6 points");
   });
 });

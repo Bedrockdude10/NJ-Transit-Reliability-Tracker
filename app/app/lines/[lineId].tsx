@@ -2,7 +2,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
-import { coverageNote, formatDelaySeconds, formatInt, formatMonth, formatPercent } from "../../lib/format";
+import { coverageNote, formatDelayShort, formatDelaySeconds, formatInt, formatMonth, formatPercent } from "../../lib/format";
 import { hasMeasuredOtp } from "../../lib/measurement";
 import { theme, otpColor, otpColorAt } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
@@ -154,7 +154,17 @@ export default function LineDetail() {
           >
             {propagation.data ? (
               <>
-                <Muted>{propagation.data.summary}</Muted>
+                {propagation.data.netAccumulatedSeconds !== null ? (
+                  <Row>
+                    <StatTile
+                      label="Net, end to end"
+                      value={formatDelayShort(propagation.data.netAccumulatedSeconds)}
+                      color={propagation.data.netAccumulatedSeconds > 0 ? theme.colors.bad : theme.colors.good}
+                      accent={propagation.data.netAccumulatedSeconds > 0 ? theme.colors.bad : theme.colors.good}
+                      hint={propagation.data.netAccumulatedSeconds > 0 ? "delay gained over the route" : "delay recovered over the route"}
+                    />
+                  </Row>
+                ) : null}
                 <PropagationChart stops={propagation.data.stops} />
                 {propagation.data.worstSegments.length > 0 ? (
                   <>

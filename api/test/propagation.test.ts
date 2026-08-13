@@ -1,6 +1,6 @@
 import type { StationDelayAgg } from "@njt/db";
 import { describe, expect, it } from "vitest";
-import { buildPropagation, netAccumulated, rankSegments, summarizePropagation } from "../src/propagation";
+import { buildPropagation, netAccumulated, rankSegments } from "../src/propagation";
 
 const stops = [
   { stopId: "A", stopName: "Trenton" },
@@ -76,42 +76,5 @@ describe("netAccumulated", () => {
   it("returns null when a single stop cannot describe accumulation", () => {
     expect(netAccumulated(buildPropagation(stops, [delay("A", 60)]))).toBeNull();
     expect(netAccumulated(buildPropagation(stops, []))).toBeNull();
-  });
-});
-
-describe("summarizePropagation", () => {
-  const build = (avgs: number[]) => buildPropagation(stops, stops.map((s, i) => delay(s.stopId, avgs[i] as number)));
-
-  it("says when there is too little to trace", () => {
-    const s = buildPropagation(stops, [delay("A", 60)]);
-    expect(summarizePropagation({ lineName: "NEC", stops: s, netAccumulatedSeconds: null, worstSegments: [] })).toContain(
-      "Not enough measured stops",
-    );
-  });
-
-  it("distinguishes losing time from making it back", () => {
-    const losing = build([60, 120, 180, 300]);
-    expect(
-      summarizePropagation({ lineName: "NEC", stops: losing, netAccumulatedSeconds: 240, worstSegments: [] }),
-    ).toContain("lose about 4 minutes");
-
-    const recovering = build([300, 240, 120, 60]);
-    expect(
-      summarizePropagation({ lineName: "NEC", stops: recovering, netAccumulatedSeconds: -240, worstSegments: [] }),
-    ).toContain("make back about 4 minutes");
-  });
-
-  it("uses singular prose for one minute", () => {
-    const s = build([0, 30, 45, 60]);
-    expect(summarizePropagation({ lineName: "NEC", stops: s, netAccumulatedSeconds: 60, worstSegments: [] })).toContain(
-      "1 minute end to end",
-    );
-  });
-
-  it("calls a route that neither gains nor sheds delay what it is", () => {
-    const s = build([120, 118, 121, 119]);
-    expect(summarizePropagation({ lineName: "NEC", stops: s, netAccumulatedSeconds: -1, worstSegments: [] })).toContain(
-      "finish roughly as late as they start",
-    );
   });
 });

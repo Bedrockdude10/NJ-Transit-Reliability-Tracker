@@ -105,7 +105,6 @@ export default function Commute() {
               <SectionTitle>
                 {data.origin.stopName} → {data.destination.stopName}
               </SectionTitle>
-              <Muted>{data.summary}</Muted>
               <Row>
                 <StatTile
                   label="On time (≤5 min)"

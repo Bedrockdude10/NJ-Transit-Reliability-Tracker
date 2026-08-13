@@ -5,7 +5,7 @@ import {
   getLocalParts,
   type CommuteDeparture,
 } from "@njt/shared";
-import { pluralize, round1 } from "./util";
+import { round1 } from "./util";
 
 /**
  * Turn observed journeys between two stops into the answer riders actually
@@ -116,35 +116,4 @@ export function rankDepartures(departures: readonly CommuteDeparture[]): {
   if (rankable.length < 2) return { mostReliable: null, leastReliable: null };
   const sorted = [...rankable].sort((a, b) => (b.onTimePercent as number) - (a.onTimePercent as number));
   return { mostReliable: sorted[0] ?? null, leastReliable: sorted[sorted.length - 1] ?? null };
-}
-
-export function summarizeCommute(input: {
-  originName: string;
-  destinationName: string;
-  observations: number;
-  onTimePercent: number | null;
-  p90ArrivalDelaySeconds: number | null;
-  mostReliable: CommuteDeparture | null;
-  leastReliable: CommuteDeparture | null;
-}): string {
-  if (input.observations === 0) {
-    return `No trains have been observed running ${input.originName} → ${input.destinationName} in this period.`;
-  }
-  const parts: string[] = [];
-  if (input.onTimePercent !== null) {
-    parts.push(
-      `${input.onTimePercent}% of these trains arrived at ${input.destinationName} within 5 minutes of schedule, over ${pluralize(input.observations, "journey")}.`,
-    );
-  } else {
-    parts.push(`${pluralize(input.observations, "journey")} observed, but none completed with a measurable arrival time.`);
-  }
-  if (input.p90ArrivalDelaySeconds !== null && input.p90ArrivalDelaySeconds > 0) {
-    parts.push(`One journey in ten arrived at least ${pluralize(Math.round(input.p90ArrivalDelaySeconds / 60), "minute")} late.`);
-  }
-  if (input.mostReliable && input.leastReliable && input.mostReliable.label !== input.leastReliable.label) {
-    parts.push(
-      `The ${input.mostReliable.label} is the most reliable departure (${input.mostReliable.onTimePercent}%); the ${input.leastReliable.label} is the least (${input.leastReliable.onTimePercent}%).`,
-    );
-  }
-  return parts.join(" ");
 }

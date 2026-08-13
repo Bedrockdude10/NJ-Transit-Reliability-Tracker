@@ -22,7 +22,7 @@ import {
 } from "../aggregation";
 import { listLines } from "../catalog";
 import { ALL_MONTHS, monthRange, resolveRange } from "../dates";
-import { buildLineTrend, sumPeriod, summarizeTrends } from "../trends";
+import { buildLineTrend, sumPeriod } from "../trends";
 import { resolveOfficialWindow } from "../official-window";
 import { CACHE_CONTROL_DAILY, parseBoundedInt, parseHeatmapType } from "../util";
 
@@ -117,7 +117,6 @@ export function systemRoutes(repos: Repositories): Hono {
       priorTo,
       thresholdSeconds: Number(TREND_THRESHOLD),
       lines,
-      summary: summarizeTrends(lines, days),
     };
     c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);

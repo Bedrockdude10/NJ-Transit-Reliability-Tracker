@@ -21,21 +21,6 @@ function rate(observations: number, successes: number): ConnectionRateResult {
   };
 }
 
-function summarize(response: ConnectionResponse): string {
-  if (response.observations === 0) {
-    return "No observations yet for this connection in the selected period.";
-  }
-  const parts = [
-    `This connection succeeds ${response.successRatePercent}% of the time overall, based on ${response.observations} observations.`,
-  ];
-  if (response.peak.observations > 0) parts.push(`During peak hours it is ${response.peak.successRatePercent}%.`);
-  if (response.offPeak.observations > 0) parts.push(`Off-peak it is ${response.offPeak.successRatePercent}%.`);
-  if (response.lowSample) {
-    parts.push(`Fewer than ${LOW_SAMPLE_THRESHOLD} observations — treat this estimate as preliminary.`);
-  }
-  return parts.join(" ");
-}
-
 function buildResponse(
   inboundTripId: string,
   transferStopId: string,
@@ -76,9 +61,7 @@ function buildResponse(
     offPeak: rate(sum((r) => r.offPeakObservations), sum((r) => r.offPeakSuccesses)),
     inboundDelayDistribution: buildDistributionResult(mergeCountMaps(rows.map((r) => r.inboundDelayDistribution))),
     lowSample: observations < LOW_SAMPLE_THRESHOLD,
-    summaryText: "",
   };
-  response.summaryText = summarize(response);
   return response;
 }
 

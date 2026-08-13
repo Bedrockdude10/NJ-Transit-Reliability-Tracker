@@ -102,8 +102,6 @@ export default function Connections() {
                 </View>
               ) : null}
 
-              <Muted>{conn.data.summaryText}</Muted>
-
               <View style={{ gap: theme.spacing(2) }}>
                 <Text style={styles.subhead}>By day of week</Text>
                 <Table

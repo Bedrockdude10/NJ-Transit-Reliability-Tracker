@@ -16,7 +16,7 @@ import {
 import { Hono } from "hono";
 import { buildDistributionResult, buildHeatmap, mergeCountMaps } from "../aggregation";
 import { listStations, stopName } from "../catalog";
-import { buildStationRankings, summarizeStationRankings } from "../station-rankings";
+import { buildStationRankings } from "../station-rankings";
 import { resolveRange } from "../dates";
 import { CACHE_CONTROL_DAILY, parseBoundedInt, parseLimit, round1 } from "../util";
 
@@ -60,7 +60,6 @@ export function stationRoutes(repos: Repositories): Hono {
       sort,
       stations,
       excludedLowSample,
-      summary: summarizeStationRankings(stations, sort, excludedLowSample),
     };
     c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);

@@ -82,7 +82,7 @@ describe("GET /commute", () => {
     const { res, body } = await ask("origin=A&destination=B");
     expect(res.status).toBe(200);
     expect(body.observations).toBe(0);
-    expect(body.summary).toContain("No trains have been observed");
+    expect(body.linesServing).toEqual([]);
     expect(body.departures).toEqual([]);
   });
 

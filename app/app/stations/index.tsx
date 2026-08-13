@@ -57,7 +57,6 @@ export default function StationsList() {
         {rankings.data ? (
           rankings.data.stations.length > 0 ? (
             <>
-              <Muted>{rankings.data.summary}</Muted>
               <Table
                 columns={[
                   { key: "name", label: "Station", flex: 2.4 },
@@ -76,10 +75,16 @@ export default function StationsList() {
               <Muted>
                 “Added here” counts trains that arrived within 5 minutes but still left late — delay the station
                 introduces rather than inherits, which is the kind an operator can act on.
+                {rankings.data.excludedLowSample > 0
+                  ? ` ${rankings.data.excludedLowSample} station${rankings.data.excludedLowSample === 1 ? "" : "s"} withheld — under 30 observations.`
+                  : ""}
               </Muted>
             </>
           ) : (
-            <EmptyState title="Not enough data yet" hint={rankings.data.summary} />
+            <EmptyState
+              title="Not enough data yet"
+              hint="Ranking needs a meaningful number of observations per station, or a quiet stop tops the chart on luck. This fills in as collection continues."
+            />
           )
         ) : (
           <Loading />
