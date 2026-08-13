@@ -18,6 +18,7 @@ import type {
   LineTrendResponse,
   StationDeparturesResponse,
   StationListResponse,
+  StationRankingsResponse,
   StationSummaryResponse,
   SystemSummaryResponse,
   WorstTripsResponse,
@@ -90,6 +91,8 @@ export const api = {
   lineHeatmap: (id: string, r: DateRange, type: HeatmapType) =>
     get<HeatmapResponse>(`/lines/${encodeURIComponent(id)}/heatmap`, { ...r, type }),
   stations: () => get<StationListResponse>("/stations"),
+  stationRankings: (r: DateRange, sort: "delay" | "amplification") =>
+    get<StationRankingsResponse>("/stations/rankings", { ...r, sort }),
   stationDepartures: (id: string, horizonMinutes?: number) =>
     getLive<StationDeparturesResponse>(`/stations/${encodeURIComponent(id)}/departures`, horizonMinutes ? { horizonMinutes } : {}),
   stationSummary: (id: string, r: DateRange) => get<StationSummaryResponse>(`/stations/${encodeURIComponent(id)}/summary`, { ...r }),

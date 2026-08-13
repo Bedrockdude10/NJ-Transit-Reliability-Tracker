@@ -5,6 +5,8 @@ import {
   type Departure,
   type Direction,
   type StationDeparturesResponse,
+  type StationRankingSort,
+  type StationRankingsResponse,
   type StationListResponse,
   type StationSummaryResponse,
   type WorstTrip,
@@ -14,6 +16,7 @@ import {
 import { Hono } from "hono";
 import { buildDistributionResult, buildHeatmap, mergeCountMaps } from "../aggregation";
 import { listStations, stopName } from "../catalog";
+import { buildStationRankings, summarizeStationRankings } from "../station-rankings";
 import { resolveRange } from "../dates";
 import { CACHE_CONTROL_DAILY, parseBoundedInt, parseLimit, round1 } from "../util";
 
@@ -27,6 +30,38 @@ export function stationRoutes(repos: Repositories): Hono {
 
   router.get("/", (c) => {
     const response: StationListResponse = { stations: listStations(repos) };
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
+    return c.json(response);
+  });
+
+  /**
+   * GET /stations/rankings — which stations are worst, and in which sense.
+   *
+   * Declared before `/:stopId/...` so "rankings" is never read as a stop id.
+   */
+  router.get("/rankings", (c) => {
+    const range = resolveRange(c.req.query("from"), c.req.query("to"));
+    const sort: StationRankingSort = c.req.query("sort") === "amplification" ? "amplification" : "delay";
+    const limit = parseLimit(c.req.query("limit"), 20);
+
+    const naming = new Map(
+      listStations(repos).map((s) => [s.stopId, { stopName: s.stopName, lines: s.lines }] as const),
+    );
+    const { stations, excludedLowSample } = buildStationRankings(
+      repos.aggregates.stationRankings(range.from, range.to),
+      naming,
+      sort,
+      limit,
+    );
+
+    const response: StationRankingsResponse = {
+      from: range.from,
+      to: range.to,
+      sort,
+      stations,
+      excludedLowSample,
+      summary: summarizeStationRankings(stations, sort, excludedLowSample),
+    };
     c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
   });

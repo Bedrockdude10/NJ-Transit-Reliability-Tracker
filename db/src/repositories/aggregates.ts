@@ -43,6 +43,14 @@ export interface StationDelayAgg {
   sumArrivalDelaySeconds: number;
   observations: number;
 }
+/** One station's totals across all its lines, for ranking. */
+export interface StationRankingAgg {
+  stopId: string;
+  sumArrivalDelaySeconds: number;
+  observations: number;
+  arrivedWithin5Min: number;
+  departedLateAfterOnTimeArrival: number;
+}
 export interface StationHourAgg {
   hour: number;
   sumDelaySeconds: number;
@@ -462,6 +470,29 @@ export class AggregateRepository {
         GROUP BY stop_id
       `,
       { line: lineName, dir: direction, from, to },
+    );
+  }
+
+  /**
+   * Every station's delay and amplification totals in one pass.
+   *
+   * The per-station endpoint answers "how is this stop doing?" one stop at a
+   * time; ranking needs them side by side, and doing that as ~160 separate
+   * queries would be an N+1 over a table that already stores the totals.
+   */
+  stationRankings(from: string, to: string): StationRankingAgg[] {
+    return this.db.all<StationRankingAgg>(
+      /* sql */ `
+        SELECT stop_id AS stopId,
+               SUM(sum_arrival_delay_seconds) AS sumArrivalDelaySeconds,
+               SUM(observations) AS observations,
+               SUM(arrived_within_5min) AS arrivedWithin5Min,
+               SUM(departed_late_after_on_time_arrival) AS departedLateAfterOnTimeArrival
+        FROM station_daily_aggregates
+        WHERE service_date BETWEEN :from AND :to
+        GROUP BY stop_id
+      `,
+      { from, to },
     );
   }
 

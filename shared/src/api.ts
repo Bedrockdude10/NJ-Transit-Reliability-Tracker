@@ -213,6 +213,35 @@ export interface StationDeparturesResponse {
   generatedAtMs: number;
 }
 
+// --- Station rankings ----------------------------------------------------------
+
+export type StationRankingSort = "delay" | "amplification";
+
+export interface StationRanking {
+  stopId: string;
+  stopName: string;
+  lines: string[];
+  avgArrivalDelaySeconds: number;
+  observations: number;
+  /**
+   * Share of trains that arrived on time but left late — delay the station
+   * itself introduces, rather than delay it inherited from up the line.
+   */
+  amplificationRatePercent: number | null;
+  arrivedWithin5Min: number;
+  lowSample: boolean;
+}
+
+export interface StationRankingsResponse {
+  from: string;
+  to: string;
+  sort: StationRankingSort;
+  stations: StationRanking[];
+  /** Stations excluded for having too few observations to rank fairly. */
+  excludedLowSample: number;
+  summary: string;
+}
+
 // --- Delay propagation --------------------------------------------------------
 
 /** Average delay at one stop along a line's route, in running order. */
