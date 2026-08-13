@@ -1,38 +1,41 @@
-import { useMemo, useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useMemo } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
 import { formatDelayShort, formatInt, formatPercent } from "../../lib/format";
 import { otpColor, theme } from "../../lib/theme";
-import { windowToRange, type WindowKey } from "../../lib/windows";
+import { parseWindowKey, windowDays, windowToRange } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
 import { StationPicker } from "../../components/StationPicker";
 import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
 import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
 
-/** Remembered across in-session navigation, like the compare screen. */
-let remembered: { origin: string | null; destination: string | null } = { origin: null, destination: null };
-
 export default function Commute() {
-  const [windowKey, setWindowKey] = useState<WindowKey>("30d");
-  const [days, setDays] = useState(30);
-  const range = useMemo(() => windowToRange(days), [days]);
+  // The selection lives in the URL, not in component state: a commute you
+  // cannot bookmark or send to someone is not really "yours". This also makes
+  // back/forward behave, and survives a reload.
+  const router = useRouter();
+  const params = useLocalSearchParams<{ origin?: string; destination?: string; window?: string }>();
+  const origin = params.origin ?? null;
+  const destination = params.destination ?? null;
+  const windowKey = parseWindowKey(params.window);
+  const range = useMemo(() => windowToRange(windowDays(windowKey)), [windowKey]);
 
-  const [origin, setOriginState] = useState<string | null>(remembered.origin);
-  const [destination, setDestinationState] = useState<string | null>(remembered.destination);
-  const setOrigin = (v: string) => {
-    remembered = { ...remembered, origin: v };
-    setOriginState(v);
-  };
-  const setDestination = (v: string) => {
-    remembered = { ...remembered, destination: v };
-    setDestinationState(v);
-  };
-  const swap = () => {
-    remembered = { origin: destination, destination: origin };
-    setOriginState(destination);
-    setDestinationState(origin);
-  };
+  const setParams = useCallback(
+    (next: { origin?: string | null; destination?: string | null; window?: string }) => {
+      router.setParams({
+        origin: next.origin ?? origin ?? undefined,
+        destination: next.destination ?? destination ?? undefined,
+        window: next.window ?? windowKey,
+      } as never);
+    },
+    [router, origin, destination, windowKey],
+  );
+
+  const setOrigin = (v: string) => setParams({ origin: v });
+  const setDestination = (v: string) => setParams({ destination: v });
+  const swap = () => setParams({ origin: destination, destination: origin });
 
   const stations = useApi(() => api.stations(), []);
   const ready = Boolean(origin && destination && origin !== destination);
@@ -67,7 +70,7 @@ export default function Commute() {
           />
         </Row>
         <Row>
-          <WindowPicker value={windowKey} onChange={(k, d) => { setWindowKey(k); setDays(d); }} />
+          <WindowPicker value={windowKey} onChange={(k) => setParams({ window: k })} />
           {origin && destination ? (
             <Pressable onPress={swap} style={styles.swap}>
               <Text style={styles.swapText}>⇄ Reverse</Text>

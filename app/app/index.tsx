@@ -13,6 +13,7 @@ import { Gauge } from "../components/charts/Gauge";
 import { Heatmap } from "../components/charts/Heatmap";
 import { DelayHistogram, OtpComparison } from "../components/metrics";
 import { HistoryCharts } from "../components/HistoryCharts";
+import { TrendList } from "../components/TrendList";
 import { Table } from "../components/Table";
 import { WindowPicker } from "../components/WindowPicker";
 import { Card, EmptyState, Eyebrow, ErrorView, Loading, Muted, PageTitle, Row, SkeletonCard, StatTile, Screen } from "../components/ui";
@@ -29,6 +30,7 @@ export default function SystemOverview() {
   const history = useApi(() => api.systemHistory(), []);
   const lines = useApi(() => api.lines(), []);
   const health = useApi(() => api.health(), []);
+  const trends = useApi(() => api.systemTrends(), []);
   const collectionStartDate = health.data?.collectionStartDate ?? null;
 
   const ranked = useMemo(
@@ -104,6 +106,22 @@ export default function SystemOverview() {
             {s.fleetMdbf ? <StatTile label="Fleet MDBF (NJT)" value={`${formatInt(s.fleetMdbf.avgMiles)} mi`} hint="miles between failures" /> : null}
           </Row>
           {coverageNote(s.officialCoverage) ? <Muted>{coverageNote(s.officialCoverage)}</Muted> : null}
+
+          <Card
+            title="What's changed"
+            subtitle={trends.data ? `Last ${trends.data.days} days vs the ${trends.data.days} before` : undefined}
+          >
+            {trends.data ? (
+              <>
+                <Muted>{trends.data.summary}</Muted>
+                <TrendList trends={trends.data.lines} />
+              </>
+            ) : trends.error ? (
+              <ErrorView message={trends.error} onRetry={trends.reload} />
+            ) : (
+              <Loading />
+            )}
+          </Card>
 
           {best && worst && best.id !== worst.id ? (
             <Row>

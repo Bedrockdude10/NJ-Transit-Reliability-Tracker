@@ -21,6 +21,7 @@ import type {
   StationRankingsResponse,
   StationSummaryResponse,
   SystemSummaryResponse,
+  TrendsResponse,
   WorstTripsResponse,
 } from "@njt/shared";
 import { API_BASE_URL } from "./config";
@@ -77,6 +78,7 @@ export const api = {
   lines: () => get<LineListResponse>("/lines"),
   map: (r: DateRange) => get<MapResponse>("/map", { ...r }),
   mapVehicles: (lineId?: string) => getLive<MapVehiclesResponse>("/map/vehicles", lineId ? { lineId } : {}),
+  systemTrends: (days?: number) => get<TrendsResponse>("/system/trends", days ? { days } : {}),
   systemHistory: () => get<HistoryResponse>("/system/history"),
   lineHistory: (id: string) => get<HistoryResponse>(`/lines/${encodeURIComponent(id)}/history`),
   lightRailSummary: (r: DateRange) => get<LightRailSummaryResponse>("/lightrail/summary", { ...r }),
