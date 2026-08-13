@@ -17,6 +17,7 @@ import {
   buildSeasonality,
 } from "../aggregation";
 import { ALL_MONTHS, monthRange, resolveRange } from "../dates";
+import { resolveOfficialWindow } from "../official-window";
 import { CACHE_CONTROL_DAILY, parseHeatmapType } from "../util";
 
 /** /system/summary and /system/heatmap — system-wide rollups. */
@@ -28,14 +29,29 @@ export function systemRoutes(repos: Repositories): Hono {
     const otp = repos.aggregates.getOtpDailyRows("system", SYSTEM_SCOPE_ID, "all", range.from, range.to);
     const dist = repos.aggregates.getDelayDistributionDailyRows("system", SYSTEM_SCOPE_ID, range.from, range.to);
     const months = monthRange(range);
-    const officialMetrics = repos.official.getAllForRange(months.from, months.to);
+
+    // NJT publishes monthly and in arrears, so the default 30-day window has no
+    // published months — fall back to the newest that exist and say so.
+    const official = resolveOfficialWindow(
+      months,
+      (from, to) => repos.official.getAllForRange(from, to),
+      () => repos.official.latestMonth(),
+    );
+    const mdbf = resolveOfficialWindow(
+      months,
+      (from, to) => repos.official.getMdbfForRange(from, to),
+      () => repos.official.latestMdbfMonth(),
+    );
+
     const response: SystemSummaryResponse = {
       from: range.from,
       to: range.to,
       overall: buildOtpSummary(otp, dist),
-      njtOfficial: buildOfficialComparison(officialMetrics),
-      njtCancellations: buildCancellations(officialMetrics),
-      fleetMdbf: buildFleetMdbf(repos.official.getMdbfForRange(months.from, months.to)),
+      njtOfficial: buildOfficialComparison(official.metrics),
+      njtCancellations: buildCancellations(official.metrics),
+      fleetMdbf: buildFleetMdbf(mdbf.metrics),
+      officialCoverage: official.coverage,
+      fleetMdbfCoverage: mdbf.coverage,
     };
     c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);

@@ -55,6 +55,38 @@ export interface TripStopEvent {
   ingestedAtMs: number;
 }
 
+/**
+ * VehiclePosition — where a train is right now, from the GTFS-RT
+ * VehiclePositions feed. Each poll returns a complete snapshot of active
+ * vehicles, so the stored set is replaced wholesale rather than accumulated;
+ * history stays recoverable from `raw_snapshots`.
+ */
+export interface VehiclePosition {
+  vehicleId: string;
+  tripId: string | null;
+  routeId: string | null;
+  lineName: string | null;
+  direction: Direction | null;
+  latitude: number;
+  longitude: number;
+  /** Degrees clockwise from true north, when the feed reports it. */
+  bearing: number | null;
+  /** Metres per second, when the feed reports it. */
+  speedMetersPerSecond: number | null;
+  /** The stop this reading is relative to (GTFS `stop_id`). */
+  stopId: string | null;
+  stopName: string | null;
+  /** GTFS-RT VehicleStopStatus, normalized. */
+  status: VehicleStopStatus | null;
+  /** When the vehicle reported this position, epoch seconds UTC. */
+  reportedAt: number | null;
+  /** When this reading was ingested, epoch milliseconds. */
+  ingestedAtMs: number;
+}
+
+/** GTFS-realtime VehicleStopStatus. */
+export type VehicleStopStatus = "incoming_at" | "stopped_at" | "in_transit_to";
+
 /** RawSnapshot — one row per successful GTFS-RT poll. Retained indefinitely. */
 export interface RawSnapshot {
   id?: number;

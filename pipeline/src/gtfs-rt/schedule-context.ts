@@ -1,6 +1,6 @@
 import type { GtfsRepository } from "@njt/db";
 import { gtfsStopTimeToEpochSeconds } from "@njt/shared";
-import { directionFromId, type ScheduleContext, type TripSchedule } from "./parse";
+import { directionFromId, type ResolvedRoute, type ScheduleContext, type TripSchedule } from "./parse";
 
 /**
  * Cross-tick cache backing {@link createScheduleContext}. Resolving a trip's
@@ -15,13 +15,15 @@ export interface ScheduleCache {
   schedules: Map<string, TripSchedule | null>;
   /** stopId → resolved stop name (or the raw id fallback). */
   stopNames: Map<string, string>;
+  /** RT route_id → canonical route + line name (null memoized too). */
+  routes: Map<string, ResolvedRoute | null>;
   /** GTFS version the cached entries belong to; rollover invalidates them. */
   versionId: string | undefined;
 }
 
 /** A fresh, empty schedule cache to hold across ingest ticks. */
 export function createScheduleCache(): ScheduleCache {
-  return { schedules: new Map(), stopNames: new Map(), versionId: undefined };
+  return { schedules: new Map(), stopNames: new Map(), routes: new Map(), versionId: undefined };
 }
 
 /**
@@ -43,6 +45,7 @@ export function createScheduleContext(
   if (cache.versionId !== versionId) {
     cache.schedules.clear();
     cache.stopNames.clear();
+    cache.routes.clear();
     cache.versionId = versionId;
   }
 
@@ -86,6 +89,23 @@ export function createScheduleContext(
         cache.stopNames.set(stopId, name);
       }
       return name;
+    },
+
+    resolveRoute(routeId: string): ResolvedRoute | null {
+      if (!versionId || !routeId) return null;
+      // `has` distinguishes a memoized `null` (route maps to no line) from a miss.
+      if (cache.routes.has(routeId)) return cache.routes.get(routeId) ?? null;
+
+      // Already canonical (the id gtfs_routes is keyed by), or a source id the
+      // static ingest collapsed onto a canonical line.
+      const canonicalId = gtfs.lineNameForRoute(versionId, routeId)
+        ? routeId
+        : (gtfs.canonicalRouteFor(versionId, routeId) ?? null);
+      const lineName = canonicalId ? gtfs.lineNameForRoute(versionId, canonicalId) : null;
+
+      const resolved = canonicalId && lineName ? { routeId: canonicalId, lineName } : null;
+      cache.routes.set(routeId, resolved);
+      return resolved;
     },
   };
 }

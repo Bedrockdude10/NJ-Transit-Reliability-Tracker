@@ -100,6 +100,16 @@ export const LOW_SAMPLE_THRESHOLD = 30;
 export const TRANSFER_WINDOW_DEFAULT_SECONDS = 1800;
 export const TRANSFER_BUFFER_DEFAULT_SECONDS = 0;
 
+/**
+ * Line name stored when a real-time trip's route maps to no catalog line.
+ * Explicitly unknown beats echoing the raw GTFS `route_id`, which used to be
+ * persisted as if it were a line name (a station showing a line called "10").
+ */
+export const UNKNOWN_LINE_NAME = "Unknown line";
+
+/** GTFS-RT reports speed in metres/second; the UI shows mph. */
+export const MPS_TO_MPH = 2.236936;
+
 /** GTFS-RT and XML API daily request budgets (PRD compliance). */
 export const RATE_LIMITS = {
   gtfsRtPerDay: 100_000,

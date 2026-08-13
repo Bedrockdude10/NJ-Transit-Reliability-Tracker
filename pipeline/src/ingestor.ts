@@ -7,7 +7,7 @@ import type { FeedClient } from "./feeds";
 import { recomputeServiceDate } from "./aggregator";
 import { loadGtfsStatic } from "./gtfs-static/load";
 import { loadOfficialMetrics } from "./official/parse";
-import { parseServiceAlerts, parseTripUpdates } from "./gtfs-rt/parse";
+import { parseServiceAlerts, parseTripUpdates, parseVehiclePositions } from "./gtfs-rt/parse";
 import { createScheduleCache, createScheduleContext, type ScheduleCache } from "./gtfs-rt/schedule-context";
 import { type Logger, consoleLogger } from "./logger";
 import { type RateLimiter } from "./rate-limiter";
@@ -118,7 +118,15 @@ export class Ingestor {
     try {
       const bytes = await this.fetchCounting(() => this.client.fetchVehiclePositions());
       this.repos.snapshots.insert({ feedType: "VehiclePositions", fetchedAtMs: now, rawBytes: bytes });
+
+      // Each poll is a complete snapshot of active vehicles, so the stored set
+      // is swapped wholesale — trains that stopped reporting drop off the map.
+      const ctx = createScheduleContext(this.repos.gtfs, this.scheduleCache);
+      const positions = parseVehiclePositions(bytes, ctx, { now, defaultServiceDate: this.serviceDate(now) });
+      this.repos.vehicles.replaceAll(positions);
+
       this.repos.health.recordSuccess("VehiclePositions", now);
+      this.logger.info("VehiclePositions ingested", { vehicles: positions.length });
       return true;
     } catch (error) {
       this.repos.health.recordFailure("VehiclePositions", now);

@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { api } from "../../lib/api";
-import { formatInt, formatPercent } from "../../lib/format";
+import { coverageNote, formatInt, formatPercent } from "../../lib/format";
 import { otpColor } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
 import { windowToRange, type WindowKey } from "../../lib/windows";
@@ -42,6 +42,7 @@ export default function LightRail() {
               hint={`NJT systemwide, ${summary.data.monthsCovered} mo`}
             />
           </Row>
+          {coverageNote(summary.data.coverage) ? <Muted>{coverageNote(summary.data.coverage)}</Muted> : null}
 
           {summary.data.otpTrend.length > 1 ? (
             <Card>

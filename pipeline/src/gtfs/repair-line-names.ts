@@ -1,0 +1,87 @@
+import type { Repositories } from "@njt/db";
+import { UNKNOWN_LINE_NAME } from "@njt/shared";
+import { recomputeServiceDate } from "../aggregator";
+import { parseCsv } from "../csv";
+import { mapRailRoutes } from "../gtfs-static/route-mapping";
+
+/**
+ * One-off repair for events recorded before the RT parser could resolve the
+ * feed's *source* route ids.
+ *
+ * GTFS static ingest collapses variant routes onto canonical catalog lines, so
+ * `gtfs_routes` holds only canonical ids. A real-time trip missing from the
+ * static schedule had no trip row to resolve through, so the raw feed id was
+ * stored as the line name — a station reporting service on a line called "10",
+ * and its delays split off from the real line's aggregates.
+ *
+ * The fix repoints the *events* (the source of truth) and then re-runs the
+ * normal aggregator for each affected service date, so every derived table
+ * lands consistently rather than three of them being patched by hand.
+ */
+
+export interface LineNameRepairResult {
+  /** Aliases written to gtfs_route_aliases when the table was empty. */
+  aliasesBackfilled: number;
+  /** stale line name → what it was rewritten to, with the event count. */
+  relabelled: { from: string; to: string; routeId: string; events: number }[];
+  /** Service dates whose aggregates were recomputed. */
+  serviceDatesRecomputed: string[];
+}
+
+/**
+ * Rebuild `gtfs_route_aliases` for a version from its archived `routes.txt`.
+ * Versions ingested before the alias table existed have no rows, but the raw
+ * feed files were archived at ingest, so the mapping is recoverable.
+ */
+function backfillAliases(repos: Repositories, versionId: string): number {
+  const existing = repos.gtfs.routeAliases(versionId);
+  if (existing.length > 0) return 0;
+
+  const raw = repos.gtfs.readFile(versionId, "routes.txt");
+  if (!raw) return 0;
+
+  const { realToCanonical } = mapRailRoutes(parseCsv(new TextDecoder().decode(raw)));
+  const aliases = [...realToCanonical].map(([sourceRouteId, canonicalRouteId]) => ({
+    sourceRouteId,
+    canonicalRouteId,
+  }));
+  repos.gtfs.replaceRouteAliases(versionId, aliases);
+  return aliases.length;
+}
+
+export function repairLineNames(repos: Repositories): LineNameRepairResult {
+  const version = repos.gtfs.currentVersion();
+  if (!version) {
+    return { aliasesBackfilled: 0, relabelled: [], serviceDatesRecomputed: [] };
+  }
+
+  const aliasesBackfilled = backfillAliases(repos, version.versionId);
+
+  // Line names that are legitimately in use — anything else stored as a line
+  // name is a raw route id that leaked through the old fallback.
+  const realLineNames = new Set(repos.gtfs.routes(version.versionId).map((r) => r.lineName));
+
+  const relabelled: LineNameRepairResult["relabelled"] = [];
+  const affectedDates = new Set<string>();
+
+  for (const stale of repos.events.distinctLineNames()) {
+    if (realLineNames.has(stale) || stale === UNKNOWN_LINE_NAME) continue;
+
+    const canonicalRouteId = repos.gtfs.canonicalRouteFor(version.versionId, stale);
+    const lineName = canonicalRouteId ? repos.gtfs.lineNameForRoute(version.versionId, canonicalRouteId) : null;
+
+    // Unresolvable ids become explicitly unknown; they keep their route_id so
+    // the original feed value isn't lost.
+    const target =
+      canonicalRouteId && lineName ? { routeId: canonicalRouteId, lineName } : { routeId: stale, lineName: UNKNOWN_LINE_NAME };
+
+    for (const date of repos.events.serviceDatesForLineName(stale)) affectedDates.add(date);
+    const events = repos.events.relabelLineName(stale, target.routeId, target.lineName);
+    relabelled.push({ from: stale, to: target.lineName, routeId: target.routeId, events });
+  }
+
+  const serviceDatesRecomputed = [...affectedDates].sort();
+  for (const date of serviceDatesRecomputed) recomputeServiceDate(repos, date);
+
+  return { aliasesBackfilled, relabelled, serviceDatesRecomputed };
+}

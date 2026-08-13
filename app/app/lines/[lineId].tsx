@@ -2,7 +2,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
-import { formatDelaySeconds, formatInt, formatMonth, formatPercent } from "../../lib/format";
+import { coverageNote, formatDelaySeconds, formatInt, formatMonth, formatPercent } from "../../lib/format";
 import { hasMeasuredOtp } from "../../lib/measurement";
 import { theme, otpColor, otpColorAt } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
@@ -99,6 +99,7 @@ export default function LineDetail() {
             <StatTile label="Cancellations (NJT)" value={summary.data.njtOfficial ? formatInt(summary.data.njtOfficial.cancellations) : "—"} color={theme.colors.bad} />
             <StatTile label="Cancellation rate (NJT)" value={summary.data.njtOfficial ? formatPercent(summary.data.njtOfficial.cancellationRatePercent) : "—"} />
           </Row>
+          {coverageNote(summary.data.officialCoverage) ? <Muted>{coverageNote(summary.data.officialCoverage)}</Muted> : null}
 
           <Card title="On-time performance vs. NJT" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
             <OtpComparison thresholds={summary.data.overall.thresholds} njtOfficial={summary.data.njtOfficial} measured={measured} />

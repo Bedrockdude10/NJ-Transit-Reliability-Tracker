@@ -1,10 +1,18 @@
-import type { GtfsRouteRecord, GtfsStopRecord, GtfsStopTimeRecord, GtfsTripRecord } from "@njt/db";
+import type {
+  GtfsRouteAliasRecord,
+  GtfsRouteRecord,
+  GtfsStopRecord,
+  GtfsStopTimeRecord,
+  GtfsTripRecord,
+} from "@njt/db";
 import { strFromU8, unzipSync } from "fflate";
 import { parseCsv } from "../csv";
 import { mapRailRoutes } from "./route-mapping";
 
 export interface GtfsStaticData {
   routes: GtfsRouteRecord[];
+  /** Source route_id → canonical route_id, so the RT feed's ids stay resolvable. */
+  routeAliases: GtfsRouteAliasRecord[];
   stops: GtfsStopRecord[];
   trips: GtfsTripRecord[];
   stopTimes: GtfsStopTimeRecord[];
@@ -27,6 +35,10 @@ export function parseGtfsStatic(files: Record<string, string>): GtfsStaticData {
   const rawRoutes = files["routes.txt"] ? parseCsv(files["routes.txt"]) : [];
   const { canonicalRoutes, realToCanonical } = mapRailRoutes(rawRoutes);
   const routes: GtfsRouteRecord[] = [...canonicalRoutes.values()];
+  const routeAliases: GtfsRouteAliasRecord[] = [...realToCanonical].map(([sourceRouteId, canonicalRouteId]) => ({
+    sourceRouteId,
+    canonicalRouteId,
+  }));
 
   const rawTrips = files["trips.txt"] ? parseCsv(files["trips.txt"]) : [];
   const trips: GtfsTripRecord[] = [];
@@ -68,5 +80,5 @@ export function parseGtfsStatic(files: Record<string, string>): GtfsStaticData {
       stopLon: s.stop_lon ? Number(s.stop_lon) : null,
     }));
 
-  return { routes, stops, trips, stopTimes };
+  return { routes, routeAliases, stops, trips, stopTimes };
 }

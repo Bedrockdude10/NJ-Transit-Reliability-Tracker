@@ -31,6 +31,7 @@ export function loadGtfsStatic(repos: Repositories, zip: Uint8Array, now: number
 
   repos.gtfs.insertVersion({ versionId, effectiveFrom, effectiveTo: null, checksum, ingestedAtMs: now });
   repos.gtfs.replaceRoutes(versionId, data.routes);
+  repos.gtfs.replaceRouteAliases(versionId, data.routeAliases);
   repos.gtfs.replaceStops(versionId, data.stops);
   repos.gtfs.replaceTrips(versionId, data.trips);
   repos.gtfs.replaceStopTimes(versionId, data.stopTimes);

@@ -1,14 +1,18 @@
 import type { Repositories } from "@njt/db";
 import {
+  MPS_TO_MPH,
   findLineByName,
   type MapLine,
   type MapResponse,
   type MapStation,
+  type MapVehicle,
+  type MapVehiclesResponse,
   type OfficialNjtMetric,
   type OtpDailyRow,
 } from "@njt/shared";
 import { Hono } from "hono";
 import { ON_TIME_15_MIN, averageLightRailOtp, buildOfficialComparison } from "../aggregation";
+import { requireLine } from "../catalog";
 import { monthRange, resolveRange } from "../dates";
 import { CACHE_CONTROL_DAILY, round1 } from "../util";
 
@@ -77,6 +81,37 @@ export function mapRoutes(repos: Repositories): Hono {
 
     c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json({ from: range.from, to: range.to, stations, lines } satisfies MapResponse);
+  });
+
+  // Live train positions. Unlike the rest of the map this is not cacheable —
+  // it changes every poll — so it's a separate route with no-store.
+  router.get("/vehicles", (c) => {
+    const now = Date.now();
+    const routeId = c.req.query("lineId");
+    const resolved = routeId ? requireLine(repos, routeId) : null;
+
+    const stored = repos.vehicles.all(resolved?.routeId);
+    const vehicles: MapVehicle[] = stored.map((v) => ({
+      vehicleId: v.vehicleId,
+      tripId: v.tripId,
+      routeId: v.routeId,
+      lineName: v.lineName,
+      direction: v.direction,
+      latitude: v.latitude,
+      longitude: v.longitude,
+      bearing: v.bearing,
+      speedMph: v.speedMetersPerSecond === null ? null : round1(v.speedMetersPerSecond * MPS_TO_MPH),
+      stopId: v.stopId,
+      stopName: v.stopName,
+      status: v.status,
+      reportedAt: v.reportedAt,
+      ageSeconds: v.reportedAt === null ? null : Math.max(0, Math.round(now / 1000 - v.reportedAt)),
+    }));
+
+    const lastIngestedAtMs = stored.length > 0 ? Math.max(...stored.map((v) => v.ingestedAtMs)) : null;
+
+    c.header("Cache-Control", "no-store");
+    return c.json({ vehicles, lastIngestedAtMs, generatedAtMs: now } satisfies MapVehiclesResponse);
   });
 
   return router;

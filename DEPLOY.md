@@ -104,6 +104,14 @@ exit
 ```
 (Or sftp your local `./data` — GTFS dir + CSVs, ~40 MB — then run `bootstrap`.) After either option, the dashboard shows real NJT official figures; the independent measurement accrues from the live feed once collection is on (§3). If a database was bootstrapped with the old synthetic seed, clear it once with `node deploy/purge-synthetic.mjs` (keeps the real network + official metrics).
 
+**One-off repair — line names.** Databases that collected before the RT parser could resolve the feed's *source* route ids hold events labelled with a raw `route_id` (a station showing service on a line called "10"). Run once per affected database:
+
+```bash
+npm run repair:line-names
+```
+
+It backfills `gtfs_route_aliases` from the archived `routes.txt`, repoints the affected events, and re-runs the aggregator for each touched service date. Idempotent — a second run reports nothing to repair.
+
 ## 3. Turn on live collection (when you have the NJT credentials)
 
 Register at `developer.njtransit.com` (GTFS-RT) and optionally `datasource.njtransit.com` (XML). NJT's GTFS-RT Web API is **token-based**: the pipeline POSTs your username/password to `getToken` and caches the returned token in `pipeline_meta` (getToken is capped at 10/day, so it refreshes ~once/day — safe across restarts). Set the credentials as **secrets** (never commit these):

@@ -25,8 +25,9 @@ import {
   buildOtpSummary,
   buildSeasonality,
 } from "../aggregation";
-import { listLines, resolveLine } from "../catalog";
+import { listLines, requireLine } from "../catalog";
 import { monthRange, resolveRange } from "../dates";
+import { resolveOfficialWindow } from "../official-window";
 import { CACHE_CONTROL_DAILY, parseHeatmapType, parseLimit, round1 } from "../util";
 
 /** Monday (ISO week start) of a YYYY-MM-DD date, as YYYY-MM-DD. */
@@ -85,7 +86,7 @@ export function lineRoutes(repos: Repositories): Hono {
   });
 
   router.get("/:lineId/summary", (c) => {
-    const { routeId, name } = resolveLine(repos, c.req.param("lineId"));
+    const { routeId, name } = requireLine(repos, c.req.param("lineId"));
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const dist = repos.aggregates.getDelayDistributionDailyRows("line", routeId, range.from, range.to);
     // One ranged query across all directions, grouped in memory (was three
@@ -98,7 +99,14 @@ export function lineRoutes(repos: Repositories): Hono {
     }
     const otpFor = (dir: "all" | "inbound" | "outbound") => byDirection.get(dir) ?? [];
     const months = monthRange(range);
-    const officialMetrics = repos.official.getForLineRange(name, months.from, months.to);
+    // NJT publishes monthly and in arrears; fall back to the newest published
+    // month rather than blanking the comparison on a recent-dates request.
+    const official = resolveOfficialWindow(
+      months,
+      (from, to) => repos.official.getForLineRange(name, from, to),
+      () => repos.official.latestMonth(name),
+    );
+    const officialMetrics = official.metrics;
 
     const response: LineSummaryResponse = {
       lineId: routeId,
@@ -111,13 +119,14 @@ export function lineRoutes(repos: Repositories): Hono {
       outbound: buildOtpSummary(otpFor("outbound"), []),
       njtOfficial: buildOfficialComparison(officialMetrics),
       njtCancellations: buildCancellations(officialMetrics),
+      officialCoverage: official.coverage,
     };
     c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
   });
 
   router.get("/:lineId/trend", (c) => {
-    const { routeId, name } = resolveLine(repos, c.req.param("lineId"));
+    const { routeId, name } = requireLine(repos, c.req.param("lineId"));
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const interval = c.req.query("interval") === "weekly" ? "weekly" : "daily";
     const rows = repos.aggregates.getOtpDailyRows("line", routeId, "all", range.from, range.to);
@@ -139,7 +148,7 @@ export function lineRoutes(repos: Repositories): Hono {
   // Full monthly history: NJT's published OTP (real, back to 2017) joined with
   // this project's monthly OTP wherever independent data exists. Newest first.
   router.get("/:lineId/monthly", (c) => {
-    const { routeId, name } = resolveLine(repos, c.req.param("lineId"));
+    const { routeId, name } = requireLine(repos, c.req.param("lineId"));
 
     // Monthly project OTP is bucketed in SQL (GROUP BY the YYYY-MM prefix)
     // rather than pulling every daily row across all history and re-bucketing.
@@ -171,7 +180,7 @@ export function lineRoutes(repos: Repositories): Hono {
   });
 
   router.get("/:lineId/history", (c) => {
-    const { name } = resolveLine(repos, c.req.param("lineId"));
+    const { name } = requireLine(repos, c.req.param("lineId"));
     const metrics = repos.official.getAllForLine(name);
     const response: HistoryResponse = {
       scopeLabel: name,
@@ -182,7 +191,7 @@ export function lineRoutes(repos: Repositories): Hono {
   });
 
   router.get("/:lineId/trips/worst", (c) => {
-    const { routeId, name } = resolveLine(repos, c.req.param("lineId"));
+    const { routeId, name } = requireLine(repos, c.req.param("lineId"));
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const limit = parseLimit(c.req.query("limit"), 10);
     const response: WorstTripsResponse = {
@@ -203,7 +212,7 @@ export function lineRoutes(repos: Repositories): Hono {
   });
 
   router.get("/:lineId/heatmap", (c) => {
-    const { routeId } = resolveLine(repos, c.req.param("lineId"));
+    const { routeId } = requireLine(repos, c.req.param("lineId"));
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const type = parseHeatmapType(c.req.query("type"));
     const response: HeatmapResponse = {

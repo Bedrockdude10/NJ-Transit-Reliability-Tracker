@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { api } from "../lib/api";
-import { formatDelayShort, formatInt, formatPercent } from "../lib/format";
+import { coverageNote, formatDelayShort, formatInt, formatPercent } from "../lib/format";
 import { hasHeatmapData, hasMeasuredOtp } from "../lib/measurement";
 import { otpColor, otpColorAt, theme } from "../lib/theme";
 import { useChartColors } from "../lib/useChartColors";
@@ -103,6 +103,7 @@ export default function SystemOverview() {
             <StatTile label="Cancellation rate (NJT)" value={s.njtOfficial ? formatPercent(s.njtOfficial.cancellationRatePercent) : "—"} />
             {s.fleetMdbf ? <StatTile label="Fleet MDBF (NJT)" value={`${formatInt(s.fleetMdbf.avgMiles)} mi`} hint="miles between failures" /> : null}
           </Row>
+          {coverageNote(s.officialCoverage) ? <Muted>{coverageNote(s.officialCoverage)}</Muted> : null}
 
           {best && worst && best.id !== worst.id ? (
             <Row>

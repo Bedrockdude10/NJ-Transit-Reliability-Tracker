@@ -1,4 +1,4 @@
-import type { LightRailMdbfMetric, LightRailOtpMetric } from "@njt/shared";
+import type { LightRailMdbfMetric, LightRailOtpMetric, YearMonth } from "@njt/shared";
 import type { Database } from "../database";
 
 /** Light rail official metrics: systemwide OTP and per-line MDBF. */
@@ -26,6 +26,11 @@ export class LightRailRepository {
         "INSERT INTO light_rail_mdbf (year, month, line_name, mdbf) VALUES (:year, :month, :line, :mdbf) ON CONFLICT(year, month, line_name) DO UPDATE SET mdbf = excluded.mdbf",
       )
       .run({ year: metric.year, month: metric.month, line: metric.lineName, mdbf: metric.mdbf });
+  }
+
+  /** The most recent month with published light-rail OTP. */
+  latestOtpMonth(): YearMonth | null {
+    return this.db.get<YearMonth>("SELECT year, month FROM light_rail_otp ORDER BY year DESC, month DESC LIMIT 1") ?? null;
   }
 
   getMdbfForRange(from: { year: number; month: number }, to: { year: number; month: number }): LightRailMdbfMetric[] {

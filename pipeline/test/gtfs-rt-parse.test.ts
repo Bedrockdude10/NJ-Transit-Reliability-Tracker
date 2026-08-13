@@ -1,4 +1,5 @@
 import GtfsRealtimeBindings from "gtfs-realtime-bindings";
+import { UNKNOWN_LINE_NAME } from "@njt/shared";
 import { describe, expect, it, vi } from "vitest";
 import { parseServiceAlerts, parseTripUpdates, type ScheduleContext } from "../src/gtfs-rt/parse";
 
@@ -25,6 +26,9 @@ const ctx: ScheduleContext = {
         }
       : null,
   stopName: (s) => STOP_NAMES[s] ?? s,
+  // The RT feed's source id "10" collapses onto canonical NJCL, as GTFS ingest maps it.
+  resolveRoute: (routeId) =>
+    routeId === "10" ? { routeId: "NC", lineName: "North Jersey Coast Line" } : null,
 };
 
 const opts = { now: 5_000_000, defaultServiceDate: "2025-07-15", gtfsStaticVersion: "v1" };
@@ -73,7 +77,26 @@ describe("parseTripUpdates", () => {
     ]);
     const events = parseTripUpdates(buffer, ctx, { ...opts, onTripMismatch });
     expect(onTripMismatch).toHaveBeenCalledWith("T9");
-    expect(events[0]).toMatchObject({ scheduledArrival: 440, observedArrival: 500, delaySeconds: 60, direction: "outbound", lineName: "RV" });
+    expect(events[0]).toMatchObject({ scheduledArrival: 440, observedArrival: 500, delaySeconds: 60, direction: "outbound" });
+    // "RV" maps to no line here, so the event is explicitly unknown rather than
+    // inventing a line named after the raw route id.
+    expect(events[0]?.lineName).toBe(UNKNOWN_LINE_NAME);
+  });
+
+  // Regression: an unmatched trip used to store the RT feed's raw route_id as
+  // the line name, so stations reported service on a line called "10".
+  it("resolves an unmatched trip's source route id to its canonical line", () => {
+    const buffer = encode([
+      {
+        id: "2b",
+        tripUpdate: {
+          trip: { tripId: "T404", routeId: "10", startDate: "20250715", directionId: 0 },
+          stopTimeUpdate: [{ stopId: "ABM", stopSequence: 1, arrival: { time: 500, delay: 60 } }],
+        },
+      },
+    ]);
+    const events = parseTripUpdates(buffer, ctx, opts);
+    expect(events[0]).toMatchObject({ routeId: "NC", lineName: "North Jersey Coast Line" });
   });
 
   it("emits cancelled events for every scheduled stop of a cancelled trip", () => {

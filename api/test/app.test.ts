@@ -12,6 +12,7 @@ import type {
   LineSummaryResponse,
   LineTrendResponse,
   MapResponse,
+  MapVehiclesResponse,
   StationListResponse,
   StationSummaryResponse,
   SystemSummaryResponse,
@@ -138,6 +139,111 @@ describe("API integration", () => {
     expect(body.scopeLabel).toBe("Northeast Corridor Line");
     expect(body.seasonality.find((m) => m.month === 7)?.avgOtpPercent).toBe(88.5);
     expect(body.annual.find((y) => y.year === 2025)?.avgOtpPercent).toBe(88.5);
+  });
+
+  // NJT publishes monthly and in arrears, so a recent-dates request used to
+  // blank every official panel. It now falls back and labels the substitution.
+  it("falls back to the newest published month when the range has none", async () => {
+    const future = "from=2026-07-01&to=2026-07-31"; // seed publishes 2025-07 only
+    const { body } = await getJson<SystemSummaryResponse>(`/system/summary?${future}`);
+    expect(body.njtOfficial?.otpPercent).toBe(88.5);
+    expect(body.njtCancellations?.total).toBe(50);
+    expect(body.fleetMdbf).toMatchObject({ avgMiles: 90000 });
+    expect(body.officialCoverage).toEqual({ fromMonth: "2025-07", toMonth: "2025-07", outsideRequestedRange: true });
+    expect(body.fleetMdbfCoverage?.outsideRequestedRange).toBe(true);
+    // The measured (daily) figures still describe the requested window.
+    expect(body.overall.tripsOperated).toBe(0);
+  });
+
+  it("marks official figures as in-range when the request really covers them", async () => {
+    const { body } = await getJson<SystemSummaryResponse>(`/system/summary?${RANGE}`);
+    expect(body.officialCoverage).toEqual({ fromMonth: "2025-07", toMonth: "2025-07", outsideRequestedRange: false });
+  });
+
+  it("falls back per line and for light rail too", async () => {
+    const future = "from=2026-07-01&to=2026-07-31";
+    const { body: line } = await getJson<LineSummaryResponse>(`/lines/NE/summary?${future}`);
+    expect(line.njtOfficial?.otpPercent).toBe(88.5);
+    expect(line.officialCoverage?.outsideRequestedRange).toBe(true);
+
+    const { body: lr } = await getJson<LightRailSummaryResponse>(`/lightrail/summary?${future}`);
+    expect(lr.otpPercent).toBe(96.5);
+    expect(lr.lines.find((l) => l.lineName === "Hudson-Bergen Light Rail")?.avgMdbf).toBe(30000);
+    expect(lr.coverage?.outsideRequestedRange).toBe(true);
+  });
+
+  it("GET /map/vehicles serves live positions with mph and staleness", async () => {
+    const { app: seeded, repos } = seededApp();
+    const now = Date.now();
+    repos.vehicles.replaceAll([
+      {
+        vehicleId: "V1", tripId: "T1", routeId: "NE", lineName: "Northeast Corridor Line",
+        direction: "inbound", latitude: 40.7, longitude: -74.16, bearing: 90,
+        speedMetersPerSecond: 20, stopId: "NWK", stopName: "Newark Penn", status: "stopped_at",
+        reportedAt: Math.floor(now / 1000) - 30, ingestedAtMs: now,
+      },
+    ]);
+    const res = await seeded.request("/map/vehicles");
+    expect(res.headers.get("Cache-Control")).toBe("no-store");
+    const body = (await res.json()) as MapVehiclesResponse;
+    expect(body.vehicles).toHaveLength(1);
+    expect(body.vehicles[0]?.speedMph).toBe(44.7); // 20 m/s
+    expect(body.vehicles[0]?.ageSeconds).toBeGreaterThanOrEqual(30);
+    expect(body.lastIngestedAtMs).toBe(now);
+  });
+
+  it("GET /map/vehicles is empty (not an error) before any vehicle poll", async () => {
+    const { status, body } = await getJson<MapVehiclesResponse>("/map/vehicles");
+    expect(status).toBe(200);
+    expect(body).toMatchObject({ vehicles: [], lastIngestedAtMs: null });
+  });
+
+  it("GET /map/vehicles?lineId filters, and 404s on an unknown line", async () => {
+    const { app: seeded, repos } = seededApp();
+    const base = {
+      tripId: null, direction: null, latitude: 40.7, longitude: -74.16, bearing: null,
+      speedMetersPerSecond: null, stopId: null, stopName: null, status: null,
+      reportedAt: null, ingestedAtMs: 1,
+    } as const;
+    repos.vehicles.replaceAll([
+      { ...base, vehicleId: "V1", routeId: "NE", lineName: "Northeast Corridor Line" },
+      { ...base, vehicleId: "V2", routeId: "NC", lineName: "North Jersey Coast Line" },
+    ]);
+    const res = await seeded.request("/map/vehicles?lineId=NE");
+    const body = (await res.json()) as MapVehiclesResponse;
+    expect(body.vehicles.map((v) => v.vehicleId)).toEqual(["V1"]);
+    expect((await seeded.request("/map/vehicles?lineId=ZZZ")).status).toBe(404);
+  });
+
+  // An unknown line used to return 200 with every aggregate zeroed, which reads
+  // as "this line ran perfectly badly" rather than "no such line".
+  it("GET /lines/:id/* 404s on an unknown line instead of serving zeros", async () => {
+    for (const path of [
+      `/lines/ZZZ/summary?${RANGE}`,
+      `/lines/ZZZ/trend?${RANGE}`,
+      "/lines/ZZZ/monthly",
+      "/lines/ZZZ/history",
+      `/lines/ZZZ/trips/worst?${RANGE}`,
+      `/lines/ZZZ/heatmap?${RANGE}`,
+      `/export?entity=line&id=ZZZ&${RANGE}`,
+    ]) {
+      const res = await app.request(path);
+      expect(res.status, path).toBe(404);
+    }
+  });
+
+  it("GET /lines/:id/* accepts the slug published by GET /lines", async () => {
+    const { body: list } = await getJson<LineListResponse>("/lines");
+    const line = list.lines.find((l) => l.id === "NE");
+    expect(line?.slug).toBe("northeast-corridor");
+
+    const { status, body } = await getJson<LineSummaryResponse>(`/lines/northeast-corridor/summary?${RANGE}`);
+    expect(status).toBe(200);
+    expect(body.lineId).toBe("NE");
+    expect(body.name).toBe("Northeast Corridor Line");
+    // Same payload as the route_id form — not a zero-filled stand-in.
+    const { body: byId } = await getJson<LineSummaryResponse>(`/lines/NE/summary?${RANGE}`);
+    expect(body).toEqual(byId);
   });
 
   it("GET /lightrail/summary returns OTP, per-line MDBF, and a trend", async () => {

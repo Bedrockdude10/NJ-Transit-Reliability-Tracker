@@ -1,5 +1,7 @@
 /** Display formatters. Pure functions — no React Native imports. */
 
+import type { PublishedCoverage } from "@njt/shared";
+
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
 /** Human delay: "on time", "2m 30s late", "1m early", or "—" for unknown. */
@@ -62,6 +64,21 @@ export function formatTimestamp(ms: number | null | undefined): string {
 }
 
 /** "reduced_service" -> "Reduced service". */
+/**
+ * Caption for an official (monthly) figure whose months fall outside the
+ * selected date range. NJT publishes in arrears, so the API substitutes its
+ * newest published month — that substitution must be visible, or a May figure
+ * reads as if it described the July window the user asked for.
+ *
+ * Returns null when the figure really does cover the requested range.
+ */
+export function coverageNote(coverage: PublishedCoverage | null | undefined): string | null {
+  if (!coverage || !coverage.outsideRequestedRange) return null;
+  const span =
+    coverage.fromMonth === coverage.toMonth ? coverage.fromMonth : `${coverage.fromMonth}–${coverage.toMonth}`;
+  return `NJT hasn't published this period yet — showing ${span}, its most recent.`;
+}
+
 export function humanizeEffect(effect: string): string {
   const spaced = effect.replace(/_/g, " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);

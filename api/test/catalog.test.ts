@@ -1,7 +1,8 @@
 import { createRepositories, openDatabase, type Repositories } from "@njt/db";
 import type { OfficialNjtMetric } from "@njt/shared";
 import { beforeEach, describe, expect, it } from "vitest";
-import { listLines, listStations, resolveLine, stopName, toLineItem } from "../src/catalog";
+import { listLines, listStations, requireLine, resolveLine, stopName, toLineItem } from "../src/catalog";
+import { ApiError } from "../src/util";
 
 function metric(o: Partial<OfficialNjtMetric>): OfficialNjtMetric {
   return {
@@ -90,18 +91,37 @@ describe("repository-backed catalog helpers", () => {
     expect(lines[0]).toMatchObject({ njtOtpPercent: 92, njtLatestMonth: "2025-06", color: "ee0000" });
   });
 
-  it("resolveLine prefers GTFS, then the reference catalog, then the id itself", () => {
+  it("resolveLine prefers GTFS, then slugs, then the reference catalog", () => {
     seedGtfs();
     expect(resolveLine(repos, "NE")).toEqual({ routeId: "NE", name: "Northeast Corridor Line" });
+    // The slug `/lines` publishes resolves to the same live GTFS route_id.
+    expect(resolveLine(repos, "northeast-corridor")).toEqual({ routeId: "NE", name: "Northeast Corridor Line" });
     // Not in GTFS but a known catalog default route id.
-    expect(resolveLine(repos, "PV").name).toBe("Pascack Valley Line");
-    // Entirely unknown → echoes the id.
-    expect(resolveLine(repos, "ZZZ")).toEqual({ routeId: "ZZZ", name: "ZZZ" });
+    expect(resolveLine(repos, "PV")?.name).toBe("Pascack Valley Line");
+    expect(resolveLine(repos, "pascack-valley")?.name).toBe("Pascack Valley Line");
   });
 
-  it("resolveLine echoes the id when there is no GTFS version at all", () => {
-    expect(resolveLine(repos, "NE").name).toBe("Northeast Corridor Line"); // via catalog
-    expect(resolveLine(repos, "made-up")).toEqual({ routeId: "made-up", name: "made-up" });
+  it("resolveLine returns null for an unknown line rather than echoing the id", () => {
+    seedGtfs();
+    expect(resolveLine(repos, "ZZZ")).toBeNull();
+    expect(resolveLine(repos, "made-up")).toBeNull();
+  });
+
+  it("resolveLine still resolves via the catalog when no GTFS version exists", () => {
+    expect(resolveLine(repos, "NE")?.name).toBe("Northeast Corridor Line");
+    expect(resolveLine(repos, "northeast-corridor")?.name).toBe("Northeast Corridor Line");
+    expect(resolveLine(repos, "made-up")).toBeNull();
+  });
+
+  it("requireLine throws a 404 ApiError for an unknown line", () => {
+    seedGtfs();
+    expect(requireLine(repos, "NE").routeId).toBe("NE");
+    expect(() => requireLine(repos, "ZZZ")).toThrow(/unknown line "ZZZ"/);
+    try {
+      requireLine(repos, "ZZZ");
+    } catch (err) {
+      expect((err as ApiError).status).toBe(404);
+    }
   });
 
   it("listStations maps route ids to human line names", () => {

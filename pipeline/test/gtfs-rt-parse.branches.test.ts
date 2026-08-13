@@ -10,8 +10,8 @@ function encode(entities: unknown[]): Uint8Array {
   return tr.FeedMessage.encode({ header: { gtfsRealtimeVersion: "2.0" }, entity: entities as never }).finish();
 }
 
-// A context that never matches a trip, forcing the RT-only derivation paths.
-const emptyCtx: ScheduleContext = { lookup: () => null, stopName: (s) => s };
+// A context that never matches a trip or route, forcing the RT-only paths.
+const emptyCtx: ScheduleContext = { lookup: () => null, stopName: (s) => s, resolveRoute: () => null };
 
 const opts = { now: 5_000_000, defaultServiceDate: "2025-07-15", gtfsStaticVersion: "v1" };
 
@@ -106,6 +106,7 @@ describe("parseTripUpdates — branch coverage", () => {
         stops: [{ stopId: "NWK", stopSequence: 1, scheduledArrival: 1000, scheduledDeparture: 1050 }],
       }),
       stopName: (s) => s,
+      resolveRoute: () => null,
     };
     const buffer = encode([
       {

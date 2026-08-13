@@ -306,4 +306,47 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_trips_route ON gtfs_trips(version_id, route_id);
     `,
   },
+  {
+    id: "007_gtfs_route_aliases",
+    up: /* sql */ `
+      -- Source GTFS route_id -> canonical catalog route_id. GTFS static ingest
+      -- collapses variant routes onto one canonical line (NJCL + NJCLL, Main /
+      -- Bergen / Port Jervis), so gtfs_routes holds only canonical ids. The
+      -- real-time feed still reports the *source* ids, and an RT trip that
+      -- isn't in the static schedule has no trip row to resolve through --
+      -- without this map its raw route_id ("10") was stored as the line name.
+      CREATE TABLE gtfs_route_aliases (
+        version_id         TEXT NOT NULL,
+        source_route_id    TEXT NOT NULL,
+        canonical_route_id TEXT NOT NULL,
+        PRIMARY KEY (version_id, source_route_id)
+      );
+    `,
+  },
+  {
+    id: "008_vehicle_positions",
+    up: /* sql */ `
+      -- Current position of every active train, from the GTFS-RT
+      -- VehiclePositions feed. Each poll returns a complete snapshot, so this
+      -- table is replaced wholesale on ingest and stays bounded (hundreds of
+      -- rows); position *history* lives in raw_snapshots, kept for replay.
+      CREATE TABLE vehicle_positions (
+        vehicle_id     TEXT    NOT NULL PRIMARY KEY,
+        trip_id        TEXT,
+        route_id       TEXT,
+        line_name      TEXT,
+        direction      TEXT,
+        latitude       REAL    NOT NULL,
+        longitude      REAL    NOT NULL,
+        bearing        REAL,
+        speed_mps      REAL,
+        stop_id        TEXT,
+        stop_name      TEXT,
+        status         TEXT,
+        reported_at    INTEGER,
+        ingested_at_ms INTEGER NOT NULL
+      );
+      CREATE INDEX idx_vehicle_positions_route ON vehicle_positions(route_id);
+    `,
+  },
 ];

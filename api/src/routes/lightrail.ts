@@ -1,9 +1,22 @@
 import type { Repositories } from "@njt/db";
-import type { LightRailLineMdbf, LightRailSummaryResponse } from "@njt/shared";
+import { monthLabel, type LightRailLineMdbf, type LightRailSummaryResponse, type YearMonth } from "@njt/shared";
 import { Hono } from "hono";
 import { averageLightRailOtp } from "../aggregation";
-import { monthRange, resolveRange } from "../dates";
+import { monthRange, resolveRange, type MonthRange } from "../dates";
+import { resolveOfficialWindow } from "../official-window";
 import { CACHE_CONTROL_DAILY } from "../util";
+
+/** The inclusive (min, max) month span of a non-empty set of monthly rows. */
+function monthSpanOf(rows: readonly YearMonth[]): MonthRange {
+  const index = (m: YearMonth) => m.year * 12 + m.month;
+  let from = rows[0]!;
+  let to = rows[0]!;
+  for (const r of rows) {
+    if (index(r) < index(from)) from = r;
+    if (index(r) > index(to)) to = r;
+  }
+  return { from: { year: from.year, month: from.month }, to: { year: to.year, month: to.month } };
+}
 
 /** GET /lightrail/summary — systemwide light-rail OTP + per-line MDBF. */
 export function lightRailRoutes(repos: Repositories): Hono {
@@ -13,11 +26,21 @@ export function lightRailRoutes(repos: Repositories): Hono {
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const months = monthRange(range);
 
-    const otpRows = repos.lightRail.getOtpForRange(months.from, months.to);
+    // Light rail figures are monthly and published in arrears, so a trailing
+    // 30-day request contains none — fall back to the newest published month.
+    const otp = resolveOfficialWindow(
+      months,
+      (from, to) => repos.lightRail.getOtpForRange(from, to),
+      () => repos.lightRail.latestOtpMonth(),
+    );
+    const otpRows = otp.metrics;
     const otpPercent = averageLightRailOtp(otpRows);
 
+    // MDBF is published alongside OTP, so reuse the months OTP resolved to
+    // rather than falling back independently and mixing periods in one panel.
+    const mdbfMonths = otp.coverage?.outsideRequestedRange ? monthSpanOf(otpRows) : months;
     const byLine = new Map<string, { sum: number; count: number }>();
-    for (const row of repos.lightRail.getMdbfForRange(months.from, months.to)) {
+    for (const row of repos.lightRail.getMdbfForRange(mdbfMonths.from, mdbfMonths.to)) {
       const acc = byLine.get(row.lineName) ?? { sum: 0, count: 0 };
       acc.sum += row.mdbf;
       acc.count += 1;
@@ -33,7 +56,8 @@ export function lightRailRoutes(repos: Repositories): Hono {
       otpPercent,
       monthsCovered: otpRows.length,
       lines,
-      otpTrend: otpRows.map((r) => ({ month: `${r.year}-${String(r.month).padStart(2, "0")}`, otpPercent: r.otpPercent })),
+      otpTrend: otpRows.map((r) => ({ month: monthLabel(r.year, r.month), otpPercent: r.otpPercent })),
+      coverage: otp.coverage,
     };
     c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
