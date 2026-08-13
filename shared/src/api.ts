@@ -213,6 +213,42 @@ export interface StationDeparturesResponse {
   generatedAtMs: number;
 }
 
+// --- Trends --------------------------------------------------------------------
+
+export type TrendDirection = "improving" | "worsening" | "stable";
+
+export interface LineTrend {
+  lineId: string;
+  lineName: string;
+  /** On-time rate over the recent period, null when nothing ran. */
+  recentOtpPercent: number | null;
+  /** The equal-length period immediately before it. */
+  priorOtpPercent: number | null;
+  /** Percentage points, recent minus prior. */
+  deltaPoints: number | null;
+  recentTrips: number;
+  priorTrips: number;
+  /**
+   * "stable" also covers changes too small or too noisy to call — the app
+   * never claims a trend it cannot distinguish from chance.
+   */
+  direction: TrendDirection;
+  /** False when either period is too thin to compare at all. */
+  enoughData: boolean;
+}
+
+export interface TrendsResponse {
+  /** Length of each compared period, in days. */
+  days: number;
+  recentFrom: string;
+  recentTo: string;
+  priorFrom: string;
+  priorTo: string;
+  thresholdSeconds: number;
+  lines: LineTrend[];
+  summary: string;
+}
+
 // --- Station rankings ----------------------------------------------------------
 
 export type StationRankingSort = "delay" | "amplification";

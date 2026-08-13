@@ -30,7 +30,9 @@ if (hasRealObservations(repos)) {
   process.exit(1);
 }
 
-const result = buildDevFixture(repos);
+// Enough history that two-period comparisons (trends) have both sides.
+const days = Number(process.env.NJT_FIXTURE_DAYS ?? 35);
+const result = buildDevFixture(repos, Date.now(), days);
 console.log(`Wrote a development fixture to ${dbPath}:`);
 console.log(`  ${result.events} events across ${result.days} days, ${result.upcoming} upcoming departures, 18 live vehicles.`);
 console.log(`\nRun it:\n  NJT_DB_PATH=${dbPath} npm run api\n  EXPO_PUBLIC_API_URL=http://localhost:4000 npm run web --workspace app`);
