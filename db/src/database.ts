@@ -13,12 +13,24 @@ export type SqlParams = Record<string, string | number | bigint | null | Uint8Ar
 export class Database {
   readonly handle: DatabaseSync;
 
+  /** Startup must survive a schema migration holding the write lock. */
+  private static readonly BUSY_TIMEOUT_MS = 120_000;
+
   /** @param path filesystem path, or `:memory:` (default) for an ephemeral db. */
   constructor(path = ":memory:") {
     this.handle = new DatabaseSync(path);
     this.handle.exec("PRAGMA journal_mode = WAL;");
     this.handle.exec("PRAGMA foreign_keys = ON;");
-    this.handle.exec("PRAGMA busy_timeout = 5000;");
+    // Long enough to outlast a migration, not just a normal write.
+    //
+    // The API and the pipeline open the database at the same moment on boot and
+    // both run migrations; one wins and the other must wait. A five-second
+    // timeout covers ordinary contention but not DDL — adding an index over a
+    // 3 GB table took far longer than that, so the loser died with "database is
+    // locked" at startup, the supervisor stopped the machine, and the whole
+    // service went down. Waiting is always better than crashing here: the
+    // loser finds the migration already applied and continues.
+    this.handle.exec(`PRAGMA busy_timeout = ${Database.BUSY_TIMEOUT_MS};`);
     this.migrate();
   }
 
