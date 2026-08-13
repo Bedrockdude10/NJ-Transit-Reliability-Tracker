@@ -2,7 +2,7 @@ import type { Repositories } from "@njt/db";
 import { SYSTEM_SCOPE_ID } from "@njt/shared";
 import { Hono, type Context } from "hono";
 import { buildDistributionResult, buildOfficialComparison, buildOtpSummary, mergeCountMaps } from "../aggregation";
-import { resolveLine, stopName } from "../catalog";
+import { requireLine, stopName } from "../catalog";
 import { summaryToCsv, toCsv } from "../csv";
 import { monthRange, resolveRange, type DateRange } from "../dates";
 import { badRequest, round1 } from "../util";
@@ -34,7 +34,7 @@ export function exportRoutes(repos: Repositories): Hono {
 
     if (entity === "line") {
       if (!id) badRequest("id is required for entity=line");
-      const { routeId, name } = resolveLine(repos, id);
+      const { routeId, name } = requireLine(repos, id);
       const summary = buildOtpSummary(
         repos.aggregates.getOtpDailyRows("line", routeId, "all", range.from, range.to),
         repos.aggregates.getDelayDistributionDailyRows("line", routeId, range.from, range.to),

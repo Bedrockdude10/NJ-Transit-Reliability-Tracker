@@ -6,7 +6,7 @@ import {
   type LineListItem,
   type OfficialNjtMetric,
 } from "@njt/shared";
-import { round1, slugify } from "./util";
+import { notFound, round1, slugify } from "./util";
 
 /** Build a line list item, enriched with NJT's most recent published month. */
 export function toLineItem(
@@ -48,16 +48,48 @@ export interface ResolvedLine {
   name: string;
 }
 
+/** The public slug for a line name — the same value `toLineItem` publishes. */
+function slugFor(lineName: string): string {
+  return findLineByName(lineName)?.id ?? slugify(lineName);
+}
+
 /**
- * Resolve a public lineId (the GTFS route_id) to its display name. Tolerant by
- * design: falls back to the reference catalog, then to the id itself, so any
- * range query returns (possibly empty) data rather than erroring.
+ * Resolve a public line identifier to its GTFS route_id + display name.
+ *
+ * Accepts either form `/lines` publishes: the GTFS `route_id` (`id`, e.g. "NE")
+ * or the catalog slug (`slug`, e.g. "northeast-corridor"). Returns null when
+ * neither matches — callers must 404 rather than serve a zero-filled summary
+ * for a line that does not exist.
  */
-export function resolveLine(repos: Repositories, lineId: string): ResolvedLine {
+export function resolveLine(repos: Repositories, lineId: string): ResolvedLine | null {
   const version = repos.gtfs.currentVersion();
+
+  // 1. A GTFS route_id, as published in `id`.
   const fromGtfs = version ? repos.gtfs.lineNameForRoute(version.versionId, lineId) : null;
-  const fromCatalog = RAIL_LINES.find((l) => l.defaultRouteId === lineId)?.name;
-  return { routeId: lineId, name: fromGtfs ?? fromCatalog ?? lineId };
+  if (fromGtfs) return { routeId: lineId, name: fromGtfs };
+
+  // 2. A slug, as published in `slug` — mapped back through the live GTFS
+  //    routes so the returned route_id matches the real-time feed.
+  if (version) {
+    for (const route of repos.gtfs.routes(version.versionId)) {
+      if (route.mode === "light_rail") continue;
+      if (slugFor(route.lineName) === lineId) return { routeId: route.routeId, name: route.lineName };
+    }
+  }
+
+  // 3. The reference catalog, so ids and slugs still resolve before any GTFS
+  //    has been ingested. `defaultRouteId` is best-effort (see shared/lines.ts).
+  const catalog = RAIL_LINES.find((l) => l.defaultRouteId === lineId || l.id === lineId);
+  if (catalog) return { routeId: catalog.defaultRouteId, name: catalog.name };
+
+  return null;
+}
+
+/** `resolveLine` or a 404 — for route handlers, which must not serve zeros. */
+export function requireLine(repos: Repositories, lineId: string): ResolvedLine {
+  const line = resolveLine(repos, lineId);
+  if (!line) notFound(`unknown line "${lineId}"`);
+  return line;
 }
 
 /** Stations with the human line names that serve them. */

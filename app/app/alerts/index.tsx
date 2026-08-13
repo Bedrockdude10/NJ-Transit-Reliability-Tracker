@@ -1,5 +1,6 @@
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { availableEffects, isMeaningfulEffect } from "../../lib/alerts";
 import { api } from "../../lib/api";
 import { formatTimestamp, humanizeEffect } from "../../lib/format";
 import { theme } from "../../lib/theme";
@@ -9,7 +10,6 @@ import { Table } from "../../components/Table";
 import { Badge, Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, Screen } from "../../components/ui";
 
 const PAGE_SIZE = 20;
-const EFFECTS = ["delay", "cancellation", "detour", "reduced_service", "no_service", "modified_service", "other"];
 
 interface ChipOption {
   label: string;
@@ -45,6 +45,8 @@ export default function Alerts() {
   );
   const freq = useApi(() => api.alertFrequency(range), [range.from, range.to]);
   const totalPages = list.data ? Math.max(1, Math.ceil(list.data.total / PAGE_SIZE)) : 1;
+  // NJT doesn't populate GTFS-RT `effect`, so offer only effects the data has.
+  const effects = useMemo(() => availableEffects(freq.data), [freq.data]);
 
   const selectLine = (v: string | undefined) => {
     setLine(v);
@@ -78,8 +80,12 @@ export default function Alerts() {
         <SectionTitle>Alert log</SectionTitle>
         <Text style={styles.filterLabel}>Filter by line</Text>
         <Chips options={(lines.data?.lines ?? []).map((l) => ({ label: l.shortName, value: l.id }))} value={line} onSelect={selectLine} />
-        <Text style={styles.filterLabel}>Filter by effect</Text>
-        <Chips options={EFFECTS.map((e) => ({ label: humanizeEffect(e), value: e }))} value={effect} onSelect={selectEffect} />
+        {effects.length > 0 ? (
+          <>
+            <Text style={styles.filterLabel}>Filter by effect</Text>
+            <Chips options={effects.map((e) => ({ label: humanizeEffect(e), value: e }))} value={effect} onSelect={selectEffect} />
+          </>
+        ) : null}
 
         {list.loading ? <Loading /> : null}
         {list.error ? <ErrorView message={list.error} onRetry={list.reload} /> : null}
@@ -87,7 +93,7 @@ export default function Alerts() {
           <View key={alert.alertId} style={styles.alert}>
             <View style={styles.alertHead}>
               <Text style={styles.alertTitle}>{alert.headerText}</Text>
-              <Badge text={humanizeEffect(alert.effectType)} />
+              {isMeaningfulEffect(alert.effectType) ? <Badge text={humanizeEffect(alert.effectType)} /> : null}
             </View>
             <Muted>{alert.descriptionText}</Muted>
             <Text style={styles.meta}>

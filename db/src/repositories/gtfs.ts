@@ -27,6 +27,11 @@ export interface GtfsTripRecord {
   directionId?: number | null;
   tripHeadsign?: string | null;
 }
+/** A source GTFS route_id and the canonical catalog route it collapses onto. */
+export interface GtfsRouteAliasRecord {
+  sourceRouteId: string;
+  canonicalRouteId: string;
+}
 export interface GtfsStopTimeRecord {
   tripId: string;
   stopId: string;
@@ -122,6 +127,41 @@ export class GtfsRepository {
     this.db.transaction(() => {
       for (const r of routes) stmt.run({ v: versionId, r: r.routeId, n: r.lineName, c: r.color ?? null, m: r.mode ?? "rail" });
     });
+  }
+
+  /** A stored raw feed file (e.g. "routes.txt"), as archived at ingest. */
+  readFile(versionId: string, filename: string): Uint8Array | null {
+    const row = this.db.get<{ content: Uint8Array }>(
+      "SELECT content FROM gtfs_static_files WHERE version_id = :v AND filename = :f",
+      { v: versionId, f: filename },
+    );
+    return row?.content ?? null;
+  }
+
+  replaceRouteAliases(versionId: string, aliases: readonly GtfsRouteAliasRecord[]): void {
+    const stmt = this.db.prepare(
+      "INSERT OR REPLACE INTO gtfs_route_aliases (version_id, source_route_id, canonical_route_id) VALUES (:v, :s, :c)",
+    );
+    this.db.transaction(() => {
+      for (const a of aliases) stmt.run({ v: versionId, s: a.sourceRouteId, c: a.canonicalRouteId });
+    });
+  }
+
+  /** The canonical route_id a source (feed) route_id collapses onto, if any. */
+  canonicalRouteFor(versionId: string, sourceRouteId: string): string | null {
+    const row = this.db.get<{ canonicalRouteId: string }>(
+      "SELECT canonical_route_id AS canonicalRouteId FROM gtfs_route_aliases WHERE version_id = :v AND source_route_id = :s",
+      { v: versionId, s: sourceRouteId },
+    );
+    return row?.canonicalRouteId ?? null;
+  }
+
+  /** Every source route_id → canonical route_id pair for a version. */
+  routeAliases(versionId: string): GtfsRouteAliasRecord[] {
+    return this.db.all<GtfsRouteAliasRecord>(
+      "SELECT source_route_id AS sourceRouteId, canonical_route_id AS canonicalRouteId FROM gtfs_route_aliases WHERE version_id = :v",
+      { v: versionId },
+    );
   }
 
   replaceStops(versionId: string, stops: readonly GtfsStopRecord[]): void {

@@ -1,4 +1,4 @@
-import type { FleetMdbfMetric, OfficialNjtMetric } from "@njt/shared";
+import type { FleetMdbfMetric, OfficialNjtMetric, YearMonth } from "@njt/shared";
 import type { Database } from "../database";
 import { parseCountMap, serializeJson } from "../json";
 
@@ -126,6 +126,21 @@ export class OfficialMetricRepository {
     return new Map(rows.map((r) => [r.lineName, r]));
   }
 
+  /**
+   * The most recent month NJT has published, across all lines (or one line).
+   * NJT publishes months in arrears, so a "last 30 days" request routinely
+   * falls outside published history — callers use this to fall back to the
+   * newest figures that do exist rather than rendering an empty panel.
+   */
+  latestMonth(lineName?: string): YearMonth | null {
+    return (
+      this.db.get<YearMonth>(
+        `SELECT year, month FROM official_njt_metrics${lineName ? " WHERE line_name = :line" : ""} ORDER BY year DESC, month DESC LIMIT 1`,
+        lineName ? { line: lineName } : {},
+      ) ?? null
+    );
+  }
+
   // --- Fleet MDBF (systemwide mean distance between failures) ---------------
 
   upsertMdbf(metric: FleetMdbfMetric): void {
@@ -148,5 +163,10 @@ export class OfficialMetricRepository {
       "SELECT year, month, mdbf FROM official_fleet_mdbf WHERE (year, month) >= (:fromY, :fromM) AND (year, month) <= (:toY, :toM) ORDER BY year, month",
       { fromY: from.year, fromM: from.month, toY: to.year, toM: to.month },
     );
+  }
+
+  /** The most recent month with a published fleet MDBF figure. */
+  latestMdbfMonth(): YearMonth | null {
+    return this.db.get<YearMonth>("SELECT year, month FROM official_fleet_mdbf ORDER BY year DESC, month DESC LIMIT 1") ?? null;
   }
 }

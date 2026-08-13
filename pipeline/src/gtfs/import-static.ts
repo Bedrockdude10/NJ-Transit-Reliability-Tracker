@@ -114,6 +114,10 @@ export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImpo
   const nowSeconds = Math.floor(Date.now() / 1000);
   repos.gtfs.insertVersion({ versionId, effectiveFrom: nowSeconds, effectiveTo: null, checksum, ingestedAtMs: Date.now() });
   repos.gtfs.replaceRoutes(versionId, [...canonicalRoutes.values()]);
+  repos.gtfs.replaceRouteAliases(
+    versionId,
+    [...realToCanonical].map(([sourceRouteId, canonicalRouteId]) => ({ sourceRouteId, canonicalRouteId })),
+  );
   repos.gtfs.replaceStops(versionId, stops);
   repos.gtfs.replaceTrips(versionId, trips);
   repos.gtfs.replaceStopTimes(versionId, stopTimes);

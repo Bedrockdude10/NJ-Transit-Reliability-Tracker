@@ -4,7 +4,7 @@ import { parseGtfsStatic } from "../src/gtfs-static/parse";
 describe("parseGtfsStatic — branch coverage", () => {
   it("returns empty collections when the archive has no files", () => {
     const data = parseGtfsStatic({});
-    expect(data).toEqual({ routes: [], stops: [], trips: [], stopTimes: [] });
+    expect(data).toEqual({ routes: [], routeAliases: [], stops: [], trips: [], stopTimes: [] });
   });
 
   it("drops trips whose route did not map to a canonical rail line", () => {

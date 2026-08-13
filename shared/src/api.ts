@@ -4,7 +4,7 @@
  * the db or domain-storage types.
  */
 
-import type { Direction } from "./domain";
+import type { Direction, VehicleStopStatus } from "./domain";
 import type { HeatmapType } from "./constants";
 
 export interface DistributionBucketResult {
@@ -29,6 +29,23 @@ export interface OtpSummary {
   p90DelaySeconds: number;
   thresholds: OtpThresholdResult[];
   delayDistribution: DistributionBucketResult[];
+}
+
+/**
+ * Which months an official (NJT-published, monthly) figure actually covers.
+ *
+ * NJT publishes performance data months in arrears, so the default "last 30
+ * days" window routinely contains no published months at all. Rather than
+ * render an empty panel, the API falls back to the most recent published month
+ * and reports that here — the UI must label a fallback so the figure is never
+ * mistaken for the requested period.
+ */
+export interface PublishedCoverage {
+  /** `YYYY-MM`. */
+  fromMonth: string;
+  toMonth: string;
+  /** True when these months fall outside the requested date range. */
+  outsideRequestedRange: boolean;
 }
 
 /** NJT's own reported figure for the period, for side-by-side comparison. */
@@ -136,6 +153,34 @@ export interface MapResponse {
   lines: MapLine[];
 }
 
+/** One train's current position, for the live map. */
+export interface MapVehicle {
+  vehicleId: string;
+  tripId: string | null;
+  routeId: string | null;
+  lineName: string | null;
+  direction: Direction | null;
+  latitude: number;
+  longitude: number;
+  bearing: number | null;
+  /** Converted from the feed's metres/second for display. */
+  speedMph: number | null;
+  stopId: string | null;
+  stopName: string | null;
+  status: VehicleStopStatus | null;
+  /** When the train reported this position, epoch seconds UTC. */
+  reportedAt: number | null;
+  /** Seconds between the reading and this response — staleness, made visible. */
+  ageSeconds: number | null;
+}
+
+export interface MapVehiclesResponse {
+  vehicles: MapVehicle[];
+  /** When the newest reading in this set was ingested, epoch ms (null if empty). */
+  lastIngestedAtMs: number | null;
+  generatedAtMs: number;
+}
+
 // --- Light rail --------------------------------------------------------------
 
 export interface LightRailLineMdbf {
@@ -153,6 +198,8 @@ export interface LightRailSummaryResponse {
   lines: LightRailLineMdbf[];
   /** Monthly systemwide light-rail OTP over the period, ascending. */
   otpTrend: { month: string; otpPercent: number }[];
+  /** Months these figures cover; null if light rail data was never published. */
+  coverage: PublishedCoverage | null;
 }
 
 // --- System -----------------------------------------------------------------
@@ -164,6 +211,10 @@ export interface SystemSummaryResponse {
   njtOfficial: NjtOfficialComparison | null;
   njtCancellations: NjtCancellations | null;
   fleetMdbf: FleetMdbf | null;
+  /** Months `njtOfficial` / `njtCancellations` cover; null if never published. */
+  officialCoverage: PublishedCoverage | null;
+  /** Months `fleetMdbf` covers (published separately from per-line OTP). */
+  fleetMdbfCoverage: PublishedCoverage | null;
 }
 
 export interface HeatmapResponse {
@@ -205,6 +256,8 @@ export interface LineSummaryResponse {
   outbound: OtpSummary;
   njtOfficial: NjtOfficialComparison | null;
   njtCancellations: NjtCancellations | null;
+  /** Months `njtOfficial` / `njtCancellations` cover; null if never published. */
+  officialCoverage: PublishedCoverage | null;
 }
 
 export interface TrendPoint {

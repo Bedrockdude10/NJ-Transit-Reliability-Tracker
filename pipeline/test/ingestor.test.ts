@@ -38,9 +38,28 @@ class FakeClient implements FeedClient {
   fetchServiceAlerts(): Promise<Uint8Array> {
     return Promise.resolve(tr.FeedMessage.encode({ header: { gtfsRealtimeVersion: "2.0" }, entity: [] }).finish());
   }
+  vehiclePositionsBytes: Uint8Array = new Uint8Array();
   fetchVehiclePositions(): Promise<Uint8Array> {
-    return Promise.resolve(new Uint8Array());
+    return Promise.resolve(this.vehiclePositionsBytes);
   }
+}
+
+function vehiclePositionsBytes(): Uint8Array {
+  return tr.FeedMessage.encode({
+    header: { gtfsRealtimeVersion: "2.0" },
+    entity: [
+      {
+        id: "e1",
+        vehicle: {
+          vehicle: { id: "V1" },
+          trip: { tripId: "T1", routeId: "NE", startDate: "20250715", directionId: 1 },
+          position: { latitude: 40.7347, longitude: -74.1645 },
+          stopId: "NWK",
+          timestamp: 1752580900,
+        },
+      },
+    ],
+  }).finish();
 }
 
 function setup(client: FakeClient) {
@@ -97,6 +116,33 @@ describe("Ingestor", () => {
     const otp = repos.aggregates.getOtpDailyRows("system", "system", "all", "2025-07-15", "2025-07-15");
     expect(otp[0]?.tripsOperated).toBe(1); // one trip, terminal delay 300
     expect(otp[0]?.onTimeCounts["300"]).toBe(1);
+  });
+
+  it("ingests VehiclePositions: archives the snapshot and stores parsed positions", async () => {
+    client.vehiclePositionsBytes = vehiclePositionsBytes();
+    expect(await ingestor.pollVehiclePositions()).toBe(true);
+
+    expect(repos.snapshots.count("VehiclePositions")).toBe(1);
+    const [v] = repos.vehicles.all();
+    expect(v).toMatchObject({
+      vehicleId: "V1",
+      routeId: "NE",
+      lineName: "Northeast Corridor Line",
+      stopId: "NWK",
+      stopName: "Newark Penn",
+      ingestedAtMs: NOW,
+    });
+  });
+
+  it("swaps the vehicle snapshot wholesale so departed trains drop off", async () => {
+    client.vehiclePositionsBytes = vehiclePositionsBytes();
+    await ingestor.pollVehiclePositions();
+    expect(repos.vehicles.count()).toBe(1);
+
+    // An empty feed body is a valid "no active vehicles" poll.
+    client.vehiclePositionsBytes = new Uint8Array();
+    expect(await ingestor.pollVehiclePositions()).toBe(true);
+    expect(repos.vehicles.count()).toBe(0);
   });
 
   it("flags staleness when TripUpdates has been silent too long", async () => {

@@ -152,4 +152,39 @@ export class TripStopEventRepository {
   count(): number {
     return this.db.get<{ c: number }>("SELECT COUNT(*) AS c FROM trip_stop_events")?.c ?? 0;
   }
+
+  /** Distinct line names events are stored under, ascending. */
+  distinctLineNames(): string[] {
+    return this.db
+      .all<{ line_name: string }>("SELECT DISTINCT line_name FROM trip_stop_events ORDER BY line_name")
+      .map((r) => r.line_name);
+  }
+
+  /** Service dates holding at least one event under a given line name. */
+  serviceDatesForLineName(lineName: string): string[] {
+    return this.db
+      .all<{ service_date: string }>(
+        "SELECT DISTINCT service_date FROM trip_stop_events WHERE line_name = :n ORDER BY service_date",
+        { n: lineName },
+      )
+      .map((r) => r.service_date);
+  }
+
+  /**
+   * Repoint events stored under a stale line name (historically the raw feed
+   * `route_id`) onto the resolved line. `line_name` is not part of the primary
+   * key, so this can't collide; callers must recompute the affected days.
+   */
+  relabelLineName(staleLineName: string, routeId: string, lineName: string): number {
+    const affected =
+      this.db.get<{ c: number }>("SELECT COUNT(*) AS c FROM trip_stop_events WHERE line_name = :stale", {
+        stale: staleLineName,
+      })?.c ?? 0;
+    this.db.run("UPDATE trip_stop_events SET route_id = :r, line_name = :n WHERE line_name = :stale", {
+      r: routeId,
+      n: lineName,
+      stale: staleLineName,
+    });
+    return affected;
+  }
 }

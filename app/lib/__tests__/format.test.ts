@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  coverageNote,
   formatDelaySeconds,
   formatDelayShort,
   formatInt,
@@ -66,5 +67,27 @@ describe("date + misc formatters", () => {
 
   it("returns the input unchanged when the date is malformed", () => {
     expect(formatShortDate("bad")).toBe("bad");
+  });
+});
+
+describe("coverageNote", () => {
+  it("is silent when the figures really cover the requested range", () => {
+    expect(coverageNote({ fromMonth: "2026-04", toMonth: "2026-05", outsideRequestedRange: false })).toBeNull();
+    expect(coverageNote(null)).toBeNull();
+    expect(coverageNote(undefined)).toBeNull();
+  });
+
+  // Without this the substituted month reads as if it described the selected
+  // window — a May figure silently labelled as July.
+  it("names the substituted month when NJT hasn't published the period", () => {
+    expect(coverageNote({ fromMonth: "2026-05", toMonth: "2026-05", outsideRequestedRange: true })).toBe(
+      "NJT hasn't published this period yet — showing 2026-05, its most recent.",
+    );
+  });
+
+  it("renders a multi-month fallback as a span", () => {
+    expect(coverageNote({ fromMonth: "2026-03", toMonth: "2026-05", outsideRequestedRange: true })).toContain(
+      "2026-03–2026-05",
+    );
   });
 });

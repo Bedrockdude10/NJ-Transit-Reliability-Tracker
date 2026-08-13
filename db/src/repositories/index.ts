@@ -7,6 +7,7 @@ import { HealthRepository } from "./health";
 import { LightRailRepository } from "./lightrail";
 import { OfficialMetricRepository } from "./official";
 import { RawSnapshotRepository } from "./snapshots";
+import { VehiclePositionRepository } from "./vehicles";
 
 export * from "./aggregates";
 export * from "./alerts";
@@ -16,6 +17,7 @@ export * from "./health";
 export * from "./lightrail";
 export * from "./official";
 export * from "./snapshots";
+export * from "./vehicles";
 
 /** All repositories bound to one database — the single dependency the
  * pipeline and API receive. */
@@ -28,6 +30,7 @@ export interface Repositories {
   lightRail: LightRailRepository;
   aggregates: AggregateRepository;
   health: HealthRepository;
+  vehicles: VehiclePositionRepository;
 }
 
 export function createRepositories(db: Database): Repositories {
@@ -40,5 +43,6 @@ export function createRepositories(db: Database): Repositories {
     lightRail: new LightRailRepository(db),
     aggregates: new AggregateRepository(db),
     health: new HealthRepository(db),
+    vehicles: new VehiclePositionRepository(db),
   };
 }
