@@ -16,6 +16,20 @@ export const WINDOWS = [
 
 export type WindowKey = (typeof WINDOWS)[number]["key"];
 
+/**
+ * Resolve a window key that arrived from outside the app — a URL, a bookmark,
+ * someone else's shared link — to a known preset. Anything unrecognised falls
+ * back rather than leaving the screen in a state the picker can't represent.
+ */
+export function parseWindowKey(value: string | undefined, fallback: WindowKey = "30d"): WindowKey {
+  return WINDOWS.some((w) => w.key === value) ? (value as WindowKey) : fallback;
+}
+
+/** Days for a window key. */
+export function windowDays(key: WindowKey): number {
+  return WINDOWS.find((w) => w.key === key)?.days ?? 30;
+}
+
 export function todayString(nowMs: number = Date.now()): string {
   return toLocalDateString(Math.floor(nowMs / 1000));
 }
