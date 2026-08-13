@@ -6,16 +6,30 @@ import { formatPercent } from "../../lib/format";
 import { otpColor, theme } from "../../lib/theme";
 import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
+import { useLiveApi } from "../../hooks/useLiveApi";
+import { useNow } from "../../hooks/useNow";
+import { splitLiveVehicles, staleVehicleNote } from "../../lib/vehicles";
 import { SystemMap, type MapColorMode } from "../../components/charts/SystemMap";
 import { WindowPicker } from "../../components/WindowPicker";
-import { Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, Screen } from "../../components/ui";
+import { Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatusDot, Screen } from "../../components/ui";
+
+/** VehiclePositions is polled every 60s upstream; matching it is enough. */
+const VEHICLES_REFRESH_MS = 20_000;
 
 export default function MapScreen() {
   const [windowKey, setWindowKey] = useState<WindowKey>("90d");
   const [days, setDays] = useState(90);
   const [mode, setMode] = useState<MapColorMode>("reliability");
+  const [showLive, setShowLive] = useState(true);
   const range = useMemo(() => windowToRange(days), [days]);
   const map = useApi(() => api.map(range), [range.from, range.to]);
+  const vehicles = useLiveApi(() => api.mapVehicles(), [], VEHICLES_REFRESH_MS);
+  const now = useNow(5_000);
+
+  // The feed leaves departed trains in place, so anything stale is withheld
+  // rather than drawn as if it were where the train is now.
+  const { live, hiddenStale } = useMemo(() => splitLiveVehicles(vehicles.data?.vehicles), [vehicles.data]);
+  const shown = showLive ? live : [];
 
   const all = map.data?.lines ?? [];
   const byOtp = (a: { njtOtpPercent: number | null }, b: { njtOtpPercent: number | null }) => {
@@ -46,13 +60,37 @@ export default function MapScreen() {
       {map.error ? <ErrorView message={map.error} onRetry={map.reload} /> : null}
       {map.data ? (
         <>
-          <Card>
-            <SystemMap stations={map.data.stations} lines={map.data.lines} colorMode={mode} />
+          <Card
+            title="Network"
+            right={
+              <Row wrap={false}>
+                <Pressable onPress={() => setShowLive((s) => !s)} style={[styles.liveToggle, showLive && styles.liveToggleOn]}>
+                  <StatusDot color={showLive ? theme.colors.good : theme.colors.textFaint} pulse={showLive} />
+                  <Text style={[styles.liveToggleText, showLive && styles.liveToggleTextOn]}>
+                    {showLive ? `${shown.length} live` : "Live off"}
+                  </Text>
+                </Pressable>
+              </Row>
+            }
+          >
+            <SystemMap stations={map.data.stations} lines={map.data.lines} colorMode={mode} vehicles={shown} />
             <Muted>
               {map.data.stations.length} stations · {map.data.lines.length} lines · positions from NJT's GTFS feed. Tap a station or
               line for details; tap empty space to dismiss.{" "}
               {mode === "reliability" ? "Line color is NJT's reported OTP — greener is more reliable." : "Official NJT line colors."}
             </Muted>
+            {showLive ? (
+              <View style={styles.liveNote}>
+                <Muted>
+                  Arrows are trains now, pointing the way they are heading; a filled dot marks one stopped at a station.
+                  {vehicles.updatedAtMs ? ` Updated ${Math.max(0, Math.round((now - vehicles.updatedAtMs) / 1000))}s ago.` : ""}
+                </Muted>
+                {staleVehicleNote(hiddenStale) ? <Muted>{staleVehicleNote(hiddenStale)}</Muted> : null}
+                {shown.length === 0 && !vehicles.loading ? (
+                  <Muted>No trains are reporting a current position — likely outside service hours.</Muted>
+                ) : null}
+              </View>
+            ) : null}
           </Card>
 
           <Card>
@@ -102,4 +140,9 @@ const styles = StyleSheet.create({
   swatch: { width: 14, height: 14, borderRadius: 4 },
   legendName: { color: theme.colors.text, flex: 1, fontWeight: "600" },
   legendOtp: { fontWeight: "800" },
+  liveToggle: { flexDirection: "row", alignItems: "center", gap: theme.spacing(1.5), paddingHorizontal: theme.spacing(2), paddingVertical: theme.spacing(1), borderRadius: theme.radii.pill, backgroundColor: theme.colors.surfaceAlt },
+  liveToggleOn: { backgroundColor: theme.colors.goodSoft },
+  liveToggleText: { color: theme.colors.textMuted, fontSize: theme.fontSize.xs, fontWeight: "700" },
+  liveToggleTextOn: { color: theme.colors.good },
+  liveNote: { gap: theme.spacing(1), marginTop: theme.spacing(1) },
 });

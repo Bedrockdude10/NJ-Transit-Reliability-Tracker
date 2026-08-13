@@ -1,6 +1,6 @@
 /** Display formatters. Pure functions — no React Native imports. */
 
-import type { PublishedCoverage } from "@njt/shared";
+import { NJT_TIMEZONE, type PublishedCoverage } from "@njt/shared";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
@@ -63,7 +63,21 @@ export function formatTimestamp(ms: number | null | undefined): string {
   return new Date(ms).toLocaleString("en-US", { dateStyle: "medium", timeStyle: "short" });
 }
 
-/** "reduced_service" -> "Reduced service". */
+/**
+ * Wall-clock time at a station, e.g. "5:42 PM". Rendered in NJT local time
+ * (`America/New_York`) rather than the viewer's zone: a board is about the
+ * platform you are standing on, and a rider checking from another timezone
+ * still wants the time printed on the timetable.
+ */
+export function formatClockTime(epochSeconds: number | null | undefined): string {
+  if (epochSeconds === null || epochSeconds === undefined) return "—";
+  return new Date(epochSeconds * 1000).toLocaleTimeString("en-US", {
+    hour: "numeric",
+    minute: "2-digit",
+    timeZone: NJT_TIMEZONE,
+  });
+}
+
 /**
  * Caption for an official (monthly) figure whose months fall outside the
  * selected date range. NJT publishes in arrears, so the API substitutes its
@@ -79,6 +93,7 @@ export function coverageNote(coverage: PublishedCoverage | null | undefined): st
   return `NJT hasn't published this period yet — showing ${span}, its most recent.`;
 }
 
+/** "reduced_service" -> "Reduced service". */
 export function humanizeEffect(effect: string): string {
   const spaced = effect.replace(/_/g, " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);

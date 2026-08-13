@@ -1,11 +1,15 @@
 import { useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
+import { View } from "react-native";
 import { api } from "../../lib/api";
 import { formatDelaySeconds, formatPercent } from "../../lib/format";
 import { hasHeatmapData, hasStationData } from "../../lib/measurement";
 import { theme } from "../../lib/theme";
 import { windowToRange, type WindowKey } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
+import { useLiveApi } from "../../hooks/useLiveApi";
+import { useNow } from "../../hooks/useNow";
+import { BoardDisclaimer, BoardFreshness, DepartureBoard } from "../../components/DepartureBoard";
 import { CsvExportButton } from "../../components/CsvExportButton";
 import { LiveBanner } from "../../components/Indicators";
 import { Heatmap } from "../../components/charts/Heatmap";
@@ -13,6 +17,9 @@ import { DelayHistogram } from "../../components/metrics";
 import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
 import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
+
+/** Matches the pipeline's TripUpdates cadence — polling faster gains nothing. */
+const DEPARTURES_REFRESH_MS = 30_000;
 
 export default function StationDetail() {
   const { stopId } = useLocalSearchParams<{ stopId: string }>();
@@ -27,9 +34,36 @@ export default function StationDetail() {
   const collectionStartDate = health.data?.collectionStartDate ?? null;
   const measured = hasStationData(summary.data);
 
+  // The board polls; the countdown ticks. Keeping them on separate clocks means
+  // "3 min" counts down every second without re-fetching every second.
+  const departures = useLiveApi(() => api.stationDepartures(id), [id], DEPARTURES_REFRESH_MS);
+  const now = useNow();
+
   return (
     <Screen>
       <PageTitle title={summary.data?.stopName ?? id} subtitle="Station reliability detail" />
+
+      <Card
+        title="Next departures"
+        subtitle="Live from NJ Transit's GTFS-Realtime feed"
+        right={<BoardFreshness updatedAtMs={departures.updatedAtMs} nowMs={now} />}
+      >
+        {departures.loading ? <Loading label="Loading board…" /> : null}
+        {/* A failed refresh keeps the last board on screen — a blip shouldn't blank it. */}
+        {departures.error && !departures.data ? (
+          <ErrorView message={departures.error} onRetry={departures.reload} />
+        ) : null}
+        {departures.data ? (
+          <>
+            {departures.error ? <Muted>Reconnecting… showing the last update.</Muted> : null}
+            <DepartureBoard departures={departures.data.departures} nowMs={now} />
+            <View style={{ marginTop: theme.spacing(2) }}>
+              <BoardDisclaimer />
+            </View>
+          </>
+        ) : null}
+      </Card>
+
       <LiveBanner collectionStartDate={collectionStartDate}>
         Per-station arrival delays are measured from the live GTFS-Realtime feed. The station name and lines are
         real (from GTFS); reliability figures fill in as data accrues.

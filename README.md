@@ -4,6 +4,22 @@ Independent, per-train reliability tracking for NJ Transit commuter rail — the
 
 > **Disclaimer:** Data is sourced from NJ Transit's public feeds and is independent of NJT official reporting. It is not guaranteed accurate, complete, or real-time.
 
+## What it does
+
+**For riders**
+
+- **Live departure board** at every station — next trains with destination, live predicted delay, and cancellations shown in their scheduled slot rather than silently dropped.
+- **Live map** — every reporting train as a chevron pointing the way it's heading. Positions older than five minutes are withheld, and the count of what was hidden is shown.
+- **Your commute** — pick two stations and see how *that* journey performs: on-time rate, the delay to plan around (p90), and which timetabled departure is most and least reliable.
+
+**For the agency**
+
+- **Where delay accumulates** — average delay at each stop along a route, differenced stop to stop, so the costliest stretches and the places trains recover are both visible.
+- **Station rankings** — ordered by arrival delay (where lateness is *felt*) and separately by amplification: trains that arrive on time and still leave late, which is delay a station introduces rather than inherits.
+- **Independent OTP at strict thresholds** next to NJT's own 6-minute figure, per line and per month, back to 2017.
+
+Every measured figure comes from the live GTFS-Realtime feed. Where the sample is too thin to support a number, the app says so instead of printing one.
+
 ## Architecture
 
 Four decoupled components in one monorepo. The pipeline never serves the frontend; the frontend never touches the database. The API is the only bridge.

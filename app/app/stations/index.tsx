@@ -2,13 +2,19 @@ import { Link } from "expo-router";
 import { useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { api } from "../../lib/api";
+import { formatDelayShort, formatInt, formatPercent } from "../../lib/format";
 import { theme } from "../../lib/theme";
+import { windowToRange } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
-import { Card, EmptyState, ErrorView, Loading, PageTitle, Screen } from "../../components/ui";
+import { Table } from "../../components/Table";
+import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, SegmentedControl, Screen } from "../../components/ui";
 
 export default function StationsList() {
   const { data, loading, error, reload } = useApi(() => api.stations(), []);
   const [query, setQuery] = useState("");
+  const [sort, setSort] = useState<"delay" | "amplification">("delay");
+  const range = useMemo(() => windowToRange(30), []);
+  const rankings = useApi(() => api.stationRankings(range, sort), [range.from, range.to, sort]);
 
   const stations = useMemo(() => {
     const all = data?.stations ?? [];
@@ -31,6 +37,54 @@ export default function StationsList() {
           autoCorrect={false}
         />
       </View>
+
+      {/* Rankings before the list: an alphabetical index answers "where is X?",
+          but the operationally useful question is "which stations are worst?" */}
+      <Card
+        title="Least reliable stations"
+        subtitle={sort === "delay" ? "Where trains arrive latest" : "Where stations add delay of their own"}
+        right={
+          <SegmentedControl
+            value={sort}
+            onChange={setSort}
+            options={[
+              { key: "delay", label: "Arrival delay" },
+              { key: "amplification", label: "Added here" },
+            ]}
+          />
+        }
+      >
+        {rankings.data ? (
+          rankings.data.stations.length > 0 ? (
+            <>
+              <Muted>{rankings.data.summary}</Muted>
+              <Table
+                columns={[
+                  { key: "name", label: "Station", flex: 2.4 },
+                  { key: "metric", label: sort === "delay" ? "Avg delay" : "Amplified", align: "right" },
+                  { key: "obs", label: "Obs", align: "right" },
+                ]}
+                rows={rankings.data.stations.map((s) => ({
+                  name: s.stopName,
+                  metric:
+                    sort === "delay"
+                      ? formatDelayShort(s.avgArrivalDelaySeconds)
+                      : formatPercent(s.amplificationRatePercent),
+                  obs: formatInt(s.observations),
+                }))}
+              />
+              <Muted>
+                “Added here” counts trains that arrived within 5 minutes but still left late — delay the station
+                introduces rather than inherits, which is the kind an operator can act on.
+              </Muted>
+            </>
+          ) : (
+            <EmptyState title="Not enough data yet" hint={rankings.data.summary} />
+          )
+        ) : (
+          <Loading />
+        )}
+      </Card>
 
       {loading ? <Loading /> : null}
       {error ? <ErrorView message={error} onRetry={reload} /> : null}

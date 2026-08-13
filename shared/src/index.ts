@@ -8,4 +8,5 @@ export * from "./lines";
 export * from "./geo";
 export * from "./time";
 export * from "./delay";
+export * from "./departures";
 export * from "./month";

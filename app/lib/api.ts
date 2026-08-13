@@ -1,6 +1,7 @@
 import type {
   AlertFrequencyResponse,
   AlertListResponse,
+  CommuteResponse,
   ConnectionResponse,
   ConnectionTopResponse,
   HealthResponse,
@@ -12,9 +13,12 @@ import type {
   LineMonthlyResponse,
   MapResponse,
   MapVehiclesResponse,
+  PropagationResponse,
   LineSummaryResponse,
   LineTrendResponse,
+  StationDeparturesResponse,
   StationListResponse,
+  StationRankingsResponse,
   StationSummaryResponse,
   SystemSummaryResponse,
   WorstTripsResponse,
@@ -44,13 +48,25 @@ export function buildUrl(path: string, params: Params = {}): string {
 // one network request per id.
 const cache = new RequestCache();
 
+async function fetchJson<T>(url: string, path: string): Promise<T> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`API ${res.status} for ${path}`);
+  return (await res.json()) as T;
+}
+
 async function get<T>(path: string, params?: Params): Promise<T> {
   const url = buildUrl(path, params);
-  return cache.get(url, async () => {
-    const res = await fetch(url);
-    if (!res.ok) throw new Error(`API ${res.status} for ${path}`);
-    return (await res.json()) as T;
-  });
+  return cache.get(url, () => fetchJson<T>(url, path));
+}
+
+/**
+ * A GET that must never be served from cache. Live endpoints (departures,
+ * vehicle positions) refresh on a timer, and a 30s cache would hand the timer
+ * back the same payload it already has. Concurrent callers still dedupe.
+ */
+async function getLive<T>(path: string, params?: Params): Promise<T> {
+  const url = buildUrl(path, params);
+  return cache.live(url, () => fetchJson<T>(url, path));
 }
 
 /** Typed client for the backend API. One method per endpoint. */
@@ -60,7 +76,7 @@ export const api = {
   systemHeatmap: (r: DateRange, type: HeatmapType) => get<HeatmapResponse>("/system/heatmap", { ...r, type }),
   lines: () => get<LineListResponse>("/lines"),
   map: (r: DateRange) => get<MapResponse>("/map", { ...r }),
-  mapVehicles: (lineId?: string) => get<MapVehiclesResponse>("/map/vehicles", lineId ? { lineId } : {}),
+  mapVehicles: (lineId?: string) => getLive<MapVehiclesResponse>("/map/vehicles", lineId ? { lineId } : {}),
   systemHistory: () => get<HistoryResponse>("/system/history"),
   lineHistory: (id: string) => get<HistoryResponse>(`/lines/${encodeURIComponent(id)}/history`),
   lightRailSummary: (r: DateRange) => get<LightRailSummaryResponse>("/lightrail/summary", { ...r }),
@@ -70,12 +86,20 @@ export const api = {
   lineMonthly: (id: string) => get<LineMonthlyResponse>(`/lines/${encodeURIComponent(id)}/monthly`),
   lineWorst: (id: string, r: DateRange, limit = 10) =>
     get<WorstTripsResponse>(`/lines/${encodeURIComponent(id)}/trips/worst`, { ...r, limit }),
+  linePropagation: (id: string, r: DateRange, direction: "inbound" | "outbound") =>
+    get<PropagationResponse>(`/lines/${encodeURIComponent(id)}/propagation`, { ...r, direction }),
   lineHeatmap: (id: string, r: DateRange, type: HeatmapType) =>
     get<HeatmapResponse>(`/lines/${encodeURIComponent(id)}/heatmap`, { ...r, type }),
   stations: () => get<StationListResponse>("/stations"),
+  stationRankings: (r: DateRange, sort: "delay" | "amplification") =>
+    get<StationRankingsResponse>("/stations/rankings", { ...r, sort }),
+  stationDepartures: (id: string, horizonMinutes?: number) =>
+    getLive<StationDeparturesResponse>(`/stations/${encodeURIComponent(id)}/departures`, horizonMinutes ? { horizonMinutes } : {}),
   stationSummary: (id: string, r: DateRange) => get<StationSummaryResponse>(`/stations/${encodeURIComponent(id)}/summary`, { ...r }),
   stationTopTrips: (id: string, r: DateRange) =>
     get<WorstTripsResponse>(`/stations/${encodeURIComponent(id)}/top-delayed-trips`, { ...r }),
+  commute: (origin: string, destination: string, r: DateRange) =>
+    get<CommuteResponse>("/commute", { origin, destination, ...r }),
   connections: (q: { inbound_trip_id: string; transfer_stop_id: string; outbound_trip_id: string } & DateRange) =>
     get<ConnectionResponse>("/connections", { ...q }),
   connectionsTop: (limit = 10) => get<ConnectionTopResponse>("/connections/top", { limit }),

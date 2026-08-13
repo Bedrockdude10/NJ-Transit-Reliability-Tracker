@@ -181,6 +181,155 @@ export interface MapVehiclesResponse {
   generatedAtMs: number;
 }
 
+// --- Departures --------------------------------------------------------------
+
+/** How a departure is running, for at-a-glance colouring on the board. */
+export type DepartureStatus = "on_time" | "late" | "early" | "cancelled" | "skipped" | "scheduled";
+
+export interface Departure {
+  tripId: string;
+  lineId: string;
+  lineName: string;
+  direction: Direction;
+  /** GTFS headsign — where the train is going. Null when the trip is unmatched. */
+  destination: string | null;
+  /** Timetabled departure (falls back to arrival), epoch seconds UTC. */
+  scheduledTime: number | null;
+  /** The feed's live prediction, epoch seconds UTC. Null when cancelled. */
+  predictedTime: number | null;
+  /** Positive = late. Null when the feed offers no prediction. */
+  delaySeconds: number | null;
+  /** Whole minutes until `predictedTime`; negative once it is due. */
+  minutesAway: number | null;
+  status: DepartureStatus;
+}
+
+export interface StationDeparturesResponse {
+  stopId: string;
+  stopName: string;
+  departures: Departure[];
+  /** Minutes ahead the board looks. */
+  horizonMinutes: number;
+  generatedAtMs: number;
+}
+
+// --- Station rankings ----------------------------------------------------------
+
+export type StationRankingSort = "delay" | "amplification";
+
+export interface StationRanking {
+  stopId: string;
+  stopName: string;
+  lines: string[];
+  avgArrivalDelaySeconds: number;
+  observations: number;
+  /**
+   * Share of trains that arrived on time but left late — delay the station
+   * itself introduces, rather than delay it inherited from up the line.
+   */
+  amplificationRatePercent: number | null;
+  arrivedWithin5Min: number;
+  lowSample: boolean;
+}
+
+export interface StationRankingsResponse {
+  from: string;
+  to: string;
+  sort: StationRankingSort;
+  stations: StationRanking[];
+  /** Stations excluded for having too few observations to rank fairly. */
+  excludedLowSample: number;
+  summary: string;
+}
+
+// --- Delay propagation --------------------------------------------------------
+
+/** Average delay at one stop along a line's route, in running order. */
+export interface PropagationStop {
+  stopId: string;
+  stopName: string;
+  /** Position along the route, 1-based. */
+  sequence: number;
+  avgDelaySeconds: number | null;
+  observations: number;
+  /**
+   * Change in average delay since the previous stop. Positive = this segment
+   * added delay; negative = trains recovered across it. Null at the first stop.
+   */
+  deltaSeconds: number | null;
+}
+
+/** A stop-to-stop segment ranked by how much delay it adds. */
+export interface PropagationSegment {
+  fromStopName: string;
+  toStopName: string;
+  addedSeconds: number;
+}
+
+export interface PropagationResponse {
+  lineId: string;
+  lineName: string;
+  direction: Direction;
+  from: string;
+  to: string;
+  stops: PropagationStop[];
+  /** Segments that add the most delay, worst first. */
+  worstSegments: PropagationSegment[];
+  /** Segments where trains most reliably make time back. */
+  bestRecoveries: PropagationSegment[];
+  /** Delay at the last stop minus the first — the journey's net accumulation. */
+  netAccumulatedSeconds: number | null;
+  summary: string;
+}
+
+// --- Commute -----------------------------------------------------------------
+
+/** Reliability of one timetabled departure on a commute, over the period. */
+export interface CommuteDeparture {
+  /** Minutes after local midnight, so departures sort and label consistently. */
+  departureMinutes: number;
+  /** "7:42 AM". */
+  label: string;
+  lineName: string;
+  /** Scheduled journey time in minutes; null if the timetable is incomplete. */
+  scheduledMinutes: number | null;
+  observations: number;
+  cancellations: number;
+  /** Share arriving within the strict threshold. Null below the sample floor. */
+  onTimePercent: number | null;
+  avgArrivalDelaySeconds: number | null;
+  /** The delay you should plan around — exceeded one journey in ten. */
+  p90ArrivalDelaySeconds: number | null;
+  /** True when too few observations to draw a conclusion from. */
+  lowSample: boolean;
+}
+
+export interface CommuteResponse {
+  origin: { stopId: string; stopName: string };
+  destination: { stopId: string; stopName: string };
+  from: string;
+  to: string;
+  /** Lines that actually ran this pair in the period. */
+  linesServing: string[];
+  observations: number;
+  cancellations: number;
+  cancellationRatePercent: number;
+  onTimePercent: number | null;
+  avgArrivalDelaySeconds: number | null;
+  p90ArrivalDelaySeconds: number | null;
+  /** Median observed journey time, minutes. Null when nothing completed. */
+  medianJourneyMinutes: number | null;
+  /** Timetabled journey time, minutes. */
+  scheduledJourneyMinutes: number | null;
+  /** Every timetabled departure on this pair, earliest first. */
+  departures: CommuteDeparture[];
+  /** Most and least reliable departures with enough data to rank. */
+  mostReliable: CommuteDeparture | null;
+  leastReliable: CommuteDeparture | null;
+  /** Plain-language summary of what the numbers say. */
+  summary: string;
+}
+
 // --- Light rail --------------------------------------------------------------
 
 export interface LightRailLineMdbf {

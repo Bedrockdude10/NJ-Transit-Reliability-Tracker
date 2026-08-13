@@ -2,7 +2,7 @@ import { useRouter } from "expo-router";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { type LayoutChangeEvent, Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Svg, { Circle, G, Path } from "react-native-svg";
-import { NJ_STATE_OUTLINE, type MapLine, type MapStation } from "@njt/shared";
+import { NJ_STATE_OUTLINE, type MapLine, type MapStation, type MapVehicle } from "@njt/shared";
 import { formatPercent } from "../../lib/format";
 import { applyZoom, buildProjection, clampView, distToSegment, type Pt, type ViewBox } from "../../lib/map-projection";
 import { otpColor, otpColorAt, theme } from "../../lib/theme";
@@ -18,21 +18,35 @@ type Selection =
 const TOOLTIP_WIDTH = 230;
 
 /**
+ * Colour a live train by how it is running, not by its line: on a map whose
+ * lines are already coloured, a train's own colour is only worth spending on
+ * the thing you cannot otherwise see.
+ */
+function vehicleColor(v: MapVehicle, c: ReturnType<typeof useChartColors>): string {
+  if (v.status === "stopped_at") return c.accent;
+  return c.text;
+}
+
+/**
  * Geographic schematic of the rail network (react-native-svg, web + native).
  * Station lat/lon are projected with a cosine-latitude correction over the NJ
  * outline. Pan + zoom (mouse wheel / drag on web, plus on-screen controls) are
  * applied as an SVG group transform; tapping hit-tests in base coordinates
  * (inverting the transform) and opens an in-place tooltip with deep-link.
+ * Live train positions are overlaid on top when supplied.
  */
 export function SystemMap({
   stations,
   lines,
   colorMode,
+  vehicles = [],
   height = 520,
 }: {
   stations: MapStation[];
   lines: MapLine[];
   colorMode: MapColorMode;
+  /** Live positions to overlay. Already filtered for staleness by the caller. */
+  vehicles?: MapVehicle[];
   height?: number;
 }) {
   const [width, setWidth] = useState(0);
@@ -47,7 +61,7 @@ export function SystemMap({
   // --- projection (base, unzoomed coordinates) -----------------------------
   // Pure and depends only on the stations + viewport size, so it's memoized
   // rather than rebuilt on every pan/zoom frame.
-  const { coord, outlineD } = useMemo(
+  const { coord, outlineD, project } = useMemo(
     () => buildProjection(stations, NJ_STATE_OUTLINE, width, height),
     [stations, width, height],
   );
@@ -206,6 +220,29 @@ export function SystemMap({
               const active = s.stopId === selectedStationId;
               const r = (active ? 5 : 2.6) / Math.sqrt(view.scale);
               return <Circle key={s.stopId} cx={pt.x} cy={pt.y} r={r} fill={active ? c.accent : c.text} stroke={active ? c.background : undefined} strokeWidth={active ? 1.5 / view.scale : 0} opacity={active ? 1 : 0.7} />;
+            })}
+            {/* Live trains, drawn last so they sit above the network. Each is a
+                chevron pointing along its reported bearing; a train with no
+                bearing gets a plain dot rather than an invented heading. */}
+            {vehicles.map((v) => {
+              const pt = project(v.latitude, v.longitude);
+              const size = 5 / Math.sqrt(view.scale);
+              const fill = vehicleColor(v, c);
+              if (v.bearing === null) {
+                return (
+                  <Circle key={v.vehicleId} cx={pt.x} cy={pt.y} r={size * 0.7} fill={fill} stroke={c.background} strokeWidth={1 / view.scale} />
+                );
+              }
+              return (
+                <Path
+                  key={v.vehicleId}
+                  d={`M0,${-size * 1.4} L${size},${size} L0,${size * 0.45} L${-size},${size} Z`}
+                  transform={`translate(${pt.x} ${pt.y}) rotate(${v.bearing})`}
+                  fill={fill}
+                  stroke={c.background}
+                  strokeWidth={1 / view.scale}
+                />
+              );
             })}
           </G>
         </Svg>

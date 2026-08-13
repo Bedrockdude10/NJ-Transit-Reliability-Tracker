@@ -12,6 +12,7 @@ import {
   type MonthlyComparisonRow,
   type OfficialNjtMetric,
   type OtpDailyRow,
+  type PropagationResponse,
   type TrendPoint,
   type WorstTripsResponse,
 } from "@njt/shared";
@@ -26,6 +27,7 @@ import {
   buildSeasonality,
 } from "../aggregation";
 import { listLines, requireLine } from "../catalog";
+import { buildPropagation, netAccumulated, rankSegments, summarizePropagation } from "../propagation";
 import { monthRange, resolveRange } from "../dates";
 import { resolveOfficialWindow } from "../official-window";
 import { CACHE_CONTROL_DAILY, parseHeatmapType, parseLimit, round1 } from "../util";
@@ -208,6 +210,46 @@ export function lineRoutes(repos: Repositories): Hono {
         observations: t.observations,
       })),
     };
+    return c.json(response);
+  });
+
+  /**
+   * GET /lines/:lineId/propagation — where along the route delay accumulates.
+   *
+   * Built from the daily station aggregates rather than raw events, so a year
+   * of history answers instantly; the trade-off is that it describes the
+   * typical train rather than following individual ones.
+   */
+  router.get("/:lineId/propagation", (c) => {
+    const { routeId, name } = requireLine(repos, c.req.param("lineId"));
+    const range = resolveRange(c.req.query("from"), c.req.query("to"));
+    const direction = c.req.query("direction") === "outbound" ? "outbound" : "inbound";
+
+    const version = repos.gtfs.currentVersion();
+    const sequence = version ? repos.gtfs.representativeStopSequence(version.versionId, routeId) : [];
+    // The stored sequence runs one way; the other direction is its reverse.
+    const ordered = (direction === "outbound" ? [...sequence].reverse() : sequence).map((st) => ({
+      stopId: st.stopId,
+      stopName: version ? (repos.gtfs.stopName(version.versionId, st.stopId) ?? st.stopId) : st.stopId,
+    }));
+
+    const stops = buildPropagation(ordered, repos.aggregates.stationDelaysForLine(name, direction, range.from, range.to));
+    const { worstSegments, bestRecoveries } = rankSegments(stops, 5);
+    const netAccumulatedSeconds = netAccumulated(stops);
+
+    const response: PropagationResponse = {
+      lineId: routeId,
+      lineName: name,
+      direction,
+      from: range.from,
+      to: range.to,
+      stops,
+      worstSegments,
+      bestRecoveries,
+      netAccumulatedSeconds,
+      summary: summarizePropagation({ lineName: name, stops, netAccumulatedSeconds, worstSegments }),
+    };
+    c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);
   });
 

@@ -23,6 +23,76 @@ interface EventRow {
 
 /** Explicit column list for event reads (B5: no SELECT *); every column is
  * consumed by {@link toEvent} and the pipeline aggregator. */
+/** A train still to call at a stop, for the live departure board. */
+export interface UpcomingDeparture {
+  tripId: string;
+  routeId: string;
+  lineName: string;
+  direction: Direction;
+  stopSequence: number;
+  scheduledArrival: number | null;
+  scheduledDeparture: number | null;
+  /** The feed's current prediction; null for a cancelled trip. */
+  predictedArrival: number | null;
+  delaySeconds: number | null;
+  stopSkipped: boolean;
+  tripCancelled: boolean;
+  /** GTFS trip headsign — the destination shown to riders. */
+  headsign: string | null;
+  /** Ordering key: predicted, else scheduled departure, else scheduled arrival. */
+  dueAt: number;
+}
+
+interface UpcomingDepartureRow {
+  trip_id: string;
+  route_id: string;
+  line_name: string;
+  direction: string;
+  stop_sequence: number;
+  scheduled_arrival: number | null;
+  scheduled_departure: number | null;
+  observed_arrival: number | null;
+  delay_seconds: number | null;
+  stop_skipped: number;
+  trip_cancelled: number;
+  trip_headsign: string | null;
+  due_at: number;
+}
+
+/** One trip's observed run between two stops, on one service date. */
+export interface ObservedJourney {
+  tripId: string;
+  serviceDate: string;
+  lineName: string;
+  routeId: string;
+  direction: Direction;
+  /** Timetabled departure from the origin, epoch seconds UTC. */
+  scheduledDeparture: number | null;
+  originDelaySeconds: number | null;
+  /** Timetabled arrival at the destination, epoch seconds UTC. */
+  scheduledArrival: number | null;
+  destinationDelaySeconds: number | null;
+  observedArrival: number | null;
+  cancelled: boolean;
+  skipped: boolean;
+}
+
+interface JourneyRow {
+  trip_id: string;
+  service_date: string;
+  line_name: string;
+  route_id: string;
+  direction: string;
+  sched_dep: number | null;
+  sched_dep_arr: number | null;
+  origin_delay: number | null;
+  sched_arr: number | null;
+  dest_delay: number | null;
+  obs_arr: number | null;
+  cancelled: number;
+  skipped: number;
+}
+
 const EVENT_COLUMNS =
   "trip_id, route_id, line_name, stop_id, stop_name, stop_sequence, direction, service_date, " +
   "scheduled_arrival, scheduled_departure, observed_arrival, delay_seconds, stop_skipped, " +
@@ -140,6 +210,103 @@ export class TripStopEventRepository {
         { s: stopId, from, to },
       )
       .map(toEvent);
+  }
+
+  /**
+   * Trains still to call at a stop, soonest first — the data behind a live
+   * departure board.
+   *
+   * Each poll rewrites a trip's stop rows, so a stop the train hasn't reached
+   * yet holds the feed's current *prediction* rather than an observation. The
+   * ordering key falls back through predicted -> scheduled departure ->
+   * scheduled arrival so cancelled trips (no prediction at all) still take
+   * their scheduled slot on the board instead of vanishing from it.
+   */
+  upcomingAtStop(
+    stopId: string,
+    versionId: string | null,
+    fromEpoch: number,
+    toEpoch: number,
+    limit: number,
+  ): UpcomingDeparture[] {
+    const rows = this.db.all<UpcomingDepartureRow>(
+      /* sql */ `
+        SELECT e.trip_id, e.route_id, e.line_name, e.direction, e.stop_sequence,
+               e.scheduled_arrival, e.scheduled_departure, e.observed_arrival,
+               e.delay_seconds, e.stop_skipped, e.trip_cancelled,
+               t.trip_headsign,
+               COALESCE(e.observed_arrival, e.scheduled_departure, e.scheduled_arrival) AS due_at
+        FROM trip_stop_events e
+        LEFT JOIN gtfs_trips t ON t.version_id = :v AND t.trip_id = e.trip_id
+        WHERE e.stop_id = :s
+          AND due_at BETWEEN :from AND :to
+        ORDER BY due_at
+        LIMIT :lim
+      `,
+      { s: stopId, v: versionId ?? "", from: fromEpoch, to: toEpoch, lim: limit },
+    );
+    return rows.map((r) => ({
+      tripId: r.trip_id,
+      routeId: r.route_id,
+      lineName: r.line_name,
+      direction: r.direction as Direction,
+      stopSequence: r.stop_sequence,
+      scheduledArrival: r.scheduled_arrival,
+      scheduledDeparture: r.scheduled_departure,
+      predictedArrival: r.observed_arrival,
+      delaySeconds: r.delay_seconds,
+      stopSkipped: fromSqlBool(r.stop_skipped),
+      tripCancelled: fromSqlBool(r.trip_cancelled),
+      headsign: r.trip_headsign,
+      dueAt: r.due_at,
+    }));
+  }
+
+  /**
+   * Every observed journey between two stops — the same trip calling at the
+   * origin and later at the destination, on the same service date.
+   *
+   * Self-joining the event table is what makes "how reliable is *my* commute?"
+   * answerable: reliability is a property of the pair, not of either station.
+   * `o.stop_sequence < d.stop_sequence` enforces travel direction, so asking
+   * A→B and B→A returns genuinely different trains rather than the same rows
+   * mirrored. Bounded by the (stop_id, service_date) index at both ends.
+   */
+  journeysBetween(originStopId: string, destinationStopId: string, from: string, to: string): ObservedJourney[] {
+    const rows = this.db.all<JourneyRow>(
+      /* sql */ `
+        SELECT o.trip_id, o.service_date, o.line_name, o.route_id, o.direction,
+               o.scheduled_departure AS sched_dep, o.scheduled_arrival AS sched_dep_arr,
+               o.delay_seconds AS origin_delay,
+               d.scheduled_arrival AS sched_arr, d.delay_seconds AS dest_delay,
+               d.observed_arrival AS obs_arr,
+               (o.trip_cancelled OR d.trip_cancelled) AS cancelled,
+               (o.stop_skipped OR d.stop_skipped) AS skipped
+        FROM trip_stop_events o
+        JOIN trip_stop_events d
+          ON d.trip_id = o.trip_id AND d.service_date = o.service_date
+        WHERE o.stop_id = :origin
+          AND d.stop_id = :dest
+          AND o.stop_sequence < d.stop_sequence
+          AND o.service_date BETWEEN :from AND :to
+        ORDER BY o.service_date, sched_dep
+      `,
+      { origin: originStopId, dest: destinationStopId, from, to },
+    );
+    return rows.map((r) => ({
+      tripId: r.trip_id,
+      serviceDate: r.service_date,
+      lineName: r.line_name,
+      routeId: r.route_id,
+      direction: r.direction as Direction,
+      scheduledDeparture: r.sched_dep ?? r.sched_dep_arr,
+      originDelaySeconds: r.origin_delay,
+      scheduledArrival: r.sched_arr,
+      destinationDelaySeconds: r.dest_delay,
+      observedArrival: r.obs_arr,
+      cancelled: fromSqlBool(r.cancelled),
+      skipped: fromSqlBool(r.skipped),
+    }));
   }
 
   /** Distinct service dates present, ascending. */

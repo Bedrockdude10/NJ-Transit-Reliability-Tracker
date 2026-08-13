@@ -37,6 +37,20 @@ export interface StationLineDirAgg {
   sumArrivalDelaySeconds: number;
   observations: number;
 }
+/** One stop's delay totals for a line + direction, across a date range. */
+export interface StationDelayAgg {
+  stopId: string;
+  sumArrivalDelaySeconds: number;
+  observations: number;
+}
+/** One station's totals across all its lines, for ranking. */
+export interface StationRankingAgg {
+  stopId: string;
+  sumArrivalDelaySeconds: number;
+  observations: number;
+  arrivedWithin5Min: number;
+  departedLateAfterOnTimeArrival: number;
+}
 export interface StationHourAgg {
   hour: number;
   sumDelaySeconds: number;
@@ -435,6 +449,50 @@ export class AggregateRepository {
         GROUP BY line_name, direction ORDER BY line_name, direction
       `,
       { stop: stopId, from, to },
+    );
+  }
+
+  /**
+   * Average arrival delay at every stop a line serves, in one query.
+   *
+   * The per-station view answers "how is this stop doing?"; this answers "where
+   * along the route does the delay come from?" — which is the operator's
+   * question, and needs every stop side by side rather than one at a time.
+   */
+  stationDelaysForLine(lineName: string, direction: string, from: string, to: string): StationDelayAgg[] {
+    return this.db.all<StationDelayAgg>(
+      /* sql */ `
+        SELECT stop_id AS stopId,
+               SUM(sum_arrival_delay_seconds) AS sumArrivalDelaySeconds,
+               SUM(observations) AS observations
+        FROM station_daily_aggregates
+        WHERE line_name = :line AND direction = :dir AND service_date BETWEEN :from AND :to
+        GROUP BY stop_id
+      `,
+      { line: lineName, dir: direction, from, to },
+    );
+  }
+
+  /**
+   * Every station's delay and amplification totals in one pass.
+   *
+   * The per-station endpoint answers "how is this stop doing?" one stop at a
+   * time; ranking needs them side by side, and doing that as ~160 separate
+   * queries would be an N+1 over a table that already stores the totals.
+   */
+  stationRankings(from: string, to: string): StationRankingAgg[] {
+    return this.db.all<StationRankingAgg>(
+      /* sql */ `
+        SELECT stop_id AS stopId,
+               SUM(sum_arrival_delay_seconds) AS sumArrivalDelaySeconds,
+               SUM(observations) AS observations,
+               SUM(arrived_within_5min) AS arrivedWithin5Min,
+               SUM(departed_late_after_on_time_arrival) AS departedLateAfterOnTimeArrival
+        FROM station_daily_aggregates
+        WHERE service_date BETWEEN :from AND :to
+        GROUP BY stop_id
+      `,
+      { from, to },
     );
   }
 

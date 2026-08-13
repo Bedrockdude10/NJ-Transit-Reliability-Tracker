@@ -16,7 +16,8 @@ import { HistoryCharts } from "../../components/HistoryCharts";
 import { DelayHistogram, GapCallout, OtpComparison } from "../../components/metrics";
 import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
-import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
+import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, SegmentedControl, StatTile, Screen } from "../../components/ui";
+import { PropagationChart } from "../../components/PropagationChart";
 
 export default function LineDetail() {
   const { lineId } = useLocalSearchParams<{ lineId: string }>();
@@ -34,6 +35,11 @@ export default function LineDetail() {
   const health = useApi(() => api.health(), []);
   const collectionStartDate = health.data?.collectionStartDate ?? null;
   const measured = hasMeasuredOtp(summary.data?.overall);
+  const [propDirection, setPropDirection] = useState<"inbound" | "outbound">("inbound");
+  const propagation = useApi(
+    () => api.linePropagation(id, range, propDirection),
+    [id, range.from, range.to, propDirection],
+  );
   // Directional ≤15m OTP — computed once instead of a repeated .find() per StatTile.
   const inbound15 = summary.data?.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;
   const outbound15 = summary.data?.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;
@@ -129,6 +135,45 @@ export default function LineDetail() {
               </Row>
             ) : (
               <EmptyState title="No data yet" hint="Directional on-time rates appear once the live feed has recorded trips." />
+            )}
+          </Card>
+
+          <Card
+            title="Where delay accumulates"
+            subtitle="Average arrival delay at each stop along the route, in running order"
+            right={
+              <SegmentedControl
+                value={propDirection}
+                onChange={setPropDirection}
+                options={[
+                  { key: "inbound", label: "Inbound" },
+                  { key: "outbound", label: "Outbound" },
+                ]}
+              />
+            }
+          >
+            {propagation.data ? (
+              <>
+                <Muted>{propagation.data.summary}</Muted>
+                <PropagationChart stops={propagation.data.stops} />
+                {propagation.data.worstSegments.length > 0 ? (
+                  <>
+                    <SectionTitle>Costliest stretches</SectionTitle>
+                    <Table
+                      columns={[
+                        { key: "seg", label: "Segment", flex: 3 },
+                        { key: "added", label: "Adds", align: "right" },
+                      ]}
+                      rows={propagation.data.worstSegments.map((s) => ({
+                        seg: `${s.fromStopName} → ${s.toStopName}`,
+                        added: `+${formatDelaySeconds(s.addedSeconds)}`.replace(" late", ""),
+                      }))}
+                    />
+                  </>
+                ) : null}
+              </>
+            ) : (
+              <Loading />
             )}
           </Card>
 

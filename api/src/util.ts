@@ -38,6 +38,11 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
+/** "1 minute" / "3 minutes" — prose in summaries should read as written English. */
+export function pluralize(count: number, singular: string, plural = `${singular}s`): string {
+  return `${count} ${Math.abs(count) === 1 ? singular : plural}`;
+}
+
 /** Round to one decimal place — percentages and average-delay values. */
 export function round1(value: number): number {
   return Math.round(value * 10) / 10;
@@ -60,6 +65,17 @@ export function parsePositiveInt(value: string | undefined, fallback: number, ma
  */
 export function parseLimit(value: string | undefined, fallback: number): number {
   return parsePositiveInt(value, fallback, 100);
+}
+
+/**
+ * Parse an integer query value clamped to `[min, max]`, falling back when
+ * absent or unparseable. Unlike {@link parsePositiveInt} this has a floor other
+ * than 1 — a departure-board horizon of 2 minutes is valid input but useless.
+ */
+export function parseBoundedInt(value: string | undefined, fallback: number, min: number, max: number): number {
+  const n = value ? Number(value) : fallback;
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(Math.floor(n), min), max);
 }
 
 /** Parse a `?type=` heatmap query value, defaulting to `hour_of_day`. */
