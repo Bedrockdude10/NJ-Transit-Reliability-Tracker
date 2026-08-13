@@ -105,6 +105,31 @@ export class AggregateRepository {
     }
   }
 
+  /**
+   * Service dates whose stored aggregates carry a line name outside `known`.
+   *
+   * Aggregates are derived, so this asks "which days were rolled up before the
+   * events were corrected?" — letting a repair resume after a partial failure.
+   * Reading it from the aggregates rather than the events matters: once the
+   * events are relabelled there is nothing left in them to find, and the stale
+   * rollups would otherwise be stranded.
+   */
+  serviceDatesWithUnknownLineNames(known: readonly string[]): string[] {
+    if (known.length === 0) return [];
+    const placeholders = known.map((_, i) => `:n${i}`).join(",");
+    const params = Object.fromEntries(known.map((name, i) => [`n${i}`, name]));
+    const dates = this.db.all<{ service_date: string }>(
+      /* sql */ `
+        SELECT DISTINCT service_date FROM station_daily_aggregates WHERE line_name NOT IN (${placeholders})
+        UNION
+        SELECT DISTINCT service_date FROM trip_daily_aggregates WHERE line_name NOT IN (${placeholders})
+        ORDER BY service_date
+      `,
+      params,
+    );
+    return dates.map((d) => d.service_date);
+  }
+
   /** Delete every aggregate row for a service date, so it can be recomputed. */
   clearServiceDate(serviceDate: string): void {
     this.db.transaction(() => this.deleteServiceDateRows(serviceDate));

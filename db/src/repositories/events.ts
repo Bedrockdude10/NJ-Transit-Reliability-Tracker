@@ -153,6 +153,37 @@ export class TripStopEventRepository {
     return this.db.get<{ c: number }>("SELECT COUNT(*) AS c FROM trip_stop_events")?.c ?? 0;
   }
 
+  /** Distinct route ids events are stored under, ascending. */
+  distinctRouteIds(): string[] {
+    return this.db
+      .all<{ route_id: string }>("SELECT DISTINCT route_id FROM trip_stop_events ORDER BY route_id")
+      .map((r) => r.route_id);
+  }
+
+  /** Service dates holding at least one event under a given route id. */
+  serviceDatesForRouteId(routeId: string): string[] {
+    return this.db
+      .all<{ service_date: string }>(
+        "SELECT DISTINCT service_date FROM trip_stop_events WHERE route_id = :r ORDER BY service_date",
+        { r: routeId },
+      )
+      .map((r) => r.service_date);
+  }
+
+  /** Repoint events keyed by a malformed route id onto the right route + line. */
+  relabelRouteId(staleRouteId: string, routeId: string, lineName: string): number {
+    const affected =
+      this.db.get<{ c: number }>("SELECT COUNT(*) AS c FROM trip_stop_events WHERE route_id = :stale", {
+        stale: staleRouteId,
+      })?.c ?? 0;
+    this.db.run("UPDATE trip_stop_events SET route_id = :r, line_name = :n WHERE route_id = :stale", {
+      r: routeId,
+      n: lineName,
+      stale: staleRouteId,
+    });
+    return affected;
+  }
+
   /** Distinct line names events are stored under, ascending. */
   distinctLineNames(): string[] {
     return this.db

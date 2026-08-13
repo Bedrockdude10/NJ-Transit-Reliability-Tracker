@@ -1,5 +1,5 @@
 import type { Repositories } from "@njt/db";
-import { UNKNOWN_LINE_NAME } from "@njt/shared";
+import { RAIL_LINES, UNKNOWN_LINE_NAME, findLineByName } from "@njt/shared";
 import { recomputeServiceDate } from "../aggregator";
 import { parseCsv } from "../csv";
 import { mapRailRoutes } from "../gtfs-static/route-mapping";
@@ -62,15 +62,32 @@ export function repairLineNames(repos: Repositories, options?: RepairOptions): L
 
   const aliasesBackfilled = backfillAliases(repos, version.versionId);
 
-  // Line names that are legitimately in use — anything else stored as a line
-  // name is a raw route id that leaked through the old fallback.
-  const realLineNames = new Set(repos.gtfs.routes(version.versionId).map((r) => r.lineName));
+  // Real line names, judged against every GTFS version ever ingested *and* the
+  // reference catalog — not just the current version. NJT's feed changes shape
+  // (Port Jervis is its own route in some feeds, folded into the Main Line in
+  // others), so a line missing from today's feed is still a real line with real
+  // history. Treating it as a stray route id would destroy that attribution.
+  const realLineNames = new Set([
+    ...repos.gtfs.knownLineNames(),
+    ...RAIL_LINES.map((l) => l.name),
+    UNKNOWN_LINE_NAME,
+  ]);
 
   const relabelled: LineNameRepairResult["relabelled"] = [];
   const affectedDates = new Set<string>();
 
+  // A route_id holding a *line name* is malformed whatever produced it: restore
+  // the name to line_name and put the catalog's route id back in route_id.
+  for (const staleRouteId of repos.events.distinctRouteIds()) {
+    if (!realLineNames.has(staleRouteId) || staleRouteId === UNKNOWN_LINE_NAME) continue;
+    const routeId = findLineByName(staleRouteId)?.defaultRouteId ?? staleRouteId;
+    for (const date of repos.events.serviceDatesForRouteId(staleRouteId)) affectedDates.add(date);
+    const events = repos.events.relabelRouteId(staleRouteId, routeId, staleRouteId);
+    relabelled.push({ from: staleRouteId, to: staleRouteId, routeId, events });
+  }
+
   for (const stale of repos.events.distinctLineNames()) {
-    if (realLineNames.has(stale) || stale === UNKNOWN_LINE_NAME) continue;
+    if (realLineNames.has(stale)) continue;
 
     const canonicalRouteId = repos.gtfs.canonicalRouteFor(version.versionId, stale);
     const lineName = canonicalRouteId ? repos.gtfs.lineNameForRoute(version.versionId, canonicalRouteId) : null;
@@ -83,6 +100,14 @@ export function repairLineNames(repos: Repositories, options?: RepairOptions): L
     for (const date of repos.events.serviceDatesForLineName(stale)) affectedDates.add(date);
     const events = repos.events.relabelLineName(stale, target.routeId, target.lineName);
     relabelled.push({ from: stale, to: target.lineName, routeId: target.routeId, events });
+  }
+
+  // Days already rolled up from stale events. Without this the repair cannot
+  // resume: relabelling commits per statement, so a run that dies during the
+  // recompute leaves clean events and stranded aggregates, and a re-run finds
+  // nothing to do while the site still serves the old names.
+  for (const date of repos.aggregates.serviceDatesWithUnknownLineNames([...realLineNames])) {
+    affectedDates.add(date);
   }
 
   const serviceDatesRecomputed = [...affectedDates].sort();
