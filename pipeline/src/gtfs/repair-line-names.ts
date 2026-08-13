@@ -49,7 +49,12 @@ function backfillAliases(repos: Repositories, versionId: string): number {
   return aliases.length;
 }
 
-export function repairLineNames(repos: Repositories): LineNameRepairResult {
+export interface RepairOptions {
+  /** Called after each day's recompute — used to pause and let writers in. */
+  betweenDates?: (serviceDate: string) => void;
+}
+
+export function repairLineNames(repos: Repositories, options?: RepairOptions): LineNameRepairResult {
   const version = repos.gtfs.currentVersion();
   if (!version) {
     return { aliasesBackfilled: 0, relabelled: [], serviceDatesRecomputed: [] };
@@ -81,7 +86,13 @@ export function repairLineNames(repos: Repositories): LineNameRepairResult {
   }
 
   const serviceDatesRecomputed = [...affectedDates].sort();
-  for (const date of serviceDatesRecomputed) recomputeServiceDate(repos, date);
+  for (const date of serviceDatesRecomputed) {
+    recomputeServiceDate(repos, date);
+    // Yield the write lock between days. Each recompute is its own transaction,
+    // but running ~80 of them back-to-back starves the live pipeline, which
+    // polls every 30s — and a poll that can't write is a lost observation.
+    options?.betweenDates?.(date);
+  }
 
   return { aliasesBackfilled, relabelled, serviceDatesRecomputed };
 }

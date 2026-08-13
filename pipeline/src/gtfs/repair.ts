@@ -16,8 +16,17 @@ if (!existsSync(dbPath)) {
   process.exit(1);
 }
 
-const repos = createRepositories(openDatabase(dbPath));
-const result = repairLineNames(repos);
+const db = openDatabase(dbPath);
+// This runs against a live database while the pipeline keeps polling. The
+// default 5s busy_timeout is tuned for short writes; a recompute is longer, so
+// wait rather than fail — and pause between days so the pipeline gets a turn.
+db.exec("PRAGMA busy_timeout = 60000;");
+
+const PAUSE_MS = Number(process.env.NJT_REPAIR_PAUSE_MS ?? 250);
+const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
+
+const repos = createRepositories(db);
+const result = repairLineNames(repos, { betweenDates: () => sleep(PAUSE_MS) });
 
 if (result.aliasesBackfilled > 0) {
   console.log(`Backfilled ${result.aliasesBackfilled} route aliases from the archived routes.txt.`);
