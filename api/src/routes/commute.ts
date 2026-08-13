@@ -1,13 +1,7 @@
 import type { Repositories } from "@njt/db";
 import { OTP_STRICT_THRESHOLD_SECONDS, type CommuteResponse } from "@njt/shared";
 import { Hono } from "hono";
-import {
-  buildCommuteDepartures,
-  medianOf,
-  percentileOf,
-  rankDepartures,
-  summarizeCommute,
-} from "../commute";
+import { buildCommuteDepartures, medianOf, percentileOf, rankDepartures } from "../commute";
 import { stopName } from "../catalog";
 import { resolveRange } from "../dates";
 import { CACHE_CONTROL_DAILY, badRequest, round1 } from "../util";
@@ -68,15 +62,6 @@ export function commuteRoutes(repos: Repositories): Hono {
       departures,
       mostReliable,
       leastReliable,
-      summary: summarizeCommute({
-        originName,
-        destinationName,
-        observations: journeys.length,
-        onTimePercent,
-        p90ArrivalDelaySeconds: percentileOf(delays, 90),
-        mostReliable,
-        leastReliable,
-      }),
     };
 
     c.header("Cache-Control", CACHE_CONTROL_DAILY);

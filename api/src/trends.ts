@@ -92,29 +92,3 @@ export function buildLineTrend(input: {
     enoughData,
   };
 }
-
-export function summarizeTrends(trends: readonly LineTrend[], days: number): string {
-  const worsening = trends.filter((t) => t.direction === "worsening");
-  const improving = trends.filter((t) => t.direction === "improving");
-  const comparable = trends.filter((t) => t.enoughData);
-
-  if (comparable.length === 0) {
-    return `Not enough data yet to compare the last ${days} days against the ${days} before.`;
-  }
-  if (worsening.length === 0 && improving.length === 0) {
-    return `No line changed measurably over the last ${days} days compared with the ${days} before.`;
-  }
-
-  const parts: string[] = [];
-  if (worsening.length > 0) {
-    const worst = [...worsening].sort((a, b) => (a.deltaPoints ?? 0) - (b.deltaPoints ?? 0))[0] as LineTrend;
-    parts.push(
-      `${worsening.length === 1 ? "One line has" : `${worsening.length} lines have`} got measurably worse — ${worst.lineName} most of all, down ${Math.abs(worst.deltaPoints ?? 0)} points.`,
-    );
-  }
-  if (improving.length > 0) {
-    const best = [...improving].sort((a, b) => (b.deltaPoints ?? 0) - (a.deltaPoints ?? 0))[0] as LineTrend;
-    parts.push(`${best.lineName} improved most, up ${best.deltaPoints} points.`);
-  }
-  return parts.join(" ");
-}

@@ -289,7 +289,6 @@ describe("API integration", () => {
     );
     expect(body.successRatePercent).toBe(90);
     expect(body.lowSample).toBe(false);
-    expect(body.summaryText).toContain("90%");
     expect(body.byDayOfWeek.find((d) => d.dayOfWeek === 2)?.successRatePercent).toBe(90);
   });
 
@@ -303,7 +302,7 @@ describe("API integration", () => {
     );
     expect(body.observations).toBe(0);
     expect(body.successRatePercent).toBe(0);
-    expect(body.summaryText).toContain("No observations yet");
+    expect(body.lowSample).toBe(true);
   });
 
   it("GET /connections/top auto-populates the highest-frequency transfers", async () => {

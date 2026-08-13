@@ -246,7 +246,6 @@ export interface TrendsResponse {
   priorTo: string;
   thresholdSeconds: number;
   lines: LineTrend[];
-  summary: string;
 }
 
 // --- Station rankings ----------------------------------------------------------
@@ -275,7 +274,6 @@ export interface StationRankingsResponse {
   stations: StationRanking[];
   /** Stations excluded for having too few observations to rank fairly. */
   excludedLowSample: number;
-  summary: string;
 }
 
 // --- Delay propagation --------------------------------------------------------
@@ -315,7 +313,6 @@ export interface PropagationResponse {
   bestRecoveries: PropagationSegment[];
   /** Delay at the last stop minus the first — the journey's net accumulation. */
   netAccumulatedSeconds: number | null;
-  summary: string;
 }
 
 // --- Commute -----------------------------------------------------------------
@@ -362,8 +359,6 @@ export interface CommuteResponse {
   /** Most and least reliable departures with enough data to rank. */
   mostReliable: CommuteDeparture | null;
   leastReliable: CommuteDeparture | null;
-  /** Plain-language summary of what the numbers say. */
-  summary: string;
 }
 
 // --- Light rail --------------------------------------------------------------
@@ -583,7 +578,6 @@ export interface ConnectionResponse {
   offPeak: ConnectionRateResult;
   inboundDelayDistribution: DistributionBucketResult[];
   lowSample: boolean;
-  summaryText: string;
 }
 
 export interface ConnectionTopItem {

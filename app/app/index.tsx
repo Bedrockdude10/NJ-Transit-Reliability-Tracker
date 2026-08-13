@@ -112,10 +112,7 @@ export default function SystemOverview() {
             subtitle={trends.data ? `Last ${trends.data.days} days vs the ${trends.data.days} before` : undefined}
           >
             {trends.data ? (
-              <>
-                <Muted>{trends.data.summary}</Muted>
-                <TrendList trends={trends.data.lines} />
-              </>
+              <TrendList trends={trends.data.lines} />
             ) : trends.error ? (
               <ErrorView message={trends.error} onRetry={trends.reload} />
             ) : (

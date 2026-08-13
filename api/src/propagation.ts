@@ -1,6 +1,6 @@
 import type { StationDelayAgg } from "@njt/db";
 import type { PropagationSegment, PropagationStop } from "@njt/shared";
-import { pluralize, round1 } from "./util";
+import { round1 } from "./util";
 
 /**
  * Where along a route delay comes from.
@@ -81,36 +81,4 @@ export function netAccumulated(stops: readonly PropagationStop[]): number | null
   const first = measured[0] as PropagationStop;
   const last = measured[measured.length - 1] as PropagationStop;
   return round1((last.avgDelaySeconds as number) - (first.avgDelaySeconds as number));
-}
-
-export function summarizePropagation(input: {
-  lineName: string;
-  stops: readonly PropagationStop[];
-  netAccumulatedSeconds: number | null;
-  worstSegments: readonly PropagationSegment[];
-}): string {
-  const measured = input.stops.filter((s) => s.avgDelaySeconds !== null).length;
-  if (measured < 2) {
-    return `Not enough measured stops on the ${input.lineName} yet to trace where delay accumulates.`;
-  }
-
-  const parts: string[] = [];
-  const net = input.netAccumulatedSeconds;
-  if (net === null) {
-    parts.push(`Delay along the ${input.lineName} is measured at ${pluralize(measured, "stop")}.`);
-  } else if (net > 30) {
-    parts.push(`Trains on the ${input.lineName} lose about ${pluralize(Math.round(net / 60), "minute")} end to end.`);
-  } else if (net < -30) {
-    parts.push(`Trains on the ${input.lineName} make back about ${pluralize(Math.round(Math.abs(net) / 60), "minute")} end to end.`);
-  } else {
-    parts.push(`Trains on the ${input.lineName} finish roughly as late as they start.`);
-  }
-
-  const worst = input.worstSegments[0];
-  if (worst) {
-    parts.push(
-      `The most costly stretch is ${worst.fromStopName} → ${worst.toStopName}, adding ${Math.round(worst.addedSeconds)}s on average.`,
-    );
-  }
-  return parts.join(" ");
 }

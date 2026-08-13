@@ -1,6 +1,6 @@
 import type { StationRankingAgg } from "@njt/db";
 import { describe, expect, it } from "vitest";
-import { buildStationRankings, summarizeStationRankings, type StationNaming } from "../src/station-rankings";
+import { buildStationRankings, type StationNaming } from "../src/station-rankings";
 
 const naming = new Map<string, StationNaming>([
   ["A", { stopName: "Newark Penn", lines: ["Northeast Corridor Line"] }],
@@ -83,23 +83,5 @@ describe("buildStationRankings", () => {
   it("honours the limit", () => {
     const rows = ["A", "B", "C"].map((stopId) => agg({ stopId }));
     expect(buildStationRankings(rows, naming, "delay", 2).stations).toHaveLength(2);
-  });
-});
-
-describe("summarizeStationRankings", () => {
-  it("says plainly when nothing can be ranked", () => {
-    expect(summarizeStationRankings([], "delay", 0)).toContain("No station has enough observations");
-  });
-
-  it("leads with the right metric for the chosen sort", () => {
-    const { stations } = buildStationRankings([agg({ stopId: "A" })], naming, "delay", 10);
-    expect(summarizeStationRankings(stations, "delay", 0)).toContain("Trains arrive latest at Newark Penn");
-    expect(summarizeStationRankings(stations, "amplification", 0)).toContain("adds the most delay of its own");
-  });
-
-  it("discloses what was withheld, with correct grammar", () => {
-    const { stations } = buildStationRankings([agg({ stopId: "A" })], naming, "delay", 10);
-    expect(summarizeStationRankings(stations, "delay", 1)).toContain("1 station withheld");
-    expect(summarizeStationRankings(stations, "delay", 4)).toContain("4 stations withheld");
   });
 });

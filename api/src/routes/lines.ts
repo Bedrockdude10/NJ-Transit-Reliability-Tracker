@@ -27,7 +27,7 @@ import {
   buildSeasonality,
 } from "../aggregation";
 import { listLines, requireLine } from "../catalog";
-import { buildPropagation, netAccumulated, rankSegments, summarizePropagation } from "../propagation";
+import { buildPropagation, netAccumulated, rankSegments } from "../propagation";
 import { monthRange, resolveRange } from "../dates";
 import { resolveOfficialWindow } from "../official-window";
 import { CACHE_CONTROL_DAILY, parseHeatmapType, parseLimit, round1 } from "../util";
@@ -247,7 +247,6 @@ export function lineRoutes(repos: Repositories): Hono {
       worstSegments,
       bestRecoveries,
       netAccumulatedSeconds,
-      summary: summarizePropagation({ lineName: name, stops, netAccumulatedSeconds, worstSegments }),
     };
     c.header("Cache-Control", CACHE_CONTROL_DAILY);
     return c.json(response);

@@ -1,6 +1,6 @@
 import type { StationRankingAgg } from "@njt/db";
 import { LOW_SAMPLE_THRESHOLD, type StationRanking, type StationRankingSort } from "@njt/shared";
-import { pluralize, round1 } from "./util";
+import { round1 } from "./util";
 
 /**
  * Rank stations so problems surface instead of hiding in an alphabetical list.
@@ -57,25 +57,4 @@ export function buildStationRankings(
   );
 
   return { stations: sorted.slice(0, limit), excludedLowSample };
-}
-
-export function summarizeStationRankings(
-  stations: readonly StationRanking[],
-  sort: StationRankingSort,
-  excludedLowSample: number,
-): string {
-  if (stations.length === 0) {
-    return "No station has enough observations yet to rank.";
-  }
-  const worst = stations[0] as StationRanking;
-  const lead =
-    sort === "amplification"
-      ? `${worst.stopName} adds the most delay of its own: ${worst.amplificationRatePercent}% of trains that arrive on time leave late.`
-      : `Trains arrive latest at ${worst.stopName}, averaging ${Math.round(worst.avgArrivalDelaySeconds)}s behind schedule.`;
-
-  const tail =
-    excludedLowSample > 0
-      ? ` ${pluralize(excludedLowSample, "station")} withheld for having too few observations to rank fairly.`
-      : "";
-  return lead + tail;
 }

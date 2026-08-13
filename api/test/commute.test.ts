@@ -7,7 +7,6 @@ import {
   medianOf,
   percentileOf,
   rankDepartures,
-  summarizeCommute,
 } from "../src/commute";
 
 /** 2026-08-13, times given in NJT local hours. */
@@ -127,33 +126,6 @@ describe("rankDepartures", () => {
 
   it("refuses to rank a single departure against itself", () => {
     expect(rankDepartures([solid("A", 95)])).toEqual({ mostReliable: null, leastReliable: null });
-  });
-});
-
-describe("summarizeCommute", () => {
-  const base = {
-    originName: "Newark Penn",
-    destinationName: "New York Penn",
-    observations: 120,
-    onTimePercent: 87.2,
-    p90ArrivalDelaySeconds: 1440,
-    mostReliable: null,
-    leastReliable: null,
-  };
-
-  it("says plainly that nothing was observed", () => {
-    expect(summarizeCommute({ ...base, observations: 0 })).toContain("No trains have been observed");
-  });
-
-  it("leads with the on-time rate and the delay to plan around", () => {
-    const s = summarizeCommute(base);
-    expect(s).toContain("87.2%");
-    expect(s).toContain("120 journeys");
-    expect(s).toContain("24 minutes late");
-  });
-
-  it("distinguishes journeys observed from journeys measured", () => {
-    expect(summarizeCommute({ ...base, onTimePercent: null })).toContain("none completed with a measurable arrival");
   });
 });
 
