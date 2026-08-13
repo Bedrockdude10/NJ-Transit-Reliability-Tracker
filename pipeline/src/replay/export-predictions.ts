@@ -53,9 +53,11 @@ export async function exportPredictions(
 
   await write(HEADER);
 
-  const extent = repos.snapshots.extent("TripUpdates");
-  const fromMs = options.fromDate ? Date.parse(`${options.fromDate}T00:00:00Z`) - 6 * 3600e3 : (extent?.firstMs ?? 0);
-  const toMs = options.toDate ? Date.parse(`${options.toDate}T00:00:00Z`) + 36 * 3600e3 : (extent?.lastMs ?? 0);
+  // Bounds are applied per row rather than in SQL: a `fetched_at_ms` predicate
+  // sends SQLite to the time index and costs a full sort per page (see
+  // `pageById`). Walking ids and skipping is far cheaper across the archive.
+  const fromMs = options.fromDate ? Date.parse(`${options.fromDate}T00:00:00Z`) - 6 * 3600e3 : -Infinity;
+  const toMs = options.toDate ? Date.parse(`${options.toDate}T00:00:00Z`) + 36 * 3600e3 : Infinity;
 
   const cache = createScheduleCache();
   let afterId = 0;
@@ -64,11 +66,12 @@ export async function exportPredictions(
   let buffer = "";
 
   for (;;) {
-    const page = repos.snapshots.pageByTime("TripUpdates", fromMs, toMs, afterId, PAGE_SIZE);
+    const page = repos.snapshots.pageById("TripUpdates", afterId, PAGE_SIZE);
     if (page.length === 0) break;
 
     for (const snapshot of page) {
       afterId = snapshot.id ?? afterId;
+      if (snapshot.fetchedAtMs < fromMs || snapshot.fetchedAtMs > toMs) continue;
       polls++;
 
       const observedAt = Math.floor(snapshot.fetchedAtMs / 1000);

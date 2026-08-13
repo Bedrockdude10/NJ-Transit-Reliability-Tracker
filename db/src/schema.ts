@@ -349,4 +349,15 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_vehicle_positions_route ON vehicle_positions(route_id);
     `,
   },
+  {
+    id: "009_snapshots_feed_id_index",
+    up: /* sql */ `
+      -- Paging the archive by id had no index to satisfy its ORDER BY, so
+      -- SQLite sorted every matching row into a temp B-tree to take 100 of
+      -- them: quadratic in the size of the archive, and invisible until it
+      -- was run over more than a day's worth. This index makes a keyset scan
+      -- ordered by construction.
+      CREATE INDEX idx_snapshots_feed_id ON raw_snapshots(feed_type, id);
+    `,
+  },
 ];

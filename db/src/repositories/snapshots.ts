@@ -70,6 +70,34 @@ export class RawSnapshotRepository {
     }));
   }
 
+  /**
+   * A page of snapshots by id alone, for walking the whole archive.
+   *
+   * {@link pageByTime} adds a `fetched_at_ms` range, which sends SQLite to the
+   * time index and leaves it sorting every matching row into a temp B-tree to
+   * satisfy `ORDER BY id`. Over one day that is free; over the whole archive it
+   * is quadratic. Keyed on `(feed_type, id)` this is an ordered index walk, so
+   * each page costs the page, not the archive.
+   */
+  pageById(feedType: FeedType, afterId: number, limit: number): RawSnapshot[] {
+    const rows = this.db.all<SnapshotRow>(
+      /* sql */ `
+        SELECT id, feed_type, fetched_at_ms, raw_bytes
+        FROM raw_snapshots
+        WHERE feed_type = :t AND id > :after
+        ORDER BY id
+        LIMIT :lim
+      `,
+      { t: feedType, after: afterId, lim: limit },
+    );
+    return rows.map((r) => ({
+      id: r.id,
+      feedType: r.feed_type as FeedType,
+      fetchedAtMs: r.fetched_at_ms,
+      rawBytes: r.raw_bytes,
+    }));
+  }
+
   /** How many snapshots a replay of this window will have to decode. */
   countByTime(feedType: FeedType, fromMs: number, toMs: number): number {
     return (
