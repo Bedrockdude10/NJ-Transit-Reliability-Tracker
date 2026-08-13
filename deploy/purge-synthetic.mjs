@@ -34,6 +34,27 @@ const CLEAR = [
 const db = new DatabaseSync(dbPath);
 db.exec("PRAGMA busy_timeout = 5000;");
 
+// This script clears trip_stop_events *wholesale*, which was correct when every
+// row was synthetic. Once live collection has run, that would destroy real
+// observations along with the seed. Refuse, and point at the targeted purge.
+const realEvents = db
+  .prepare(
+    "SELECT COUNT(*) AS c FROM trip_stop_events WHERE NOT (trip_id GLOB '*-inbound-*' OR trip_id GLOB '*-outbound-*')",
+  )
+  .get().c;
+
+if (realEvents > 0) {
+  console.error(
+    `Refusing to run: ${realEvents} real observations are stored in trip_stop_events.\n` +
+      "This script deletes that table wholesale and would destroy them.\n" +
+      "To remove only the pre-API seed's fabricated rows, use:\n" +
+      "  npm run purge:seed            # preview\n" +
+      "  npm run purge:seed -- --apply # write",
+  );
+  db.close();
+  process.exit(1);
+}
+
 const counts = Object.fromEntries(
   CLEAR.map((t) => [t, db.prepare(`SELECT COUNT(*) AS c FROM ${t}`).get().c]),
 );

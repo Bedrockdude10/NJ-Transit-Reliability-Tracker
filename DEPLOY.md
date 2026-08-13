@@ -104,6 +104,20 @@ exit
 ```
 (Or sftp your local `./data` — GTFS dir + CSVs, ~40 MB — then run `bootstrap`.) After either option, the dashboard shows real NJT official figures; the independent measurement accrues from the live feed once collection is on (§3). If a database was bootstrapped with the old synthetic seed, clear it once with `node deploy/purge-synthetic.mjs` (keeps the real network + official metrics).
 
+**One-off purge — the pre-API seed.** Databases bootstrapped before live collection existed still hold the seed's fabricated trips, which inflate every measured figure and date the collection window from invented history. Preview, then apply:
+
+```bash
+npm run purge:seed
+```
+
+```bash
+npm run purge:seed -- --apply
+```
+
+It deletes only rows carrying the seed's trip-id shape (`<LINE>-<direction>-<n>`; real GTFS-RT ids are numeric), recomputes each affected day from whatever genuinely remains, re-anchors `collection_start_date` to the first real observation, and drops gaps preceding the new window. Idempotent.
+
+⚠ `deploy/purge-synthetic.mjs` is the *old* tool and clears `trip_stop_events` wholesale — correct when everything was synthetic, ruinous once real observations share the table. It now refuses to run if any real events exist; use `purge:seed` instead.
+
 **One-off repair — line names.** Databases that collected before the RT parser could resolve the feed's *source* route ids hold events labelled with a raw `route_id` (a station showing service on a line called "10"). Run once per affected database:
 
 ```bash

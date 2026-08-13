@@ -84,6 +84,18 @@ export class HealthRepository {
       .run({ f: feedType, s: startMs, e: endMs });
   }
 
+  /**
+   * Drop gaps that finish at or before `ms`. Uptime is measured against the
+   * collection window, so a gap preceding the window's start isn't lost
+   * coverage — it's time the project never claimed to cover.
+   */
+  deleteGapsEndingAtOrBefore(ms: number): number {
+    const affected =
+      this.db.get<{ c: number }>("SELECT COUNT(*) AS c FROM data_gaps WHERE end_ms <= :ms", { ms })?.c ?? 0;
+    this.db.run("DELETE FROM data_gaps WHERE end_ms <= :ms", { ms });
+    return affected;
+  }
+
   gaps(): DataGap[] {
     return this.db.all<DataGap>(
       "SELECT feed_type AS feedType, start_ms AS startMs, end_ms AS endMs FROM data_gaps ORDER BY start_ms",

@@ -153,6 +153,46 @@ export class TripStopEventRepository {
     return this.db.get<{ c: number }>("SELECT COUNT(*) AS c FROM trip_stop_events")?.c ?? 0;
   }
 
+  /**
+   * Matches events fabricated by the pre-API seed, which is the *only* thing
+   * that ever minted trip ids of the form `<LINE>-<direction>-<n>` (e.g.
+   * "PJ-outbound-8"). Real GTFS-RT trip ids from NJT are numeric, and rows the
+   * feed supplies without a trip id are empty — never this shape. Keeping the
+   * predicate here makes it the single definition of "not real measurement".
+   */
+  private static readonly SEED_PREDICATE =
+    "(trip_id GLOB '*-inbound-*' OR trip_id GLOB '*-outbound-*')";
+
+  /** How many fabricated events remain. */
+  countSeedEvents(): number {
+    return (
+      this.db.get<{ c: number }>(
+        `SELECT COUNT(*) AS c FROM trip_stop_events WHERE ${TripStopEventRepository.SEED_PREDICATE}`,
+      )?.c ?? 0
+    );
+  }
+
+  /** Service dates holding fabricated events, ascending. */
+  serviceDatesWithSeedEvents(): string[] {
+    return this.db
+      .all<{ service_date: string }>(
+        `SELECT DISTINCT service_date FROM trip_stop_events WHERE ${TripStopEventRepository.SEED_PREDICATE} ORDER BY service_date`,
+      )
+      .map((r) => r.service_date);
+  }
+
+  /** Delete every fabricated event. Callers must recompute the affected dates. */
+  deleteSeedEvents(): number {
+    const affected = this.countSeedEvents();
+    this.db.run(`DELETE FROM trip_stop_events WHERE ${TripStopEventRepository.SEED_PREDICATE}`);
+    return affected;
+  }
+
+  /** Earliest service date still holding an event (null when empty). */
+  earliestServiceDate(): string | null {
+    return this.db.get<{ d: string | null }>("SELECT MIN(service_date) AS d FROM trip_stop_events")?.d ?? null;
+  }
+
   /** Distinct route ids events are stored under, ascending. */
   distinctRouteIds(): string[] {
     return this.db
