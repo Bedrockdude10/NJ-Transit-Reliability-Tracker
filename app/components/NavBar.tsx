@@ -10,6 +10,7 @@ const LINKS = [
   { href: "/compare", label: "Compare" },
   { href: "/lightrail", label: "Light Rail" },
   { href: "/stations", label: "Stations" },
+  { href: "/commute", label: "My Commute" },
   { href: "/connections", label: "Connections" },
   { href: "/alerts", label: "Alerts" },
   { href: "/health", label: "Health" },

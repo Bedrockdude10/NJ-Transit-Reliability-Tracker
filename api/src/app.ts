@@ -3,6 +3,7 @@ import { DISCLAIMER_TEXT } from "@njt/shared";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { alertRoutes } from "./routes/alerts";
+import { commuteRoutes } from "./routes/commute";
 import { connectionRoutes } from "./routes/connections";
 import { exportRoutes } from "./routes/export";
 import { healthRoutes } from "./routes/health";
@@ -43,6 +44,7 @@ export function createApp(repos: Repositories): Hono {
   app.route("/lightrail", lightRailRoutes(repos));
   app.route("/map", mapRoutes(repos));
   app.route("/stations", stationRoutes(repos));
+  app.route("/commute", commuteRoutes(repos));
   app.route("/connections", connectionRoutes(repos));
   app.route("/alerts", alertRoutes(repos));
   app.route("/export", exportRoutes(repos));

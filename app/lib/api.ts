@@ -1,6 +1,7 @@
 import type {
   AlertFrequencyResponse,
   AlertListResponse,
+  CommuteResponse,
   ConnectionResponse,
   ConnectionTopResponse,
   HealthResponse,
@@ -91,6 +92,8 @@ export const api = {
   stationSummary: (id: string, r: DateRange) => get<StationSummaryResponse>(`/stations/${encodeURIComponent(id)}/summary`, { ...r }),
   stationTopTrips: (id: string, r: DateRange) =>
     get<WorstTripsResponse>(`/stations/${encodeURIComponent(id)}/top-delayed-trips`, { ...r }),
+  commute: (origin: string, destination: string, r: DateRange) =>
+    get<CommuteResponse>("/commute", { origin, destination, ...r }),
   connections: (q: { inbound_trip_id: string; transfer_stop_id: string; outbound_trip_id: string } & DateRange) =>
     get<ConnectionResponse>("/connections", { ...q }),
   connectionsTop: (limit = 10) => get<ConnectionTopResponse>("/connections/top", { limit }),

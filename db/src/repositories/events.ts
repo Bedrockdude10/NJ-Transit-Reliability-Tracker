@@ -59,6 +59,40 @@ interface UpcomingDepartureRow {
   due_at: number;
 }
 
+/** One trip's observed run between two stops, on one service date. */
+export interface ObservedJourney {
+  tripId: string;
+  serviceDate: string;
+  lineName: string;
+  routeId: string;
+  direction: Direction;
+  /** Timetabled departure from the origin, epoch seconds UTC. */
+  scheduledDeparture: number | null;
+  originDelaySeconds: number | null;
+  /** Timetabled arrival at the destination, epoch seconds UTC. */
+  scheduledArrival: number | null;
+  destinationDelaySeconds: number | null;
+  observedArrival: number | null;
+  cancelled: boolean;
+  skipped: boolean;
+}
+
+interface JourneyRow {
+  trip_id: string;
+  service_date: string;
+  line_name: string;
+  route_id: string;
+  direction: string;
+  sched_dep: number | null;
+  sched_dep_arr: number | null;
+  origin_delay: number | null;
+  sched_arr: number | null;
+  dest_delay: number | null;
+  obs_arr: number | null;
+  cancelled: number;
+  skipped: number;
+}
+
 const EVENT_COLUMNS =
   "trip_id, route_id, line_name, stop_id, stop_name, stop_sequence, direction, service_date, " +
   "scheduled_arrival, scheduled_departure, observed_arrival, delay_seconds, stop_skipped, " +
@@ -225,6 +259,53 @@ export class TripStopEventRepository {
       tripCancelled: fromSqlBool(r.trip_cancelled),
       headsign: r.trip_headsign,
       dueAt: r.due_at,
+    }));
+  }
+
+  /**
+   * Every observed journey between two stops — the same trip calling at the
+   * origin and later at the destination, on the same service date.
+   *
+   * Self-joining the event table is what makes "how reliable is *my* commute?"
+   * answerable: reliability is a property of the pair, not of either station.
+   * `o.stop_sequence < d.stop_sequence` enforces travel direction, so asking
+   * A→B and B→A returns genuinely different trains rather than the same rows
+   * mirrored. Bounded by the (stop_id, service_date) index at both ends.
+   */
+  journeysBetween(originStopId: string, destinationStopId: string, from: string, to: string): ObservedJourney[] {
+    const rows = this.db.all<JourneyRow>(
+      /* sql */ `
+        SELECT o.trip_id, o.service_date, o.line_name, o.route_id, o.direction,
+               o.scheduled_departure AS sched_dep, o.scheduled_arrival AS sched_dep_arr,
+               o.delay_seconds AS origin_delay,
+               d.scheduled_arrival AS sched_arr, d.delay_seconds AS dest_delay,
+               d.observed_arrival AS obs_arr,
+               (o.trip_cancelled OR d.trip_cancelled) AS cancelled,
+               (o.stop_skipped OR d.stop_skipped) AS skipped
+        FROM trip_stop_events o
+        JOIN trip_stop_events d
+          ON d.trip_id = o.trip_id AND d.service_date = o.service_date
+        WHERE o.stop_id = :origin
+          AND d.stop_id = :dest
+          AND o.stop_sequence < d.stop_sequence
+          AND o.service_date BETWEEN :from AND :to
+        ORDER BY o.service_date, sched_dep
+      `,
+      { origin: originStopId, dest: destinationStopId, from, to },
+    );
+    return rows.map((r) => ({
+      tripId: r.trip_id,
+      serviceDate: r.service_date,
+      lineName: r.line_name,
+      routeId: r.route_id,
+      direction: r.direction as Direction,
+      scheduledDeparture: r.sched_dep ?? r.sched_dep_arr,
+      originDelaySeconds: r.origin_delay,
+      scheduledArrival: r.sched_arr,
+      destinationDelaySeconds: r.dest_delay,
+      observedArrival: r.obs_arr,
+      cancelled: fromSqlBool(r.cancelled),
+      skipped: fromSqlBool(r.skipped),
     }));
   }
 
