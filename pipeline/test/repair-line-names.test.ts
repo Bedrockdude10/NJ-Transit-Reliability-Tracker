@@ -113,6 +113,55 @@ describe("repairLineNames", () => {
     expect(repos.events.distinctLineNames()).toEqual(["North Jersey Coast Line"]);
   });
 
+  // Production regression: Port Jervis is its own route in some NJT feeds and
+  // folded into the Main Line in others. Judging "real line" against only the
+  // *current* version relabelled 9,000 genuine Port Jervis events to "Unknown
+  // line" and overwrote their route_id with the line name.
+  it("leaves a catalog line alone when it is absent from the current GTFS version", () => {
+    repos.events.record(event({ tripId: "PJ1", routeId: "PJ", lineName: "Port Jervis Line" }));
+
+    const result = repairLineNames(repos);
+
+    expect(result.relabelled).toEqual([]);
+    const [stored] = repos.events.getByServiceDate(SERVICE_DATE);
+    expect(stored).toMatchObject({ routeId: "PJ", lineName: "Port Jervis Line" });
+  });
+
+  it("restores events whose route_id was overwritten with a line name", () => {
+    // The shape the buggy run left behind.
+    repos.events.record(event({ tripId: "PJ1", routeId: "Port Jervis Line", lineName: UNKNOWN_LINE_NAME }));
+
+    const result = repairLineNames(repos);
+
+    const [stored] = repos.events.getByServiceDate(SERVICE_DATE);
+    expect(stored).toMatchObject({ routeId: "PJ", lineName: "Port Jervis Line" });
+    expect(result.serviceDatesRecomputed).toContain(SERVICE_DATE);
+  });
+
+  // Relabelling commits per statement, so a run that dies during the recompute
+  // leaves clean events and stranded aggregates — and the old re-run found
+  // nothing to do while the site kept serving the stale names.
+  it("resumes when events are already clean but aggregates are stale", () => {
+    repos.events.record(event({ routeId: "NC", lineName: "North Jersey Coast Line" }));
+    repos.aggregates.replaceServiceDate(SERVICE_DATE, {
+      otp: [], distribution: [], heatmap: [], trips: [], stationHourly: [], stationDistribution: [], connections: [],
+      stationDaily: [
+        {
+          stopId: "1", serviceDate: SERVICE_DATE, lineName: "10", direction: "inbound",
+          sumArrivalDelaySeconds: 120, observations: 1, arrivedWithin5Min: 1, departedLateAfterOnTimeArrival: 0,
+        },
+      ],
+    });
+
+    const result = repairLineNames(repos);
+
+    expect(result.relabelled).toEqual([]); // nothing left in the events
+    expect(result.serviceDatesRecomputed).toEqual([SERVICE_DATE]); // but the day is rebuilt
+    expect(repos.aggregates.stationByLineDirection("1", SERVICE_DATE, SERVICE_DATE).map((r) => r.lineName)).toEqual([
+      "North Jersey Coast Line",
+    ]);
+  });
+
   it("backfills route aliases from the archived routes.txt when the table is empty", () => {
     // A version as ingested *before* the alias table existed: routes, the
     // archived raw files, and no aliases.

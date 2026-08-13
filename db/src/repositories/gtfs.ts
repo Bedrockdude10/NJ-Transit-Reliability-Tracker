@@ -147,6 +147,19 @@ export class GtfsRepository {
     });
   }
 
+  /**
+   * Every line name ever ingested, across all GTFS versions. Historical events
+   * were labelled against whichever version was current at the time, and NJT's
+   * feed changes shape (Port Jervis is its own route in some feeds and folded
+   * into the Main Line in others) — so "is this a real line name?" must be
+   * asked of all versions, not just the current one.
+   */
+  knownLineNames(): string[] {
+    return this.db
+      .all<{ lineName: string }>("SELECT DISTINCT line_name AS lineName FROM gtfs_routes")
+      .map((r) => r.lineName);
+  }
+
   /** The canonical route_id a source (feed) route_id collapses onto, if any. */
   canonicalRouteFor(versionId: string, sourceRouteId: string): string | null {
     const row = this.db.get<{ canonicalRouteId: string }>(
