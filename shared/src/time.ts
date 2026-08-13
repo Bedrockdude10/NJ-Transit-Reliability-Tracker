@@ -160,6 +160,18 @@ export function gtfsStopTimeToEpochSeconds(
   return localMidnightEpochSeconds(serviceDate, timeZone) + secondsPastMidnight;
 }
 
+/**
+ * Local midnight starting a service date, as epoch seconds. The anchor every
+ * "what happened on this day?" question resolves against — a service date is a
+ * local calendar day, not a UTC one, so this cannot be done with `Date.parse`.
+ */
+export function startOfLocalDayEpochSeconds(
+  serviceDate: string,
+  timeZone: string = NJT_TIMEZONE,
+): number {
+  return localMidnightEpochSeconds(serviceDate, timeZone);
+}
+
 /** Day of week for an instant in a timezone. 0 = Sunday … 6 = Saturday. */
 export function localDayOfWeek(
   epochSeconds: number,

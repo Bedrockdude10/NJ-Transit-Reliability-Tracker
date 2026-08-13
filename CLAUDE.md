@@ -59,6 +59,7 @@ npm run import:gtfs              # real GTFS static network (stops/coords/lines/
 npm run import:official          # real NJT monthly OTP + cancellations + MDBF + light rail from CSVs in ./data (keyless)
 npm run repair:line-names        # one-off: repoint events stored under a raw feed route_id, then recompute
 npm run purge:seed               # one-off: delete the pre-API seed's fabricated events (preview; -- --apply to write)
+npm run replay                   # re-derive events from raw_snapshots (preview; -- --apply to write)
 npm run api                      # start API (env: NJT_DB_PATH, PORT)
 npm run pipeline                 # start ingest worker (needs NJT creds; also fetches getGTFS + records live events)
 npm run web --workspace app      # Expo web dev server (ios/android scripts too)

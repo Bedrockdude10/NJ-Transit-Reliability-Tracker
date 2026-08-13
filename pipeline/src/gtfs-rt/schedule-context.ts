@@ -38,8 +38,15 @@ export function createScheduleCache(): ScheduleCache {
 export function createScheduleContext(
   gtfs: GtfsRepository,
   cache: ScheduleCache = createScheduleCache(),
+  /**
+   * Parse against a specific GTFS version instead of the current one. Live
+   * ingest always wants "current"; replaying the archive wants the version that
+   * was effective when the snapshot was recorded, since trip ids are reused
+   * across schedule revisions and would otherwise resolve to the wrong service.
+   */
+  versionIdOverride?: string,
 ): ScheduleContext {
-  const versionId = gtfs.currentVersion()?.versionId;
+  const versionId = versionIdOverride ?? gtfs.currentVersion()?.versionId;
 
   // Version rollover: drop everything resolved against the prior version.
   if (cache.versionId !== versionId) {

@@ -148,6 +148,27 @@ export class GtfsRepository {
   }
 
   /**
+   * The GTFS version that was effective at an instant.
+   *
+   * Replaying the archive must parse each snapshot against the schedule that
+   * was current when it was recorded, not against today's. NJT reissues GTFS
+   * regularly and trip ids are reused, so decoding a June poll with an August
+   * schedule silently resolves trips to the wrong routes and stops.
+   */
+  versionAt(epochSeconds: number): GtfsStaticVersion | null {
+    const row = this.db.get<VersionRow>(
+      /* sql */ `
+        SELECT * FROM gtfs_static_versions
+        WHERE effective_from <= :at AND (effective_to IS NULL OR effective_to > :at)
+        ORDER BY effective_from DESC
+        LIMIT 1
+      `,
+      { at: epochSeconds },
+    );
+    return row ? toVersion(row) : null;
+  }
+
+  /**
    * Every line name ever ingested, across all GTFS versions. Historical events
    * were labelled against whichever version was current at the time, and NJT's
    * feed changes shape (Port Jervis is its own route in some feeds and folded

@@ -2,6 +2,7 @@ import type { Repositories } from "@njt/db";
 import {
   RAIL_LINES,
   gtfsStopTimeToEpochSeconds,
+  startOfLocalDayEpochSeconds,
   type AlertFrequencyLine,
   type AlertFrequencyResponse,
   type AlertListItem,
@@ -12,7 +13,7 @@ import { resolveRange } from "../dates";
 import { parsePositiveInt } from "../util";
 
 function startOfDayMs(date: string): number {
-  return gtfsStopTimeToEpochSeconds(date, "00:00:00") * 1000;
+  return startOfLocalDayEpochSeconds(date) * 1000;
 }
 function endOfDayMs(date: string): number {
   return gtfsStopTimeToEpochSeconds(date, "24:00:00") * 1000;

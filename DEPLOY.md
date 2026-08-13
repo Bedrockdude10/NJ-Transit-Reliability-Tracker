@@ -118,6 +118,20 @@ It deletes only rows carrying the seed's trip-id shape (`<LINE>-<direction>-<n>`
 
 ⚠ `deploy/purge-synthetic.mjs` is the *old* tool and clears `trip_stop_events` wholesale — correct when everything was synthetic, ruinous once real observations share the table. It now refuses to run if any real events exist; use `purge:seed` instead.
 
+**Replaying the archive.** `raw_snapshots` holds every GTFS-Realtime payload so parsing can be re-run over history. After fixing a parser bug, re-derive the affected days instead of patching rows by hand:
+
+```bash
+npm run replay -- --from 2026-08-01 --to 2026-08-05
+```
+
+```bash
+npm run replay -- --from 2026-08-01 --to 2026-08-05 --apply
+```
+
+Previews by default, reporting per day how many events it reproduced exactly, would change, would add, and how many stored events it could not account for. Each snapshot is decoded against the GTFS version that was effective when it was recorded, and readings are arbitrated by the same rule live ingest uses, so replaying unchanged code is a no-op. Stored events the archive cannot explain are counted but never deleted — snapshots may have been pruned.
+
+Decoding is CPU-bound and the machine is small; expect a few minutes per day of history, and run it a few days at a time.
+
 **One-off repair — line names.** Databases that collected before the RT parser could resolve the feed's *source* route ids hold events labelled with a raw `route_id` (a station showing service on a line called "10"). Run once per affected database:
 
 ```bash
