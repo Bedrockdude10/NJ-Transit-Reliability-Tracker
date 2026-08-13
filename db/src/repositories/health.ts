@@ -157,7 +157,16 @@ export class HealthRepository {
     if (!start) return 100;
     const startMs = Date.parse(`${start}T00:00:00Z`);
     const windowMs = Math.max(nowMs - startMs, 1);
-    const lostMs = this.gaps().reduce((sum, g) => sum + Math.max(g.endMs - g.startMs, 0), 0);
+    // Count only the part of each gap that falls *inside* the window. A gap can
+    // straddle the start (ingest was down before collection was anchored, and
+    // recovered after), and charging its full duration against a shorter window
+    // understates uptime badly — a 20-day outage preceding a 30-day window read
+    // as 35% when the real figure was 96%.
+    const lostMs = this.gaps().reduce((sum, g) => {
+      const from = Math.max(g.startMs, startMs);
+      const to = Math.min(g.endMs, nowMs);
+      return sum + Math.max(to - from, 0);
+    }, 0);
     return Math.max(0, Math.min(100, (1 - lostMs / windowMs) * 100));
   }
 }

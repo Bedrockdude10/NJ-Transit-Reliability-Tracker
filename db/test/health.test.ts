@@ -43,6 +43,33 @@ describe("HealthRepository", () => {
     expect(repos.health.uptimePercent(now)).toBeCloseTo(90, 1);
   });
 
+  // Regression: re-anchoring the collection window (after purging seeded data)
+  // left a gap straddling the new start. Charging its full duration against the
+  // shorter window reported 35% uptime where the real figure was 96%.
+  it("counts only the part of a gap inside the collection window", () => {
+    repos.health.ensureCollectionStart("2025-07-15");
+    const startMs = Date.parse("2025-07-15T00:00:00Z");
+    const now = startMs + 100_000;
+    // Starts long before the window, ends 10s into it: only those 10s are lost.
+    repos.health.recordGap("TripUpdates", startMs - 10_000_000, startMs + 10_000);
+    expect(repos.health.uptimePercent(now)).toBeCloseTo(90, 1);
+  });
+
+  it("ignores a gap that ends before the window opens", () => {
+    repos.health.ensureCollectionStart("2025-07-15");
+    const startMs = Date.parse("2025-07-15T00:00:00Z");
+    repos.health.recordGap("TripUpdates", startMs - 50_000, startMs - 10_000);
+    expect(repos.health.uptimePercent(startMs + 100_000)).toBe(100);
+  });
+
+  it("does not count gap time in the future", () => {
+    repos.health.ensureCollectionStart("2025-07-15");
+    const startMs = Date.parse("2025-07-15T00:00:00Z");
+    const now = startMs + 100_000;
+    repos.health.recordGap("TripUpdates", startMs + 90_000, startMs + 10_000_000);
+    expect(repos.health.uptimePercent(now)).toBeCloseTo(90, 1);
+  });
+
   it("returns 100% uptime before collection has started", () => {
     expect(repos.health.uptimePercent(DAY)).toBe(100);
   });
