@@ -26,6 +26,7 @@
     "build:geo": "tsx pipeline/src/geo/build-outline.ts",
     "import:official": "tsx pipeline/src/official/import.ts",
     "repair:line-names": "tsx pipeline/src/gtfs/repair.ts",
+    "purge:seed": "tsx pipeline/src/maintenance/purge-seed.ts",
     "bootstrap": "npm run import:gtfs && npm run import:official",
     "start:server": "node deploy/start.mjs",
     "app": "npm run start --workspace app"
