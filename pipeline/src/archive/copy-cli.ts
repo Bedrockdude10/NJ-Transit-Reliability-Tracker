@@ -1,6 +1,7 @@
 import { createRepositories, openDatabase } from "@njt/db";
 import { consoleLogger } from "@njt/shared/logger";
 import { copySnapshots } from "./copy-snapshots";
+import { withLock } from "./run-lock";
 import type { ObjectStore } from "./export-events";
 
 /**
@@ -44,14 +45,19 @@ const db = openDatabase(dbPath);
 // rather than failing.
 db.exec("PRAGMA busy_timeout = 60000;");
 
-const copied = await copySnapshots({
-  repos: createRepositories(db),
-  store,
-  olderThanHours: Number(flag("older-than-hours") ?? process.env.NJT_ARCHIVE_RETAIN_HOURS ?? 48),
-  maxHours: flag("max-hours") ? Number(flag("max-hours")) : undefined,
-  deleteAfterCopy: !process.argv.includes("--keep"),
-  log: consoleLogger,
-});
+// One run at a time. A scheduled run and a manual one overlapped in production:
+// the second counted rows the first was deleting and, correctly, refused to
+// delete an hour it could only partly account for.
+const copied = await withLock(`${dbPath}.copy.lock`, () =>
+  copySnapshots({
+    repos: createRepositories(db),
+    store,
+    olderThanHours: Number(flag("older-than-hours") ?? process.env.NJT_ARCHIVE_RETAIN_HOURS ?? 48),
+    maxHours: flag("max-hours") ? Number(flag("max-hours")) : undefined,
+    deleteAfterCopy: !process.argv.includes("--keep"),
+    log: consoleLogger,
+  }),
+);
 db.close();
 
 if (copied.length === 0) consoleLogger.info("nothing eligible to copy");

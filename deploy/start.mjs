@@ -117,6 +117,17 @@ const COPY_BUNDLE = "dist/archive-copy.mjs";
 const COPY_RETAIN_HOURS = 2;
 
 /**
+ * Hours moved per run.
+ *
+ * The steady state needs one. The cap is for the backlog: it bounds how long any
+ * single run holds resources on a machine that has ~150 MB and one shared core to
+ * spare, so a month of accumulated archive drains over several runs instead of
+ * one long one. Well above the steady-state need, so a few missed runs still
+ * catch up.
+ */
+const COPY_MAX_HOURS = 36;
+
+/**
  * Replication needs credentials *and* an explicit opt-in.
  *
  * These were one switch, which was wrong in a way that showed up immediately:
@@ -208,10 +219,14 @@ function scheduleArchiveCopy() {
     const [bin, args] = existsSync(COPY_BUNDLE)
       ? ["node", [COPY_BUNDLE]]
       : ["npm", ["run", "archive:copy", "--"]];
-    const child = spawn(bin, [...args, "--older-than-hours", String(COPY_RETAIN_HOURS)], {
-      stdio: "inherit",
-      env: process.env,
-    });
+    const child = spawn(
+      bin,
+      [...args, "--older-than-hours", String(COPY_RETAIN_HOURS), "--max-hours", String(COPY_MAX_HOURS)],
+      {
+        stdio: "inherit",
+        env: process.env,
+      },
+    );
     child.on("error", (error) => {
       running = false;
       log("archive copy failed to start", { error: error.message });
@@ -225,7 +240,11 @@ function scheduleArchiveCopy() {
   setInterval(run, COPY_INTERVAL_MS).unref();
   // Not at boot: let the API come up and pass its health check first.
   setTimeout(run, 5 * 60 * 1000).unref();
-  log("archive copy scheduled", { everyMinutes: COPY_INTERVAL_MS / 60_000, retainHours: COPY_RETAIN_HOURS });
+  log("archive copy scheduled", {
+    everyMinutes: COPY_INTERVAL_MS / 60_000,
+    retainHours: COPY_RETAIN_HOURS,
+    maxHoursPerRun: COPY_MAX_HOURS,
+  });
 }
 
 if (HAS_R2 && process.env.NJT_ARCHIVE_COPY_ENABLED === "true") {
