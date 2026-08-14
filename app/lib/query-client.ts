@@ -28,6 +28,20 @@ export function createQueryClient(): QueryClient {
           if (/^API 4\d\d/.test(error.message)) return false;
           return failureCount < 1;
         },
+
+        /**
+         * Whether a failure reaches the error boundary or is reported in place.
+         *
+         * Throw only when there is nothing on screen to keep. A first load that
+         * fails has nothing to show, so it belongs to the boundary; a refresh
+         * that fails does — and blanking a departure board a rider is reading
+         * because one poll timed out is the worst possible response to a blip.
+         *
+         * This is what lets the live views use Suspense like every other
+         * screen. Without it they would need their own non-suspense path, which
+         * is exactly the sort of exception that made this app inconsistent.
+         */
+        throwOnError: (_error, query) => query.state.data === undefined,
       },
     },
   });
