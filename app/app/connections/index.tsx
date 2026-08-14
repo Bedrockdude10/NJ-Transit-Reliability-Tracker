@@ -1,7 +1,7 @@
 import { OTP_GOOD_THRESHOLD_PERCENT, type ConnectionTopItem } from "@njt/shared";
 import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
-import { api } from "../../lib/api";
+import { api, type DateRange } from "../../lib/api";
 import { hasConnectionData } from "../../lib/measurement";
 import { theme } from "../../lib/theme";
 import { useWindow } from "../../hooks/useWindow";
@@ -10,7 +10,8 @@ import { DelayHistogram } from "../../components/metrics";
 import { LiveBanner } from "../../components/Indicators";
 import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
-import { Badge, Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
+import { QueryBoundary } from "../../components/QueryBoundary";
+import { Badge, Card, EmptyState, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
 
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
@@ -18,106 +19,131 @@ export default function Connections() {
   const { key: windowKey, range, select: selectWindow } = useWindow("90d");
   const [selected, setSelected] = useState<ConnectionTopItem | null>(null);
 
-  const top = useApi(api.connectionsTop(10));
-  const health = useApi(api.health());
-  const collectionStartDate = health.data?.collectionStartDate ?? null;
-  const conn = useApi(
-    selected
-      ? api.connections({
-          inbound_trip_id: selected.inboundTripId,
-          transfer_stop_id: selected.transferStopId,
-          outbound_trip_id: selected.outboundTripId,
-          ...range,
-        })
-      : null,
-  );
-
   return (
     <Screen>
       <PageTitle title="Connection Reliability" subtitle="How often a timed transfer actually works" />
-      <LiveBanner collectionStartDate={collectionStartDate}>
-        Connection reliability is measured from the live GTFS-Realtime feed — transfer outcomes accrue as trains
-        are observed.
-      </LiveBanner>
+      <QueryBoundary>
+        <CollectionBanner />
+      </QueryBoundary>
       <WindowPicker
         value={windowKey}
         onChange={selectWindow}
       />
 
-      <Card>
-        <SectionTitle>Highest-frequency transfers</SectionTitle>
-        {top.loading ? <Loading /> : null}
-        {top.error ? <ErrorView message={top.error} onRetry={top.reload} /> : null}
-        {top.data && top.data.transfers.length === 0 ? (
-          <EmptyState title="No data yet" hint="Frequent transfers appear once the live feed has observed connecting trains." />
-        ) : null}
-        {top.data?.transfers.map((t) => {
-          const active = selected?.inboundTripId === t.inboundTripId && selected?.outboundTripId === t.outboundTripId && selected?.transferStopId === t.transferStopId;
-          return (
-            <Pressable key={`${t.inboundTripId}|${t.transferStopId}|${t.outboundTripId}`} onPress={() => setSelected(t)} style={[styles.option, active && styles.optionActive]}>
-              <View style={styles.optionMain}>
-                <Text style={styles.optionTitle}>
-                  {t.inboundTripId} → {t.outboundTripId}
-                </Text>
-                <Muted>at {t.transferStopName}</Muted>
-              </View>
-              <Badge text={`${t.observations} obs`} />
-            </Pressable>
-          );
-        })}
-      </Card>
+      <QueryBoundary>
+        <TransferList selected={selected} onSelect={setSelected} />
+      </QueryBoundary>
 
       {selected ? (
-        <Card>
-          <SectionTitle>
-            {selected.inboundTripId} → {selected.outboundTripId} at {selected.transferStopName}
-          </SectionTitle>
-          {conn.loading ? <Loading /> : null}
-          {conn.data && !hasConnectionData(conn.data) ? (
-            <EmptyState title="No data yet" hint="This transfer has no observed connection attempts for the selected period." />
-          ) : null}
-          {conn.data && hasConnectionData(conn.data) ? (
-            <>
-              <Row>
-                <StatTile
-                  label="Success rate"
-                  value={`${conn.data.successRatePercent}%`}
-                  color={conn.data.successRatePercent >= OTP_GOOD_THRESHOLD_PERCENT ? theme.colors.good : theme.colors.warn}
-                  hint={`${conn.data.observations} observations`}
-                />
-                <StatTile label="Peak" value={`${conn.data.peak.successRatePercent}%`} hint={`${conn.data.peak.observations} obs`} />
-                <StatTile label="Off-peak" value={`${conn.data.offPeak.successRatePercent}%`} hint={`${conn.data.offPeak.observations} obs`} />
-              </Row>
-
-              {conn.data.lowSample ? (
-                <View style={styles.warn}>
-                  <Text style={styles.warnText}>⚠ Fewer than 30 observations — treat this as a preliminary estimate.</Text>
-                </View>
-              ) : null}
-
-              <View style={{ gap: theme.spacing(2) }}>
-                <Text style={styles.subhead}>By day of week</Text>
-                <Table
-                  columns={[
-                    { key: "day", label: "Day" },
-                    { key: "rate", label: "Success", align: "right" },
-                    { key: "obs", label: "Obs", align: "right" },
-                  ]}
-                  rows={conn.data.byDayOfWeek.map((d) => ({ day: DOW[d.dayOfWeek] ?? String(d.dayOfWeek), rate: `${d.successRatePercent}%`, obs: d.observations }))}
-                />
-              </View>
-
-              <View style={{ gap: theme.spacing(2) }}>
-                <Text style={styles.subhead}>Inbound delay at transfer</Text>
-                <DelayHistogram distribution={conn.data.inboundDelayDistribution} />
-              </View>
-            </>
-          ) : null}
-        </Card>
+        <QueryBoundary>
+          <TransferDetail selected={selected} range={range} />
+        </QueryBoundary>
       ) : (
         <Muted>Select a transfer above to see its reliability.</Muted>
       )}
     </Screen>
+  );
+}
+
+function CollectionBanner() {
+  const { data } = useApi(api.health());
+  return (
+    <LiveBanner collectionStartDate={data.collectionStartDate}>
+      Connection reliability is measured from the live GTFS-Realtime feed — transfer outcomes accrue as trains
+      are observed.
+    </LiveBanner>
+  );
+}
+
+function TransferList({ selected, onSelect }: { selected: ConnectionTopItem | null; onSelect: (t: ConnectionTopItem) => void }) {
+  const { data } = useApi(api.connectionsTop(10));
+
+  return (
+    <Card>
+      <SectionTitle>Highest-frequency transfers</SectionTitle>
+      {data.transfers.length === 0 ? (
+        <EmptyState title="No data yet" hint="Frequent transfers appear once the live feed has observed connecting trains." />
+      ) : null}
+      {data.transfers.map((t) => {
+        const active =
+          selected?.inboundTripId === t.inboundTripId &&
+          selected?.outboundTripId === t.outboundTripId &&
+          selected?.transferStopId === t.transferStopId;
+        return (
+          <Pressable
+            key={`${t.inboundTripId}|${t.transferStopId}|${t.outboundTripId}`}
+            onPress={() => onSelect(t)}
+            style={[styles.option, active && styles.optionActive]}
+          >
+            <View style={styles.optionMain}>
+              <Text style={styles.optionTitle}>
+                {t.inboundTripId} → {t.outboundTripId}
+              </Text>
+              <Muted>at {t.transferStopName}</Muted>
+            </View>
+            <Badge text={`${t.observations} obs`} />
+          </Pressable>
+        );
+      })}
+    </Card>
+  );
+}
+
+function TransferDetail({ selected, range }: { selected: ConnectionTopItem; range: Required<DateRange> }) {
+  const { data } = useApi(
+    api.connections({
+      inbound_trip_id: selected.inboundTripId,
+      transfer_stop_id: selected.transferStopId,
+      outbound_trip_id: selected.outboundTripId,
+      ...range,
+    }),
+  );
+
+  return (
+    <Card>
+      <SectionTitle>
+        {selected.inboundTripId} → {selected.outboundTripId} at {selected.transferStopName}
+      </SectionTitle>
+      {!hasConnectionData(data) ? (
+        <EmptyState title="No data yet" hint="This transfer has no observed connection attempts for the selected period." />
+      ) : (
+        <>
+          <Row>
+            <StatTile
+              label="Success rate"
+              value={`${data.successRatePercent}%`}
+              color={data.successRatePercent >= OTP_GOOD_THRESHOLD_PERCENT ? theme.colors.good : theme.colors.warn}
+              hint={`${data.observations} observations`}
+            />
+            <StatTile label="Peak" value={`${data.peak.successRatePercent}%`} hint={`${data.peak.observations} obs`} />
+            <StatTile label="Off-peak" value={`${data.offPeak.successRatePercent}%`} hint={`${data.offPeak.observations} obs`} />
+          </Row>
+
+          {data.lowSample ? (
+            <View style={styles.warn}>
+              <Text style={styles.warnText}>⚠ Fewer than 30 observations — treat this as a preliminary estimate.</Text>
+            </View>
+          ) : null}
+
+          <View style={{ gap: theme.spacing(2) }}>
+            <Text style={styles.subhead}>By day of week</Text>
+            <Table
+              columns={[
+                { key: "day", label: "Day" },
+                { key: "rate", label: "Success", align: "right" },
+                { key: "obs", label: "Obs", align: "right" },
+              ]}
+              rows={data.byDayOfWeek.map((d) => ({ day: DOW[d.dayOfWeek] ?? String(d.dayOfWeek), rate: `${d.successRatePercent}%`, obs: d.observations }))}
+            />
+          </View>
+
+          <View style={{ gap: theme.spacing(2) }}>
+            <Text style={styles.subhead}>Inbound delay at transfer</Text>
+            <DelayHistogram distribution={data.inboundDelayDistribution} />
+          </View>
+        </>
+      )}
+    </Card>
   );
 }
 

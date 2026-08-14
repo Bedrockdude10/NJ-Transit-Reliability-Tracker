@@ -1,13 +1,14 @@
 import { useMemo, useState } from "react";
 import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { availableEffects, isMeaningfulEffect } from "../../lib/alerts";
-import { api } from "../../lib/api";
+import { api, type DateRange } from "../../lib/api";
 import { formatTimestamp, humanizeEffect } from "../../lib/format";
 import { theme } from "../../lib/theme";
 import { windowToRange } from "../../lib/windows";
 import { useApi } from "../../hooks/useApi";
 import { Table } from "../../components/Table";
-import { Badge, Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, Screen } from "../../components/ui";
+import { QueryBoundary } from "../../components/QueryBoundary";
+import { Badge, Card, Muted, PageTitle, Row, SectionTitle, Screen } from "../../components/ui";
 
 const PAGE_SIZE = 20;
 
@@ -38,13 +39,6 @@ export default function Alerts() {
   const [line, setLine] = useState<string | undefined>();
   const [effect, setEffect] = useState<string | undefined>();
 
-  const lines = useApi(api.lines());
-  const list = useApi(api.alerts({ page, pageSize: PAGE_SIZE, line, effect_type: effect, ...range }));
-  const freq = useApi(api.alertFrequency(range));
-  const totalPages = list.data ? Math.max(1, Math.ceil(list.data.total / PAGE_SIZE)) : 1;
-  // NJT doesn't populate GTFS-RT `effect`, so offer only effects the data has.
-  const effects = useMemo(() => availableEffects(freq.data), [freq.data]);
-
   const selectLine = (v: string | undefined) => {
     setLine(v);
     setPage(1);
@@ -58,61 +52,106 @@ export default function Alerts() {
     <Screen>
       <PageTitle title="Service Alerts" subtitle="Ingested NJT rail alerts, last 90 days" />
 
-      <Card>
-        <SectionTitle>Alert frequency by line</SectionTitle>
-        {freq.data ? (
-          <Table
-            columns={[
-              { key: "line", label: "Line", flex: 2 },
-              { key: "total", label: "Total", align: "right" },
-            ]}
-            rows={freq.data.byLine.map((l) => ({ line: l.lineName, total: l.total }))}
-          />
-        ) : (
-          <Loading />
-        )}
-      </Card>
+      {/* Frequency and log load independently — the log re-fetches on every
+          filter change and there is no reason for that to blank the summary. */}
+      <QueryBoundary>
+        <AlertFrequency range={range} />
+      </QueryBoundary>
 
-      <Card>
-        <SectionTitle>Alert log</SectionTitle>
-        <Text style={styles.filterLabel}>Filter by line</Text>
-        <Chips options={(lines.data?.lines ?? []).map((l) => ({ label: l.shortName, value: l.id }))} value={line} onSelect={selectLine} />
-        {effects.length > 0 ? (
-          <>
-            <Text style={styles.filterLabel}>Filter by effect</Text>
-            <Chips options={effects.map((e) => ({ label: humanizeEffect(e), value: e }))} value={effect} onSelect={selectEffect} />
-          </>
-        ) : null}
-
-        {list.loading ? <Loading /> : null}
-        {list.error ? <ErrorView message={list.error} onRetry={list.reload} /> : null}
-        {list.data?.alerts.map((alert) => (
-          <View key={alert.alertId} style={styles.alert}>
-            <View style={styles.alertHead}>
-              <Text style={styles.alertTitle}>{alert.headerText}</Text>
-              {isMeaningfulEffect(alert.effectType) ? <Badge text={humanizeEffect(alert.effectType)} /> : null}
-            </View>
-            <Muted>{alert.descriptionText}</Muted>
-            <Text style={styles.meta}>
-              {alert.affectedRoutes.join(", ") || "—"} · seen {formatTimestamp(alert.ingestedAtMs)}
-            </Text>
-          </View>
-        ))}
-        {list.data && list.data.alerts.length === 0 ? <Muted>No alerts match these filters.</Muted> : null}
-
-        <Row>
-          <Pressable disabled={page <= 1} onPress={() => setPage((p) => p - 1)} style={[styles.pageBtn, page <= 1 && styles.disabled]}>
-            <Text style={styles.pageText}>‹ Prev</Text>
-          </Pressable>
-          <Text style={styles.pageInfo}>
-            Page {page} of {totalPages}
-          </Text>
-          <Pressable disabled={page >= totalPages} onPress={() => setPage((p) => p + 1)} style={[styles.pageBtn, page >= totalPages && styles.disabled]}>
-            <Text style={styles.pageText}>Next ›</Text>
-          </Pressable>
-        </Row>
-      </Card>
+      <QueryBoundary>
+        <AlertLog
+          range={range}
+          page={page}
+          onPage={setPage}
+          line={line}
+          onLine={selectLine}
+          effect={effect}
+          onEffect={selectEffect}
+        />
+      </QueryBoundary>
     </Screen>
+  );
+}
+
+function AlertFrequency({ range }: { range: Required<DateRange> }) {
+  const { data } = useApi(api.alertFrequency(range));
+  return (
+    <Card>
+      <SectionTitle>Alert frequency by line</SectionTitle>
+      <Table
+        columns={[
+          { key: "line", label: "Line", flex: 2 },
+          { key: "total", label: "Total", align: "right" },
+        ]}
+        rows={data.byLine.map((l) => ({ line: l.lineName, total: l.total }))}
+      />
+    </Card>
+  );
+}
+
+function AlertLog({
+  range,
+  page,
+  onPage,
+  line,
+  onLine,
+  effect,
+  onEffect,
+}: {
+  range: Required<DateRange>;
+  page: number;
+  onPage: (fn: (p: number) => number) => void;
+  line: string | undefined;
+  onLine: (v: string | undefined) => void;
+  effect: string | undefined;
+  onEffect: (v: string | undefined) => void;
+}) {
+  const lines = useApi(api.lines());
+  const freq = useApi(api.alertFrequency(range));
+  const { data } = useApi(api.alerts({ page, pageSize: PAGE_SIZE, line, effect_type: effect, ...range }));
+
+  const totalPages = Math.max(1, Math.ceil(data.total / PAGE_SIZE));
+  // NJT doesn't populate GTFS-RT `effect`, so offer only effects the data has.
+  const effects = useMemo(() => availableEffects(freq.data), [freq.data]);
+
+  return (
+    <Card>
+      <SectionTitle>Alert log</SectionTitle>
+      <Text style={styles.filterLabel}>Filter by line</Text>
+      <Chips options={lines.data.lines.map((l) => ({ label: l.shortName, value: l.id }))} value={line} onSelect={onLine} />
+      {effects.length > 0 ? (
+        <>
+          <Text style={styles.filterLabel}>Filter by effect</Text>
+          <Chips options={effects.map((e) => ({ label: humanizeEffect(e), value: e }))} value={effect} onSelect={onEffect} />
+        </>
+      ) : null}
+
+      {data.alerts.map((alert) => (
+        <View key={alert.alertId} style={styles.alert}>
+          <View style={styles.alertHead}>
+            <Text style={styles.alertTitle}>{alert.headerText}</Text>
+            {isMeaningfulEffect(alert.effectType) ? <Badge text={humanizeEffect(alert.effectType)} /> : null}
+          </View>
+          <Muted>{alert.descriptionText}</Muted>
+          <Text style={styles.meta}>
+            {alert.affectedRoutes.join(", ") || "—"} · seen {formatTimestamp(alert.ingestedAtMs)}
+          </Text>
+        </View>
+      ))}
+      {data.alerts.length === 0 ? <Muted>No alerts match these filters.</Muted> : null}
+
+      <Row>
+        <Pressable disabled={page <= 1} onPress={() => onPage((p) => p - 1)} style={[styles.pageBtn, page <= 1 && styles.disabled]}>
+          <Text style={styles.pageText}>‹ Prev</Text>
+        </Pressable>
+        <Text style={styles.pageInfo}>
+          Page {page} of {totalPages}
+        </Text>
+        <Pressable disabled={page >= totalPages} onPress={() => onPage((p) => p + 1)} style={[styles.pageBtn, page >= totalPages && styles.disabled]}>
+          <Text style={styles.pageText}>Next ›</Text>
+        </Pressable>
+      </Row>
+    </Card>
   );
 }
 

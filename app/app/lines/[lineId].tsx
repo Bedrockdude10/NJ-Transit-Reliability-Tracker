@@ -1,7 +1,7 @@
 import { useLocalSearchParams } from "expo-router";
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { api } from "../../lib/api";
+import { api, type DateRange } from "../../lib/api";
 import { officialPeriodLabel, formatDelayShort, formatDelaySeconds, formatInt, formatMonth, formatPercent } from "../../lib/format";
 import { hasMeasuredOtp } from "../../lib/measurement";
 import { theme, otpColor, otpColorAt } from "../../lib/theme";
@@ -16,46 +16,75 @@ import { HistoryCharts } from "../../components/HistoryCharts";
 import { DelayHistogram, GapCallout, OtpComparison } from "../../components/metrics";
 import { Table } from "../../components/Table";
 import { WindowPicker } from "../../components/WindowPicker";
-import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, SegmentedControl, StatTile, Screen } from "../../components/ui";
+import { QueryBoundary } from "../../components/QueryBoundary";
+import { Card, EmptyState, Loading, Muted, PageTitle, Row, SectionTitle, SegmentedControl, StatTile, Screen } from "../../components/ui";
 import { PropagationChart } from "../../components/PropagationChart";
 
+type Range = Required<DateRange>;
+
+/**
+ * Line detail, as independently-loading sections.
+ *
+ * Six queries feed this screen. Stacked in one component each `useSuspenseQuery`
+ * would suspend before the next ran, serialising them into six round trips;
+ * as sibling boundaries they go out together. Sections that read the same
+ * endpoint (`lineSummary` appears in four) are deduplicated to one request.
+ */
 export default function LineDetail() {
   const { lineId } = useLocalSearchParams<{ lineId: string }>();
   const id = lineId ?? "";
   const { key: windowKey, range, select: selectWindow } = useWindow("30d");
+
+  return (
+    <Screen>
+      <QueryBoundary pending={<PageTitle title={id} subtitle="Line reliability detail" />}>
+        <LineHeader id={id} range={range} />
+      </QueryBoundary>
+
+      <Row>
+        <WindowPicker value={windowKey} onChange={selectWindow} />
+        <CsvExportButton url={api.exportUrl("line", range, id)} />
+      </Row>
+
+      <QueryBoundary><LineMeasurements id={id} range={range} /></QueryBoundary>
+      <QueryBoundary><DelayPropagation id={id} range={range} /></QueryBoundary>
+      <QueryBoundary><CancellationCauses id={id} range={range} /></QueryBoundary>
+      <QueryBoundary><OtpTrend id={id} range={range} /></QueryBoundary>
+      <QueryBoundary><PublishedHistory id={id} /></QueryBoundary>
+      <QueryBoundary><AnnualHistory id={id} /></QueryBoundary>
+      <QueryBoundary><MonthlyComparison id={id} /></QueryBoundary>
+      <QueryBoundary><WorstTrips id={id} range={range} /></QueryBoundary>
+      <QueryBoundary><AmtrakAttribution id={id} range={range} /></QueryBoundary>
+    </Screen>
+  );
+}
+
+/** Real, long-run NJT OTP history (chronological), from the monthly endpoint. */
+function useNjtMonthly(id: string) {
+  const { data } = useApi(api.lineMonthly(id));
+  return useMemo(() => data.rows.filter((r) => r.njtOtpPercent !== null).reverse(), [data]);
+}
+
+function useCollectionStart(): string | null {
+  return useApi(api.health()).data.collectionStartDate;
+}
+
+function LineHeader({ id, range }: { id: string; range: Range }) {
+  const { data } = useApi(api.lineSummary(id, range));
+  const njtMonthly = useNjtMonthly(id);
   const c = useChartColors();
 
-  const summary = useApi(api.lineSummary(id, range));
-  const trend = useApi(api.lineTrend(id, range, "daily"));
-  const worst = useApi(api.lineWorst(id, range, 10));
-  const monthly = useApi(api.lineMonthly(id));
-  const history = useApi(api.lineHistory(id));
-  const health = useApi(api.health());
-  const collectionStartDate = health.data?.collectionStartDate ?? null;
-  const measured = hasMeasuredOtp(summary.data?.overall);
-  const [propDirection, setPropDirection] = useState<"inbound" | "outbound">("inbound");
-  const propagation = useApi(api.linePropagation(id, range, propDirection));
-  // Directional ≤15m OTP — computed once instead of a repeated .find() per StatTile.
-  const inbound15 = summary.data?.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;
-  const outbound15 = summary.data?.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;
-
-  const njtValues = trend.data?.points.map((p) => p.njtOfficialOtpPercent ?? 0) ?? [];
-  const hasNjt = njtValues.some((v) => v > 0);
-
-  // Real, long-run NJT OTP history (chronological), from the monthly endpoint.
-  const njtMonthly = (monthly.data?.rows ?? []).filter((r) => r.njtOtpPercent !== null).reverse();
-  const njtMonthlyHasAdj = njtMonthly.some((r) => r.njtOtpPercentAmtrakAdjusted !== null);
   // Latest published month and the prior one, for the report-card header trend.
   const latestM = njtMonthly.at(-1) ?? null;
   const prevM = njtMonthly.at(-2) ?? null;
   const momDelta =
-    latestM?.njtOtpPercent != null && prevM?.njtOtpPercent != null ? latestM.njtOtpPercent - prevM.njtOtpPercent : null;
-  const amtrakCancel = summary.data?.njtCancellations?.byCause.find((c) => c.cause.toUpperCase() === "AMTRAK") ?? null;
+    latestM?.njtOtpPercent != null && prevM?.njtOtpPercent != null
+      ? Math.round((latestM.njtOtpPercent - prevM.njtOtpPercent) * 10) / 10
+      : null;
 
   return (
-    <Screen>
-      <PageTitle title={summary.data?.name ?? id} subtitle="Line reliability detail" />
-
+    <>
+      <PageTitle title={data.name} subtitle="Line reliability detail" />
       {latestM?.njtOtpPercent != null ? (
         <View style={styles.report}>
           <GradeBadge otpPercent={latestM.njtOtpPercent} size={56} />
@@ -72,274 +101,302 @@ export default function LineDetail() {
           </View>
         </View>
       ) : null}
+    </>
+  );
+}
 
-      <Row>
-        <WindowPicker
-          value={windowKey}
-          onChange={selectWindow}
+function LineMeasurements({ id, range }: { id: string; range: Range }) {
+  const { data } = useApi(api.lineSummary(id, range));
+  const collectionStartDate = useCollectionStart();
+  const measured = hasMeasuredOtp(data.overall);
+  // Directional ≤15m OTP — computed once instead of a repeated .find() per StatTile.
+  const inbound15 = data.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;
+  const outbound15 = data.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;
+
+  return (
+    <>
+      <GapCallout
+        strictPercent={data.overall.thresholds[0]?.otpPercent ?? 0}
+        njtPercent={data.njtOfficial?.otpPercent ?? null}
+        measured={measured}
+      />
+
+      <Card
+        title="NJ Transit's own published figures"
+        subtitle={officialPeriodLabel(data.officialCoverage) ?? "Not yet published for this line"}
+      >
+        <Row>
+          <StatTile label="Trips operated (NJT)" value={data.njtOfficial ? formatInt(data.njtOfficial.tripsOperated) : "—"} accent={theme.colors.accent} hint={data.njtOfficial ? `${data.njtOfficial.monthsCovered} mo published` : "no NJT data this period"} />
+          <StatTile label="Cancellations (NJT)" value={data.njtOfficial ? formatInt(data.njtOfficial.cancellations) : "—"} color={theme.colors.bad} />
+          <StatTile label="Cancellation rate (NJT)" value={data.njtOfficial ? formatPercent(data.njtOfficial.cancellationRatePercent) : "—"} />
+        </Row>
+      </Card>
+
+      <Card title="On-time performance vs. NJT" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
+        <OtpComparison thresholds={data.overall.thresholds} njtOfficial={data.njtOfficial} measured={measured} />
+        {measured ? (
+          <Row>
+            <StatTile label="Avg delay" value={formatDelaySeconds(data.overall.avgDelaySeconds)} />
+            <StatTile label="P90 delay" value={formatDelaySeconds(data.overall.p90DelaySeconds)} color={theme.colors.warn} accent={theme.colors.warn} />
+          </Row>
+        ) : null}
+      </Card>
+
+      <Card title="Inbound vs. outbound" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
+        {measured ? (
+          <Row>
+            <StatTile label="Inbound OTP ≤15m" value={formatPercent(inbound15)} color={otpColor(inbound15)} hint={`${formatInt(data.inbound.tripsOperated)} trips`} />
+            <StatTile label="Outbound OTP ≤15m" value={formatPercent(outbound15)} color={otpColor(outbound15)} hint={`${formatInt(data.outbound.tripsOperated)} trips`} />
+          </Row>
+        ) : (
+          <EmptyState title="No data yet" hint="Directional on-time rates appear once the live feed has recorded trips." />
+        )}
+      </Card>
+
+      <Card title="Delay distribution" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
+        <DelayHistogram distribution={data.overall.delayDistribution} />
+      </Card>
+    </>
+  );
+}
+
+function DelayPropagation({ id, range }: { id: string; range: Range }) {
+  const [direction, setDirection] = useState<"inbound" | "outbound">("inbound");
+  return (
+    <Card
+      title="Where delay accumulates"
+      subtitle="Average arrival delay at each stop along the route, in running order"
+      right={
+        <SegmentedControl
+          value={direction}
+          onChange={setDirection}
+          options={[
+            { key: "inbound", label: "Inbound" },
+            { key: "outbound", label: "Outbound" },
+          ]}
         />
-        <CsvExportButton url={api.exportUrl("line", range, id)} />
-      </Row>
+      }
+    >
+      {/* Inside the card, so switching direction never removes the toggle. */}
+      <QueryBoundary pending={<Loading />}>
+        <PropagationBody id={id} range={range} direction={direction} />
+      </QueryBoundary>
+    </Card>
+  );
+}
 
-      {summary.loading ? <Loading /> : null}
-      {summary.error ? <ErrorView message={summary.error} onRetry={summary.reload} /> : null}
-
-      {summary.data ? (
+function PropagationBody({ id, range, direction }: { id: string; range: Range; direction: "inbound" | "outbound" }) {
+  const { data } = useApi(api.linePropagation(id, range, direction));
+  return (
+    <>
+      {data.netAccumulatedSeconds !== null ? (
+        <Row>
+          <StatTile
+            label="Net, end to end"
+            value={formatDelayShort(data.netAccumulatedSeconds)}
+            color={data.netAccumulatedSeconds > 0 ? theme.colors.bad : theme.colors.good}
+            accent={data.netAccumulatedSeconds > 0 ? theme.colors.bad : theme.colors.good}
+            hint={data.netAccumulatedSeconds > 0 ? "delay gained over the route" : "delay recovered over the route"}
+          />
+        </Row>
+      ) : null}
+      <PropagationChart stops={data.stops} />
+      {data.worstSegments.length > 0 ? (
         <>
-          <GapCallout
-            strictPercent={summary.data.overall.thresholds[0]?.otpPercent ?? 0}
-            njtPercent={summary.data.njtOfficial?.otpPercent ?? null}
-            measured={measured}
-          />
-
-          <Card
-            title="NJ Transit's own published figures"
-            subtitle={officialPeriodLabel(summary.data.officialCoverage) ?? "Not yet published for this line"}
-          >
-            <Row>
-              <StatTile label="Trips operated (NJT)" value={summary.data.njtOfficial ? formatInt(summary.data.njtOfficial.tripsOperated) : "—"} accent={theme.colors.accent} hint={summary.data.njtOfficial ? `${summary.data.njtOfficial.monthsCovered} mo published` : "no NJT data this period"} />
-              <StatTile label="Cancellations (NJT)" value={summary.data.njtOfficial ? formatInt(summary.data.njtOfficial.cancellations) : "—"} color={theme.colors.bad} />
-              <StatTile label="Cancellation rate (NJT)" value={summary.data.njtOfficial ? formatPercent(summary.data.njtOfficial.cancellationRatePercent) : "—"} />
-            </Row>
-          </Card>
-
-          <Card title="On-time performance vs. NJT" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
-            <OtpComparison thresholds={summary.data.overall.thresholds} njtOfficial={summary.data.njtOfficial} measured={measured} />
-            {measured ? (
-              <Row>
-                <StatTile label="Avg delay" value={formatDelaySeconds(summary.data.overall.avgDelaySeconds)} />
-                <StatTile label="P90 delay" value={formatDelaySeconds(summary.data.overall.p90DelaySeconds)} color={theme.colors.warn} accent={theme.colors.warn} />
-              </Row>
-            ) : null}
-          </Card>
-
-          <Card title="Inbound vs. outbound" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
-            {measured ? (
-              <Row>
-                <StatTile
-                  label="Inbound OTP ≤15m"
-                  value={formatPercent(inbound15)}
-                  color={otpColor(inbound15)}
-                  hint={`${formatInt(summary.data.inbound.tripsOperated)} trips`}
-                />
-                <StatTile
-                  label="Outbound OTP ≤15m"
-                  value={formatPercent(outbound15)}
-                  color={otpColor(outbound15)}
-                  hint={`${formatInt(summary.data.outbound.tripsOperated)} trips`}
-                />
-              </Row>
-            ) : (
-              <EmptyState title="No data yet" hint="Directional on-time rates appear once the live feed has recorded trips." />
-            )}
-          </Card>
-
-          <Card
-            title="Where delay accumulates"
-            subtitle="Average arrival delay at each stop along the route, in running order"
-            right={
-              <SegmentedControl
-                value={propDirection}
-                onChange={setPropDirection}
-                options={[
-                  { key: "inbound", label: "Inbound" },
-                  { key: "outbound", label: "Outbound" },
-                ]}
-              />
-            }
-          >
-            {propagation.data ? (
-              <>
-                {propagation.data.netAccumulatedSeconds !== null ? (
-                  <Row>
-                    <StatTile
-                      label="Net, end to end"
-                      value={formatDelayShort(propagation.data.netAccumulatedSeconds)}
-                      color={propagation.data.netAccumulatedSeconds > 0 ? theme.colors.bad : theme.colors.good}
-                      accent={propagation.data.netAccumulatedSeconds > 0 ? theme.colors.bad : theme.colors.good}
-                      hint={propagation.data.netAccumulatedSeconds > 0 ? "delay gained over the route" : "delay recovered over the route"}
-                    />
-                  </Row>
-                ) : null}
-                <PropagationChart stops={propagation.data.stops} />
-                {propagation.data.worstSegments.length > 0 ? (
-                  <>
-                    <SectionTitle>Costliest stretches</SectionTitle>
-                    <Table
-                      columns={[
-                        { key: "seg", label: "Segment", flex: 3 },
-                        { key: "added", label: "Adds", align: "right" },
-                      ]}
-                      rows={propagation.data.worstSegments.map((s) => ({
-                        seg: `${s.fromStopName} → ${s.toStopName}`,
-                        added: `+${formatDelaySeconds(s.addedSeconds)}`.replace(" late", ""),
-                      }))}
-                    />
-                  </>
-                ) : null}
-              </>
-            ) : (
-              <Loading />
-            )}
-          </Card>
-
-          <Card title="Delay distribution" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
-            <DelayHistogram distribution={summary.data.overall.delayDistribution} />
-          </Card>
-
-          {summary.data.njtCancellations && summary.data.njtCancellations.byCause.length > 0 ? (
-            <Card>
-              <SectionTitle>Why NJT cancelled trains</SectionTitle>
-              <Muted>
-                {formatInt(summary.data.njtCancellations.total)} cancellations over {summary.data.njtCancellations.monthsCovered} month(s),
-                by NJT’s own cause category. The Amtrak share is what NJT excludes from its “Amtrak-adjusted” figures.
-              </Muted>
-              <Table
-                columns={[
-                  { key: "cause", label: "Cause", flex: 2.2 },
-                  { key: "count", label: "Count", align: "right" },
-                  { key: "pct", label: "Share", align: "right" },
-                ]}
-                rows={summary.data.njtCancellations.byCause.map((cause) => ({
-                  cause: cause.cause,
-                  count: cause.count,
-                  pct: `${cause.percent}%`,
-                }))}
-              />
-            </Card>
-          ) : null}
-        </>
-      ) : null}
-
-      <Card title="OTP trend (≤15 min vs. NJT 6 min)" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
-        {trend.data && trend.data.points.length > 0 ? (
-          <LineChart
-            series={[
-              { label: "This project ≤15 min", color: c.accent, values: trend.data.points.map((p) => p.otpPercent15Min) },
-              ...(hasNjt ? [{ label: "NJT 6 min", color: c.njt, values: njtValues, dashed: true }] : []),
-            ]}
-          />
-        ) : (
-          <EmptyState title="No data yet" hint="A daily OTP trend appears once the live feed has recorded trips for this period." />
-        )}
-      </Card>
-
-      <Card>
-        <SectionTitle>NJT on-time performance over time (real, 2017→)</SectionTitle>
-        {njtMonthly.length > 0 ? (
-          <>
-            <LineChart
-              height={200}
-              series={[
-                { label: "NJT 6 min OTP", color: c.njt, values: njtMonthly.map((r) => r.njtOtpPercent as number) },
-                ...(njtMonthlyHasAdj
-                  ? [
-                      {
-                        label: "Excl. Amtrak",
-                        color: c.accent,
-                        values: njtMonthly.map((r) => r.njtOtpPercentAmtrakAdjusted ?? (r.njtOtpPercent as number)),
-                        dashed: true,
-                      },
-                    ]
-                  : []),
-              ]}
-            />
-            <Muted>
-              {njtMonthly.length} months of NJT’s published OTP ({formatMonth(`${njtMonthly[0]?.month}-01`)} →{" "}
-              {formatMonth(`${njtMonthly.at(-1)?.month}-01`)}).
-            </Muted>
-          </>
-        ) : (
-          <Muted>No NJT history for this line.</Muted>
-        )}
-      </Card>
-
-      {history.data && history.data.annual.length > 0 ? (
-        <Card>
-          <SectionTitle>NJT on-time history</SectionTitle>
-          <HistoryCharts history={history.data} />
-          <Muted>Real NJT figures across all published years — seasonality (winters run worse) and the long-term trend.</Muted>
-        </Card>
-      ) : null}
-
-      <Card>
-        <SectionTitle>Monthly comparison — this project vs. NJT</SectionTitle>
-        {monthly.data ? (
-          <>
-            <Table
-              columns={[
-                { key: "month", label: "Month", flex: 1.4 },
-                { key: "project", label: "This project ≤15m", align: "right", flex: 1.4 },
-                { key: "njt", label: "NJT 6m", align: "right" },
-                { key: "njtAdj", label: "NJT adj.", align: "right" },
-              ]}
-              rows={monthly.data.rows.map((r) => ({
-                month: formatMonth(`${r.month}-01`),
-                project: formatPercent(r.projectOtpPercent15Min),
-                njt: formatPercent(r.njtOtpPercent),
-                njtAdj: formatPercent(r.njtOtpPercentAmtrakAdjusted),
-              }))}
-            />
-            <Muted>NJT figures are real and published monthly back to 2017; the project column appears once independent data has been collected for a month.</Muted>
-          </>
-        ) : (
-          <Loading />
-        )}
-      </Card>
-
-      <Card title="Most delayed trips" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
-        {!worst.data ? (
-          <Loading />
-        ) : worst.data.trips.length > 0 ? (
+          <SectionTitle>Costliest stretches</SectionTitle>
           <Table
             columns={[
-              { key: "tripId", label: "Trip", flex: 1.4 },
-              { key: "direction", label: "Dir" },
-              { key: "delay", label: "Avg terminal delay", align: "right", flex: 1.4 },
-              { key: "obs", label: "Obs", align: "right" },
+              { key: "seg", label: "Segment", flex: 3 },
+              { key: "added", label: "Adds", align: "right" },
             ]}
-            rows={worst.data.trips.map((t) => ({
-              tripId: t.tripId,
-              direction: t.direction,
-              delay: formatDelaySeconds(t.avgTerminalDelaySeconds),
-              obs: t.observations,
+            rows={data.worstSegments.map((s) => ({
+              seg: `${s.fromStopName} → ${s.toStopName}`,
+              added: `+${formatDelaySeconds(s.addedSeconds)}`.replace(" late", ""),
             }))}
           />
-        ) : (
-          <EmptyState title="No data yet" hint="Worst-trip rankings appear once the live feed has recorded trips for this period." />
-        )}
-      </Card>
-
-      {summary.data?.njtOfficial?.otpPercentAmtrakAdjusted != null ? (
-        <Card>
-          <SectionTitle>Amtrak attribution</SectionTitle>
-          <Row>
-            <StatTile label="NJT OTP (6 min)" value={formatPercent(summary.data.njtOfficial.otpPercent)} />
-            <StatTile
-              label="Excluding Amtrak"
-              value={formatPercent(summary.data.njtOfficial.otpPercentAmtrakAdjusted)}
-              color={theme.colors.good}
-            />
-            <StatTile
-              label="Attributed to Amtrak"
-              value={`+${Math.round((summary.data.njtOfficial.otpPercentAmtrakAdjusted - summary.data.njtOfficial.otpPercent) * 10) / 10} pts`}
-              color={theme.colors.njt}
-              hint="OTP recovered when Amtrak delays are excluded"
-            />
-          </Row>
-          {amtrakCancel ? (
-            <Muted>
-              Amtrak also caused {amtrakCancel.percent}% of cancellations ({formatInt(amtrakCancel.count)} of{" "}
-              {formatInt(summary.data.njtCancellations?.total ?? 0)}) this period.
-            </Muted>
-          ) : null}
-          <Muted>
-            On the NEC and North Jersey Coast Line, NJT shares Amtrak-owned track and attributes some delay to it.
-            Attribution is NJT’s own.
-          </Muted>
-        </Card>
+        </>
       ) : null}
-    </Screen>
+    </>
+  );
+}
+
+function CancellationCauses({ id, range }: { id: string; range: Range }) {
+  const { data } = useApi(api.lineSummary(id, range));
+  const causes = data.njtCancellations;
+  if (!causes || causes.byCause.length === 0) return null;
+
+  return (
+    <Card>
+      <SectionTitle>Why NJT cancels trains on this line</SectionTitle>
+      <Muted>
+        {formatInt(causes.total)} cancellations over {causes.monthsCovered} month(s), by NJT's own cause category.
+      </Muted>
+      <Table
+        columns={[
+          { key: "cause", label: "Cause", flex: 2.2 },
+          { key: "count", label: "Count", align: "right" },
+          { key: "pct", label: "Share", align: "right" },
+        ]}
+        rows={causes.byCause.map((cause) => ({ cause: cause.cause, count: cause.count, pct: `${cause.percent}%` }))}
+      />
+    </Card>
+  );
+}
+
+function OtpTrend({ id, range }: { id: string; range: Range }) {
+  const { data } = useApi(api.lineTrend(id, range, "daily"));
+  const collectionStartDate = useCollectionStart();
+  const c = useChartColors();
+  const njtValues = data.points.map((p) => p.njtOfficialOtpPercent ?? 0);
+  const hasNjt = njtValues.some((v) => v > 0);
+
+  return (
+    <Card title="OTP trend (≤15 min vs. NJT 6 min)" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
+      {data.points.length > 0 ? (
+        <LineChart
+          series={[
+            { label: "This project ≤15 min", color: c.accent, values: data.points.map((p) => p.otpPercent15Min) },
+            ...(hasNjt ? [{ label: "NJT 6 min", color: c.njt, values: njtValues, dashed: true }] : []),
+          ]}
+        />
+      ) : (
+        <EmptyState title="No data yet" hint="A daily OTP trend appears once the live feed has recorded trips for this period." />
+      )}
+    </Card>
+  );
+}
+
+function PublishedHistory({ id }: { id: string }) {
+  const njtMonthly = useNjtMonthly(id);
+  const c = useChartColors();
+  const hasAdj = njtMonthly.some((r) => r.njtOtpPercentAmtrakAdjusted !== null);
+
+  return (
+    <Card>
+      <SectionTitle>NJT on-time performance over time (real, 2017→)</SectionTitle>
+      {njtMonthly.length > 0 ? (
+        <>
+          <LineChart
+            height={200}
+            series={[
+              { label: "NJT 6 min OTP", color: c.njt, values: njtMonthly.map((r) => r.njtOtpPercent as number) },
+              ...(hasAdj
+                ? [
+                    {
+                      label: "Excl. Amtrak",
+                      color: c.accent,
+                      values: njtMonthly.map((r) => r.njtOtpPercentAmtrakAdjusted ?? (r.njtOtpPercent as number)),
+                      dashed: true,
+                    },
+                  ]
+                : []),
+            ]}
+          />
+          <Muted>
+            {njtMonthly.length} months of NJT’s published OTP ({formatMonth(`${njtMonthly[0]?.month}-01`)} →{" "}
+            {formatMonth(`${njtMonthly.at(-1)?.month}-01`)}).
+          </Muted>
+        </>
+      ) : (
+        <Muted>No NJT history for this line.</Muted>
+      )}
+    </Card>
+  );
+}
+
+function AnnualHistory({ id }: { id: string }) {
+  const { data } = useApi(api.lineHistory(id));
+  if (data.annual.length === 0) return null;
+  return (
+    <Card>
+      <SectionTitle>NJT on-time history</SectionTitle>
+      <HistoryCharts history={data} />
+      <Muted>Real NJT figures across all published years — seasonality (winters run worse) and the long-term trend.</Muted>
+    </Card>
+  );
+}
+
+function MonthlyComparison({ id }: { id: string }) {
+  const { data } = useApi(api.lineMonthly(id));
+  return (
+    <Card>
+      <SectionTitle>Monthly comparison — this project vs. NJT</SectionTitle>
+      <Table
+        columns={[
+          { key: "month", label: "Month", flex: 1.4 },
+          { key: "project", label: "This project ≤15m", align: "right", flex: 1.4 },
+          { key: "njt", label: "NJT 6m", align: "right" },
+          { key: "njtAdj", label: "NJT adj.", align: "right" },
+        ]}
+        rows={data.rows.map((r) => ({
+          month: formatMonth(`${r.month}-01`),
+          project: formatPercent(r.projectOtpPercent15Min),
+          njt: formatPercent(r.njtOtpPercent),
+          njtAdj: formatPercent(r.njtOtpPercentAmtrakAdjusted),
+        }))}
+      />
+      <Muted>NJT figures are real and published monthly back to 2017; the project column appears once independent data has been collected for a month.</Muted>
+    </Card>
+  );
+}
+
+function WorstTrips({ id, range }: { id: string; range: Range }) {
+  const { data } = useApi(api.lineWorst(id, range, 10));
+  const collectionStartDate = useCollectionStart();
+  return (
+    <Card title="Most delayed trips" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
+      {data.trips.length > 0 ? (
+        <Table
+          columns={[
+            { key: "tripId", label: "Trip", flex: 1.4 },
+            { key: "direction", label: "Dir" },
+            { key: "delay", label: "Avg terminal delay", align: "right", flex: 1.4 },
+            { key: "obs", label: "Obs", align: "right" },
+          ]}
+          rows={data.trips.map((t) => ({
+            tripId: t.tripId,
+            direction: t.direction,
+            delay: formatDelaySeconds(t.avgTerminalDelaySeconds),
+            obs: t.observations,
+          }))}
+        />
+      ) : (
+        <EmptyState title="No data yet" hint="Worst-trip rankings appear once the live feed has recorded trips for this period." />
+      )}
+    </Card>
+  );
+}
+
+function AmtrakAttribution({ id, range }: { id: string; range: Range }) {
+  const { data } = useApi(api.lineSummary(id, range));
+  const official = data.njtOfficial;
+  if (official?.otpPercentAmtrakAdjusted == null) return null;
+  const amtrakCancel = data.njtCancellations?.byCause.find((c) => c.cause.toUpperCase() === "AMTRAK") ?? null;
+
+  return (
+    <Card>
+      <SectionTitle>Amtrak attribution</SectionTitle>
+      <Row>
+        <StatTile label="NJT OTP (6 min)" value={formatPercent(official.otpPercent)} />
+        <StatTile label="Excluding Amtrak" value={formatPercent(official.otpPercentAmtrakAdjusted)} color={theme.colors.good} />
+        <StatTile
+          label="Attributed to Amtrak"
+          value={`+${Math.round((official.otpPercentAmtrakAdjusted - official.otpPercent) * 10) / 10} pts`}
+          color={theme.colors.njt}
+          hint="OTP recovered when Amtrak delays are excluded"
+        />
+      </Row>
+      {amtrakCancel ? (
+        <Muted>
+          Amtrak also caused {amtrakCancel.percent}% of cancellations ({formatInt(amtrakCancel.count)} of{" "}
+          {formatInt(data.njtCancellations?.total ?? 0)}) this period.
+        </Muted>
+      ) : null}
+      <Muted>
+        On the NEC and North Jersey Coast Line, NJT shares Amtrak-owned track and attributes some delay to it.
+        Attribution is NJT’s own.
+      </Muted>
+    </Card>
   );
 }
 

@@ -4,6 +4,7 @@ import { api } from "../lib/api";
 import { formatTimestamp } from "../lib/format";
 import { theme } from "../lib/theme";
 import { useApi } from "../hooks/useApi";
+import { QueryBoundary } from "./QueryBoundary";
 import { StatusDot } from "./ui";
 
 /**
@@ -11,24 +12,50 @@ import { StatusDot } from "./ui";
  * time, and the required disclaimer (PRD compliance).
  */
 export function DisclaimerFooter() {
+  return (
+    <View style={styles.footer}>
+      {/* The status line needs /health; the disclaimer does not, and is a
+          compliance requirement — so it must render even when the API is
+          unreachable. This boundary is what keeps the two independent.
+
+          It also has to exist at all: this footer sits in the root layout, so
+          before it had one, a suspending health query held up the entire app
+          shell and a failing one escaped to the root with nothing to catch it.
+          Every screen was blank, not just the footer. */}
+      <QueryBoundary
+        pending={<View style={styles.statusRow} />}
+        failed={() => (
+          <View style={styles.statusRow}>
+            <View style={styles.status}>
+              <StatusDot color={theme.colors.warn} />
+              <Text style={styles.statusText}>Collection status unavailable</Text>
+            </View>
+          </View>
+        )}
+      >
+        <CollectionStatus />
+      </QueryBoundary>
+      <Text style={styles.disclaimer}>{DISCLAIMER_TEXT}</Text>
+    </View>
+  );
+}
+
+function CollectionStatus() {
   const { data } = useApi(api.health());
-  const lastIngest = data?.feeds.find((f) => f.feedType === "TripUpdates")?.lastSuccessAtMs ?? null;
+  const lastIngest = data.feeds.find((f) => f.feedType === "TripUpdates")?.lastSuccessAtMs ?? null;
   const live = lastIngest !== null;
 
   return (
-    <View style={styles.footer}>
-      <View style={styles.statusRow}>
-        <View style={styles.status}>
-          <StatusDot color={live ? theme.colors.good : theme.colors.warn} pulse={live} />
-          <Text style={styles.statusText}>{live ? "Live collection" : "Independent data: not collecting yet"}</Text>
-        </View>
-        <Text style={styles.meta}>
-          {data?.collectionStartDate ? `Since ${data.collectionStartDate}` : "Not started"}
-          {"  ·  "}
-          Last ingest {formatTimestamp(lastIngest)}
-        </Text>
+    <View style={styles.statusRow}>
+      <View style={styles.status}>
+        <StatusDot color={live ? theme.colors.good : theme.colors.warn} pulse={live} />
+        <Text style={styles.statusText}>{live ? "Live collection" : "Independent data: not collecting yet"}</Text>
       </View>
-      <Text style={styles.disclaimer}>{DISCLAIMER_TEXT}</Text>
+      <Text style={styles.meta}>
+        {data.collectionStartDate ? `Since ${data.collectionStartDate}` : "Not started"}
+        {"  ·  "}
+        Last ingest {formatTimestamp(lastIngest)}
+      </Text>
     </View>
   );
 }

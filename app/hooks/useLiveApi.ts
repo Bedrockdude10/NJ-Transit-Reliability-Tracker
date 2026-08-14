@@ -1,52 +1,44 @@
-import { useQuery } from "@tanstack/react-query";
+import { useSuspenseQuery } from "@tanstack/react-query";
 import type { ApiQuery } from "../lib/api";
+import type { ApiResult } from "./useApi";
 
-export interface LiveState<T> {
-  data: T | null;
-  /** True only for the first load — a refresh must not blank the screen. */
-  loading: boolean;
-  error: string | null;
+export interface LiveResult<T> extends ApiResult<T> {
   /** When the last successful response landed, epoch ms. */
-  updatedAtMs: number | null;
-  reload: () => void;
+  updatedAtMs: number;
 }
 
 /**
- * Poll an endpoint on an interval, for views that must stay current (the
- * departure board, live train positions).
+ * Poll an endpoint on an interval, for views that must stay current — the
+ * departure board, live train positions.
  *
- * The three behaviours that matter for a live view are all preserved, now as
- * configuration rather than as hand-written effects and refs:
+ * This is now {@link useApi} plus a refetch interval. It used to be a separate
+ * 80-line hook with its own cancellation ref, timer and visibility listener,
+ * because the rule it enforced — a failed refresh must never blank a board a
+ * rider is reading — looked incompatible with throwing errors to a boundary.
  *
- *  - `loading` is true only for the *first* load (`isPending`), so a refresh
- *    never flashes a spinner over data the rider is reading.
- *  - a failed refresh keeps the last good data on screen and reports the error
- *    beside it; a transient blip should not empty a board. TanStack keeps
- *    `data` across a failed refetch, so this falls out for free.
- *  - polling stops while the tab is hidden and catches up the moment it comes
- *    back, rather than waiting out the remainder of an interval with stale
- *    times on screen. `refetchIntervalInBackground: false` and
- *    `refetchOnWindowFocus` are the defaults; they are named here because they
- *    are load-bearing, not incidental.
+ * It isn't. The `throwOnError` predicate in `query-client.ts` only throws when
+ * there is nothing on screen to keep, so a failed poll leaves the times in
+ * place and surfaces `error` beside them. What was one screen's special case
+ * is now how every screen behaves, and the difference here is a single option.
  */
-export function useLiveApi<T>(query: ApiQuery<T>, intervalMs: number): LiveState<T> {
-  const result = useQuery({
+export function useLiveApi<T>(query: ApiQuery<T>, intervalMs: number): LiveResult<T> {
+  const result = useSuspenseQuery({
     queryKey: query.key,
     queryFn: query.run,
     refetchInterval: intervalMs,
+    // Stop polling while the tab is hidden, and catch up the moment it returns
+    // rather than waiting out the remainder of an interval with stale times on
+    // screen. Both are defaults; they are named because they are load-bearing.
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
-    // A live view is only ever interested in the current answer, so never serve
-    // a cached one: the previous implementation bypassed its cache entirely for
-    // these endpoints.
+    // A live view only ever wants the current answer, never a cached one.
     staleTime: 0,
   });
 
   return {
-    data: result.data ?? null,
-    loading: result.isPending,
-    error: result.error ? result.error.message : null,
-    updatedAtMs: result.dataUpdatedAt || null,
+    data: result.data,
+    error: result.error,
+    updatedAtMs: result.dataUpdatedAt,
     reload: () => void result.refetch(),
   };
 }

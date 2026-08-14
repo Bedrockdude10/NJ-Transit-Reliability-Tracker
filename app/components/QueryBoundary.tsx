@@ -27,22 +27,31 @@ import { ErrorView, SkeletonCard } from "./ui";
 export function QueryBoundary({
   children,
   pending,
+  failed,
 }: {
   children: React.ReactNode;
   /** Shown while the data is first loading. Defaults to a skeleton card. */
   pending?: React.ReactNode;
+  /**
+   * Replaces the default error card. For places where a full-width "Couldn't
+   * load data" panel would be wrong — the footer's status line, say, where the
+   * failure is incidental and the surrounding text still has to render.
+   */
+  failed?: (message: string, retry: () => void) => React.ReactNode;
 }) {
   return (
     <QueryErrorResetBoundary>
       {({ reset }) => (
         <ErrorBoundary
           onReset={reset}
-          fallbackRender={({ error, resetErrorBoundary }) => (
-            <ErrorView
-              message={error instanceof Error ? error.message : String(error)}
-              onRetry={resetErrorBoundary}
-            />
-          )}
+          fallbackRender={({ error, resetErrorBoundary }) => {
+            const message = error instanceof Error ? error.message : String(error);
+            return failed ? (
+              <>{failed(message, resetErrorBoundary)}</>
+            ) : (
+              <ErrorView message={message} onRetry={resetErrorBoundary} />
+            );
+          }}
         >
           <Suspense fallback={pending ?? <SkeletonCard lines={4} />}>{children}</Suspense>
         </ErrorBoundary>

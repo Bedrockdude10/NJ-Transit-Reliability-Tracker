@@ -8,7 +8,8 @@ import { useChartColors } from "../../lib/useChartColors";
 import { useApi, useApis } from "../../hooks/useApi";
 import { LineChart, type LineSeries } from "../../components/charts/LineChart";
 import { Table } from "../../components/Table";
-import { Card, ErrorView, Loading, Muted, PageTitle, SectionTitle, Screen } from "../../components/ui";
+import { QueryBoundary } from "../../components/QueryBoundary";
+import { Card, Loading, Muted, PageTitle, SectionTitle, Screen } from "../../components/ui";
 
 const MAX_SELECTED = 5;
 
@@ -18,8 +19,22 @@ const MAX_SELECTED = 5;
 let remembered: string[] | null = null;
 
 export default function Compare() {
-  const list = useApi(api.lines());
-  const lines = list.data?.lines ?? [];
+  return (
+    <Screen>
+      <PageTitle
+        title="Compare lines"
+        subtitle="NJT's published 6-min on-time performance, side by side — real figures back to 2017"
+      />
+      <QueryBoundary>
+        <LineComparison />
+      </QueryBoundary>
+    </Screen>
+  );
+}
+
+function LineComparison() {
+  const { data: list } = useApi(api.lines());
+  const lines = list.lines;
   const cc = useChartColors();
   // Fallback palette (concrete, for SVG) for lines NJT publishes no color for.
   const palette = useMemo(() => [cc.accent, cc.njt, cc.good, cc.warn, cc.bad], [cc]);
@@ -43,17 +58,6 @@ export default function Compare() {
   );
   const effective = selected ?? defaultIds;
 
-  const monthly = useApis(effective.map((id) => api.lineMonthly(id)));
-
-  const comparison = useMemo(() => {
-    if (!monthly.data) return null;
-    const inputs: CompareInput[] = monthly.data.map((m) => {
-      const meta = lines.find((l) => l.id === m.lineId);
-      return { id: m.lineId, name: meta?.name ?? m.name, color: meta?.color ?? null, monthly: m };
-    });
-    return buildComparison(inputs);
-  }, [monthly.data, lines]);
-
   const toggle = (id: string) => {
     const base = effective;
     if (base.includes(id)) {
@@ -63,26 +67,8 @@ export default function Compare() {
     }
   };
 
-  const series: LineSeries[] = useMemo(
-    () =>
-      (comparison?.series ?? []).map((s, i) => ({
-        label: s.name,
-        color: s.color ? `#${s.color}` : palette[i % palette.length]!,
-        values: fillForward(s.values),
-      })),
-    [comparison, palette],
-  );
-
   return (
-    <Screen>
-      <PageTitle
-        title="Compare lines"
-        subtitle="NJT's published 6-min on-time performance, side by side — real figures back to 2017"
-      />
-
-      {list.loading ? <Loading /> : null}
-      {list.error ? <ErrorView message={list.error} onRetry={list.reload} /> : null}
-
+    <>
       <Card>
         <SectionTitle>Pick lines to compare</SectionTitle>
         <Muted>Up to {MAX_SELECTED} at once.</Muted>
@@ -90,11 +76,7 @@ export default function Compare() {
           {lines.map((line) => {
             const on = effective.includes(line.id);
             return (
-              <Pressable
-                key={line.id}
-                onPress={() => toggle(line.id)}
-                style={[styles.chip, on && styles.chipOn]}
-              >
+              <Pressable key={line.id} onPress={() => toggle(line.id)} style={[styles.chip, on && styles.chipOn]}>
                 {line.color ? <View style={[styles.dot, { backgroundColor: `#${line.color}` }]} /> : null}
                 <Text style={[styles.chipText, on && styles.chipTextOn]}>{line.shortName}</Text>
               </Pressable>
@@ -103,10 +85,49 @@ export default function Compare() {
         </View>
       </Card>
 
+      {/* Its own boundary: changing the selection refetches, and the chips
+          above must stay usable while that happens. */}
+      <QueryBoundary pending={<Loading label="Loading published history…" />}>
+        <ComparisonCharts lineIds={effective} lines={lines} palette={palette} />
+      </QueryBoundary>
+    </>
+  );
+}
+
+function ComparisonCharts({
+  lineIds,
+  lines,
+  palette,
+}: {
+  lineIds: string[];
+  lines: { id: string; name: string; color: string | null }[];
+  palette: string[];
+}) {
+  const { data: monthly } = useApis(lineIds.map((id) => api.lineMonthly(id)));
+
+  const comparison = useMemo(() => {
+    const inputs: CompareInput[] = monthly.map((m) => {
+      const meta = lines.find((l) => l.id === m.lineId);
+      return { id: m.lineId, name: meta?.name ?? m.name, color: meta?.color ?? null, monthly: m };
+    });
+    return buildComparison(inputs);
+  }, [monthly, lines]);
+
+  const series: LineSeries[] = useMemo(
+    () =>
+      comparison.series.map((s, i) => ({
+        label: s.name,
+        color: s.color ? `#${s.color}` : palette[i % palette.length]!,
+        values: fillForward(s.values),
+      })),
+    [comparison, palette],
+  );
+
+  return (
+    <>
       <Card>
         <SectionTitle>On-time performance over time</SectionTitle>
-        {monthly.loading ? <Loading /> : null}
-        {comparison && series.some((s) => s.values.length > 0) ? (
+        {series.some((s) => s.values.length > 0) ? (
           <>
             <LineChart height={220} series={series.filter((s) => s.values.length > 0)} />
             <Muted>
@@ -115,12 +136,12 @@ export default function Compare() {
               continuous trace.
             </Muted>
           </>
-        ) : monthly.loading ? null : (
+        ) : (
           <Muted>Select at least one line with published NJT data.</Muted>
         )}
       </Card>
 
-      {comparison && comparison.series.length > 0 ? (
+      {comparison.series.length > 0 ? (
         <Card>
           <SectionTitle>Latest published month</SectionTitle>
           <Table
@@ -143,7 +164,7 @@ export default function Compare() {
           </Muted>
         </Card>
       ) : null}
-    </Screen>
+    </>
   );
 }
 

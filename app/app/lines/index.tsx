@@ -5,63 +5,71 @@ import { formatMonth, formatPercent } from "../../lib/format";
 import { otpColor, otpColorSoft, theme } from "../../lib/theme";
 import { useApi } from "../../hooks/useApi";
 import { GradeBadge } from "../../components/Indicators";
-import { Badge, Card, EmptyState, ErrorView, Loading, PageTitle, Screen } from "../../components/ui";
+import { QueryBoundary } from "../../components/QueryBoundary";
+import { Badge, Card, EmptyState, PageTitle, Screen } from "../../components/ui";
 
 export default function LinesList() {
-  const { data, loading, error, reload } = useApi(api.lines());
+  return (
+    <Screen>
+      <PageTitle title="Lines" subtitle="Ranked by NJT's reported on-time % (latest month) — least reliable first" />
+      <QueryBoundary>
+        <LineRanking />
+      </QueryBoundary>
+    </Screen>
+  );
+}
+
+/**
+ * Split from the screen so the boundary above can catch it: a component that
+ * suspends must be a *child* of the Suspense that covers it, never its sibling.
+ */
+function LineRanking() {
+  const { data } = useApi(api.lines());
 
   // Rank by NJT's reported OTP, least reliable first; lines without data last.
-  const lines = [...(data?.lines ?? [])].sort((a, b) => {
+  const lines = [...data.lines].sort((a, b) => {
     if (a.njtOtpPercent === null) return 1;
     if (b.njtOtpPercent === null) return -1;
     return a.njtOtpPercent - b.njtOtpPercent;
   });
 
+  if (lines.length === 0) {
+    return <EmptyState title="No lines yet" hint="The pipeline hasn't ingested a GTFS schedule." />;
+  }
+
   return (
-    <Screen>
-      <PageTitle title="Lines" subtitle="Ranked by NJT's reported on-time % (latest month) — least reliable first" />
-      {loading ? <Loading /> : null}
-      {error ? <ErrorView message={error} onRetry={reload} /> : null}
-
-      {lines.length > 0 ? (
-        <Card style={styles.list}>
-          {lines.map((line, i) => {
-            const otp = line.njtOtpPercent;
-            const color = otp !== null ? otpColor(otp) : theme.colors.textFaint;
-            return (
-              <Link key={line.id} href={`/lines/${line.id}`} asChild>
-                <Pressable style={StyleSheet.flatten([styles.row, i > 0 && styles.rowBorder])}>
-                  {/* The row doubles as a reliability bar: a soft fill to OTP%. */}
-                  {otp !== null ? <View style={[styles.fill, { width: `${otp}%`, backgroundColor: otpColorSoft(otp) }]} /> : null}
-                  <View style={styles.rowContent}>
-                    <View style={[styles.dot, { backgroundColor: line.color ? `#${line.color}` : theme.colors.border }]} />
-                    <View style={styles.nameCol}>
-                      <Text style={styles.lineName} numberOfLines={1}>{line.name}</Text>
-                      <View style={styles.tags}>
-                        <Badge text={line.shortName} />
-                        {line.hasAmtrakAttribution ? <Badge text="Amtrak" color={theme.colors.njt} tint={theme.colors.njtSoft} /> : null}
-                      </View>
-                    </View>
-                    <View style={styles.stats}>
-                      <Text style={[styles.otp, { color }]}>{formatPercent(otp)}</Text>
-                      <Text style={styles.sub}>
-                        {line.njtCancellationRatePercent !== null ? `${line.njtCancellationRatePercent}% cancelled` : "no NJT data"}
-                        {line.njtLatestMonth ? ` · ${formatMonth(`${line.njtLatestMonth}-01`)}` : ""}
-                      </Text>
-                    </View>
-                    {otp !== null ? <GradeBadge otpPercent={otp} size={42} /> : null}
+    <Card style={styles.list}>
+      {lines.map((line, i) => {
+        const otp = line.njtOtpPercent;
+        const color = otp !== null ? otpColor(otp) : theme.colors.textFaint;
+        return (
+          <Link key={line.id} href={`/lines/${line.id}`} asChild>
+            <Pressable style={StyleSheet.flatten([styles.row, i > 0 && styles.rowBorder])}>
+              {/* The row doubles as a reliability bar: a soft fill to OTP%. */}
+              {otp !== null ? <View style={[styles.fill, { width: `${otp}%`, backgroundColor: otpColorSoft(otp) }]} /> : null}
+              <View style={styles.rowContent}>
+                <View style={[styles.dot, { backgroundColor: line.color ? `#${line.color}` : theme.colors.border }]} />
+                <View style={styles.nameCol}>
+                  <Text style={styles.lineName} numberOfLines={1}>{line.name}</Text>
+                  <View style={styles.tags}>
+                    <Badge text={line.shortName} />
+                    {line.hasAmtrakAttribution ? <Badge text="Amtrak" color={theme.colors.njt} tint={theme.colors.njtSoft} /> : null}
                   </View>
-                </Pressable>
-              </Link>
-            );
-          })}
-        </Card>
-      ) : null}
-
-      {data && data.lines.length === 0 ? (
-        <EmptyState title="No lines yet" hint="The pipeline hasn't ingested a GTFS schedule." />
-      ) : null}
-    </Screen>
+                </View>
+                <View style={styles.stats}>
+                  <Text style={[styles.otp, { color }]}>{formatPercent(otp)}</Text>
+                  <Text style={styles.sub}>
+                    {line.njtCancellationRatePercent !== null ? `${line.njtCancellationRatePercent}% cancelled` : "no NJT data"}
+                    {line.njtLatestMonth ? ` · ${formatMonth(`${line.njtLatestMonth}-01`)}` : ""}
+                  </Text>
+                </View>
+                {otp !== null ? <GradeBadge otpPercent={otp} size={42} /> : null}
+              </View>
+            </Pressable>
+          </Link>
+        );
+      })}
+    </Card>
   );
 }
 

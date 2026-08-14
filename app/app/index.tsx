@@ -1,6 +1,6 @@
 import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
-import { api } from "../lib/api";
+import { api, type DateRange } from "../lib/api";
 import { officialPeriodLabel, formatDelayShort, formatInt, formatPercent } from "../lib/format";
 import { hasHeatmapData, hasMeasuredOtp } from "../lib/measurement";
 import { otpColor, otpColorAt, theme } from "../lib/theme";
@@ -9,6 +9,7 @@ import { useWindow } from "../hooks/useWindow";
 import { useApi } from "../hooks/useApi";
 import { CsvExportButton } from "../components/CsvExportButton";
 import { LiveBadge } from "../components/Indicators";
+import { QueryBoundary } from "../components/QueryBoundary";
 import { Gauge } from "../components/charts/Gauge";
 import { Heatmap } from "../components/charts/Heatmap";
 import { DelayHistogram, OtpComparison } from "../components/metrics";
@@ -16,41 +17,26 @@ import { HistoryCharts } from "../components/HistoryCharts";
 import { TrendList } from "../components/TrendList";
 import { Table } from "../components/Table";
 import { WindowPicker } from "../components/WindowPicker";
-import { Card, EmptyState, Eyebrow, ErrorView, Loading, PageTitle, Row, SkeletonCard, StatTile, Screen } from "../components/ui";
+import { Card, EmptyState, Eyebrow, PageTitle, Row, SkeletonCard, StatTile, Screen } from "../components/ui";
 
+type Range = Required<DateRange>;
+
+/**
+ * The dashboard, as independently-loading panels.
+ *
+ * Each panel sits under its own boundary rather than one wrapping the screen,
+ * for two reasons. Siblings render in the same pass, so their queries go out
+ * together — where several `useSuspenseQuery` calls stacked in a single
+ * component would suspend on the first and serialise into a request waterfall.
+ * And a slow or failed panel then degrades only itself, instead of taking the
+ * whole dashboard down with it, which is what the old single `summary.error`
+ * gate did.
+ *
+ * Panels that share a query key (several read `systemSummary`) are deduplicated
+ * by TanStack into one request.
+ */
 export default function SystemOverview() {
   const { key: windowKey, range, select: selectWindow } = useWindow("30d");
-  const chartColors = useChartColors();
-
-  const summary = useApi(api.systemSummary(range));
-  const dow = useApi(api.systemHeatmap(range, "day_of_week"));
-  const hour = useApi(api.systemHeatmap(range, "hour_of_day"));
-  const history = useApi(api.systemHistory());
-  const lines = useApi(api.lines());
-  const health = useApi(api.health());
-  const trends = useApi(api.systemTrends());
-  const collectionStartDate = health.data?.collectionStartDate ?? null;
-
-  const ranked = useMemo(
-    () =>
-      (lines.data?.lines ?? [])
-        .filter((l) => l.njtOtpPercent !== null)
-        .sort((a, b) => (b.njtOtpPercent ?? 0) - (a.njtOtpPercent ?? 0)),
-    [lines.data],
-  );
-  const best = ranked[0];
-  const worst = ranked[ranked.length - 1];
-
-  const s = summary.data;
-  const measured = hasMeasuredOtp(s?.overall);
-  const thr = (sec: number) => s?.overall.thresholds.find((t) => t.thresholdSeconds === sec)?.otpPercent ?? null;
-  const njt = s?.njtOfficial?.otpPercent ?? null;
-  // Independent thresholds are only real once the live feed has recorded trips.
-  const strict5 = measured ? thr(300) : null;
-  const within15 = measured ? thr(900) : null;
-  // Prefer NJT's real figure for the hero; fall back to our measurement; else no data.
-  const headline = njt ?? within15;
-  const gap = njt !== null && strict5 !== null ? Math.round((njt - strict5) * 10) / 10 : null;
 
   return (
     <Screen>
@@ -60,123 +46,226 @@ export default function SystemOverview() {
         <CsvExportButton url={api.exportUrl("system", range)} />
       </Row>
 
-      {summary.loading ? <SkeletonCard lines={4} /> : null}
-      {summary.error ? <ErrorView message={summary.error} onRetry={summary.reload} /> : null}
+      <QueryBoundary pending={<SkeletonCard lines={4} />}>
+        <HeadlinePanel range={range} />
+      </QueryBoundary>
 
-      {s ? (
-        <>
-          {/* Hero: the headline NJT figure next to the stricter (measured) reality. */}
-          <Card>
-            <Eyebrow>How on-time is NJ Transit, really?</Eyebrow>
-            <View style={styles.hero}>
-              {headline !== null ? (
-                <Gauge value={headline} color={otpColorAt(chartColors, headline)} label={formatPercent(Math.round(headline))} caption={njt !== null ? "NJT official · 6 min" : "Measured · ≤15 min"} />
-              ) : (
-                <Gauge value={0} color={theme.colors.textFaint} label="N/A" caption="No data yet" />
-              )}
-              <View style={styles.heroText}>
-                <Text style={styles.heroLede}>
-                  NJT counts a train “on time” if it arrives within <Text style={styles.bold}>6 minutes</Text> of schedule. At stricter
-                  thresholds the picture changes — these are <Text style={styles.bold}>independently measured</Text> from the live feed:
-                </Text>
-                <View style={styles.heroBadgeRow}>
-                  <LiveBadge collectionStartDate={collectionStartDate} />
-                  <Text style={styles.heroBadgeNote}>independent OTP from GTFS-Realtime</Text>
-                </View>
-                {measured ? (
-                  <Row>
-                    {strict5 !== null ? <StatTile label="On time ≤5 min" value={formatPercent(strict5)} color={otpColor(strict5)} accent={otpColor(strict5)} /> : null}
-                    {within15 !== null ? <StatTile label="On time ≤15 min" value={formatPercent(within15)} color={otpColor(within15)} accent={otpColor(within15)} /> : null}
-                    {gap !== null ? <StatTile label="Gap vs NJT (6 min)" value={`${gap} pts`} color={theme.colors.bad} accent={theme.colors.bad} hint="stricter threshold = lower" /> : null}
-                  </Row>
-                ) : (
-                  <EmptyState title="No data yet" hint="Stricter-threshold on-time rates appear once the live feed has recorded trips." />
-                )}
-              </View>
-            </View>
-          </Card>
+      <QueryBoundary>
+        <OfficialFiguresPanel range={range} />
+      </QueryBoundary>
 
-          {/* NJT's own published monthly figures. In their own card, with the
-              period they cover in the subtitle: these are the only numbers on
-              this screen that are not current, and an unheaded row of tiles
-              followed by a floating caption made that read as if the live
-              measurements above were stale too. */}
-          <Card
-            title="NJ Transit's own published figures"
-            subtitle={officialPeriodLabel(s.officialCoverage) ?? "Not yet published for any month"}
-          >
-            <Row>
-              <StatTile label="Trips operated (NJT)" value={s.njtOfficial ? formatInt(s.njtOfficial.tripsOperated) : "—"} accent={theme.colors.accent} hint={s.njtOfficial ? `${s.njtOfficial.monthsCovered} mo published` : "no NJT data this period"} />
-              <StatTile label="Cancellations (NJT)" value={s.njtOfficial ? formatInt(s.njtOfficial.cancellations) : "—"} color={theme.colors.bad} />
-              <StatTile label="Cancellation rate (NJT)" value={s.njtOfficial ? formatPercent(s.njtOfficial.cancellationRatePercent) : "—"} />
-              {s.fleetMdbf ? <StatTile label="Fleet MDBF (NJT)" value={`${formatInt(s.fleetMdbf.avgMiles)} mi`} hint="miles between failures" /> : null}
-            </Row>
-          </Card>
+      <QueryBoundary>
+        <WhatChangedPanel />
+      </QueryBoundary>
 
-          <Card
-            title="What's changed"
-            subtitle={trends.data ? `Last ${trends.data.days} days vs the ${trends.data.days} before` : undefined}
-          >
-            {trends.data ? (
-              <TrendList trends={trends.data.lines} />
-            ) : trends.error ? (
-              <ErrorView message={trends.error} onRetry={trends.reload} />
-            ) : (
-              <Loading />
-            )}
-          </Card>
+      <QueryBoundary>
+        <BestAndWorstPanel />
+      </QueryBoundary>
 
-          {best && worst && best.id !== worst.id ? (
-            <Row>
-              <StatTile label="Most reliable line (NJT, latest)" value={`${best.shortName} · ${formatPercent(best.njtOtpPercent)}`} color={otpColor(best.njtOtpPercent ?? 0)} accent={otpColor(best.njtOtpPercent ?? 0)} hint={best.name} />
-              <StatTile label="Least reliable line (NJT, latest)" value={`${worst.shortName} · ${formatPercent(worst.njtOtpPercent)}`} color={otpColor(worst.njtOtpPercent ?? 0)} accent={otpColor(worst.njtOtpPercent ?? 0)} hint={worst.name} />
-            </Row>
-          ) : null}
+      <QueryBoundary>
+        <ThresholdPanel range={range} />
+      </QueryBoundary>
 
-          <Card title="On-time performance vs. NJT" subtitle="Independent OTP at strict thresholds against NJT's loose 6-minute figure" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
-            <OtpComparison thresholds={s.overall.thresholds} njtOfficial={s.njtOfficial} measured={measured} />
-            {measured ? (
-              <Row>
-                <StatTile label="Median delay" value={formatDelayShort(s.overall.medianDelaySeconds)} />
-                <StatTile label="P90 delay" value={formatDelayShort(s.overall.p90DelaySeconds)} color={theme.colors.warn} accent={theme.colors.warn} />
-                <StatTile label="Avg delay" value={formatDelayShort(s.overall.avgDelaySeconds)} />
-              </Row>
-            ) : null}
-          </Card>
+      <QueryBoundary>
+        <DistributionPanel range={range} />
+      </QueryBoundary>
 
-          <Card title="Delay distribution" subtitle="Trips by terminal lateness — the long tail a single percentage hides" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
-            <DelayHistogram distribution={s.overall.delayDistribution} />
-          </Card>
+      <QueryBoundary>
+        <CancellationCausePanel range={range} />
+      </QueryBoundary>
 
-          {s.njtCancellations && s.njtCancellations.byCause.length > 0 ? (
-            <Card title="Why NJT cancels trains" subtitle={`${formatInt(s.njtCancellations.total)} cancellations over ${s.njtCancellations.monthsCovered} month(s), by NJT's own cause category`}>
-              <Table
-                columns={[
-                  { key: "cause", label: "Cause", flex: 2.2 },
-                  { key: "count", label: "Count", align: "right" },
-                  { key: "pct", label: "Share", align: "right" },
-                ]}
-                rows={s.njtCancellations.byCause.slice(0, 8).map((cause) => ({ cause: cause.cause, count: cause.count, pct: `${cause.percent}%` }))}
-              />
-            </Card>
-          ) : null}
-        </>
-      ) : null}
+      <QueryBoundary>
+        <HeatmapPanel range={range} type="day_of_week" title="Average delay by day of week" />
+      </QueryBoundary>
 
-      <Card title="Average delay by day of week" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
-        {!dow.data ? <Loading /> : hasHeatmapData(dow.data.buckets) ? <Heatmap cells={dow.data.buckets.map((b) => ({ label: b.label, value: b.avgDelaySeconds, observations: b.observations }))} /> : <EmptyState title="No data yet" hint="Day-of-week delays appear once the live feed has recorded trips." />}
-      </Card>
+      <QueryBoundary>
+        <HeatmapPanel range={range} type="hour_of_day" title="Average delay by hour of day" />
+      </QueryBoundary>
 
-      <Card title="Average delay by hour of day" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
-        {!hour.data ? <Loading /> : hasHeatmapData(hour.data.buckets) ? <Heatmap cells={hour.data.buckets.map((b) => ({ label: b.label.replace(":00", ""), value: b.avgDelaySeconds, observations: b.observations }))} /> : <EmptyState title="No data yet" hint="Hour-of-day delays appear once the live feed has recorded trips." />}
-      </Card>
-
-      {history.data && history.data.annual.length > 0 ? (
-        <Card title="NJT on-time history (system)" subtitle="Real published figures across every year on record">
-          <HistoryCharts history={history.data} />
-        </Card>
-      ) : null}
+      <QueryBoundary>
+        <HistoryPanel />
+      </QueryBoundary>
     </Screen>
+  );
+}
+
+/** Collection start, for the LIVE badge. Its own query, deduped across panels. */
+function useCollectionStart(): string | null {
+  return useApi(api.health()).data.collectionStartDate;
+}
+
+function HeadlinePanel({ range }: { range: Range }) {
+  const chartColors = useChartColors();
+  const { data: s } = useApi(api.systemSummary(range));
+  const collectionStartDate = useCollectionStart();
+
+  const measured = hasMeasuredOtp(s.overall);
+  const thr = (sec: number) => s.overall.thresholds.find((t) => t.thresholdSeconds === sec)?.otpPercent ?? null;
+  const njt = s.njtOfficial?.otpPercent ?? null;
+  const strict5 = measured ? thr(300) : null;
+  const within15 = measured ? thr(900) : null;
+  const headline = njt ?? within15;
+  const gap = njt !== null && strict5 !== null ? Math.round((njt - strict5) * 10) / 10 : null;
+
+  return (
+    <Card>
+      <Eyebrow>How on-time is NJ Transit, really?</Eyebrow>
+      <View style={styles.hero}>
+        {headline !== null ? (
+          <Gauge value={headline} color={otpColorAt(chartColors, headline)} label={formatPercent(Math.round(headline))} caption={njt !== null ? "NJT official · 6 min" : "Measured · ≤15 min"} />
+        ) : (
+          <Gauge value={0} color={theme.colors.textFaint} label="N/A" caption="No data yet" />
+        )}
+        <View style={styles.heroText}>
+          <Text style={styles.heroLede}>
+            NJT counts a train “on time” if it arrives within <Text style={styles.bold}>6 minutes</Text> of schedule. At stricter
+            thresholds the picture changes — these are <Text style={styles.bold}>independently measured</Text> from the live feed:
+          </Text>
+          <View style={styles.heroBadgeRow}>
+            <LiveBadge collectionStartDate={collectionStartDate} />
+            <Text style={styles.heroBadgeNote}>independent OTP from GTFS-Realtime</Text>
+          </View>
+          {measured ? (
+            <Row>
+              {strict5 !== null ? <StatTile label="On time ≤5 min" value={formatPercent(strict5)} color={otpColor(strict5)} accent={otpColor(strict5)} /> : null}
+              {within15 !== null ? <StatTile label="On time ≤15 min" value={formatPercent(within15)} color={otpColor(within15)} accent={otpColor(within15)} /> : null}
+              {gap !== null ? <StatTile label="Gap vs NJT (6 min)" value={`${gap} pts`} color={theme.colors.bad} accent={theme.colors.bad} hint="stricter threshold = lower" /> : null}
+            </Row>
+          ) : (
+            <EmptyState title="No data yet" hint="Stricter-threshold on-time rates appear once the live feed has recorded trips." />
+          )}
+        </View>
+      </View>
+    </Card>
+  );
+}
+
+/**
+ * NJT's own published monthly figures, in their own card with the period they
+ * cover in the subtitle: these are the only numbers on this screen that are not
+ * current, and an unheaded row of tiles followed by a floating caption made
+ * that read as if the live measurements above were stale too.
+ */
+function OfficialFiguresPanel({ range }: { range: Range }) {
+  const { data: s } = useApi(api.systemSummary(range));
+  return (
+    <Card
+      title="NJ Transit's own published figures"
+      subtitle={officialPeriodLabel(s.officialCoverage) ?? "Not yet published for any month"}
+    >
+      <Row>
+        <StatTile label="Trips operated (NJT)" value={s.njtOfficial ? formatInt(s.njtOfficial.tripsOperated) : "—"} accent={theme.colors.accent} hint={s.njtOfficial ? `${s.njtOfficial.monthsCovered} mo published` : "no NJT data this period"} />
+        <StatTile label="Cancellations (NJT)" value={s.njtOfficial ? formatInt(s.njtOfficial.cancellations) : "—"} color={theme.colors.bad} />
+        <StatTile label="Cancellation rate (NJT)" value={s.njtOfficial ? formatPercent(s.njtOfficial.cancellationRatePercent) : "—"} />
+        {s.fleetMdbf ? <StatTile label="Fleet MDBF (NJT)" value={`${formatInt(s.fleetMdbf.avgMiles)} mi`} hint="miles between failures" /> : null}
+      </Row>
+    </Card>
+  );
+}
+
+function WhatChangedPanel() {
+  const { data } = useApi(api.systemTrends());
+  return (
+    <Card title="What's changed" subtitle={`Last ${data.days} days vs the ${data.days} before`}>
+      <TrendList trends={data.lines} />
+    </Card>
+  );
+}
+
+function BestAndWorstPanel() {
+  const { data } = useApi(api.lines());
+  const ranked = useMemo(
+    () => data.lines.filter((l) => l.njtOtpPercent !== null).sort((a, b) => (b.njtOtpPercent ?? 0) - (a.njtOtpPercent ?? 0)),
+    [data],
+  );
+  const best = ranked[0];
+  const worst = ranked[ranked.length - 1];
+  if (!best || !worst || best.id === worst.id) return null;
+
+  return (
+    <Row>
+      <StatTile label="Most reliable line (NJT, latest)" value={`${best.shortName} · ${formatPercent(best.njtOtpPercent)}`} color={otpColor(best.njtOtpPercent ?? 0)} accent={otpColor(best.njtOtpPercent ?? 0)} hint={best.name} />
+      <StatTile label="Least reliable line (NJT, latest)" value={`${worst.shortName} · ${formatPercent(worst.njtOtpPercent)}`} color={otpColor(worst.njtOtpPercent ?? 0)} accent={otpColor(worst.njtOtpPercent ?? 0)} hint={worst.name} />
+    </Row>
+  );
+}
+
+function ThresholdPanel({ range }: { range: Range }) {
+  const { data: s } = useApi(api.systemSummary(range));
+  const collectionStartDate = useCollectionStart();
+  const measured = hasMeasuredOtp(s.overall);
+
+  return (
+    <Card title="On-time performance vs. NJT" subtitle="Independent OTP at strict thresholds against NJT's loose 6-minute figure" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
+      <OtpComparison thresholds={s.overall.thresholds} njtOfficial={s.njtOfficial} measured={measured} />
+      {measured ? (
+        <Row>
+          <StatTile label="Median delay" value={formatDelayShort(s.overall.medianDelaySeconds)} />
+          <StatTile label="P90 delay" value={formatDelayShort(s.overall.p90DelaySeconds)} color={theme.colors.warn} accent={theme.colors.warn} />
+          <StatTile label="Avg delay" value={formatDelayShort(s.overall.avgDelaySeconds)} />
+        </Row>
+      ) : null}
+    </Card>
+  );
+}
+
+function DistributionPanel({ range }: { range: Range }) {
+  const { data: s } = useApi(api.systemSummary(range));
+  const collectionStartDate = useCollectionStart();
+  return (
+    <Card title="Delay distribution" subtitle="Trips by terminal lateness — the long tail a single percentage hides" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
+      <DelayHistogram distribution={s.overall.delayDistribution} />
+    </Card>
+  );
+}
+
+function CancellationCausePanel({ range }: { range: Range }) {
+  const { data: s } = useApi(api.systemSummary(range));
+  const causes = s.njtCancellations;
+  if (!causes || causes.byCause.length === 0) return null;
+
+  return (
+    <Card title="Why NJT cancels trains" subtitle={`${formatInt(causes.total)} cancellations over ${causes.monthsCovered} month(s), by NJT's own cause category`}>
+      <Table
+        columns={[
+          { key: "cause", label: "Cause", flex: 2.2 },
+          { key: "count", label: "Count", align: "right" },
+          { key: "pct", label: "Share", align: "right" },
+        ]}
+        rows={causes.byCause.slice(0, 8).map((cause) => ({ cause: cause.cause, count: cause.count, pct: `${cause.percent}%` }))}
+      />
+    </Card>
+  );
+}
+
+function HeatmapPanel({ range, type, title }: { range: Range; type: "day_of_week" | "hour_of_day"; title: string }) {
+  const { data } = useApi(api.systemHeatmap(range, type));
+  const collectionStartDate = useCollectionStart();
+
+  return (
+    <Card title={title} right={<LiveBadge collectionStartDate={collectionStartDate} />}>
+      {hasHeatmapData(data.buckets) ? (
+        <Heatmap
+          cells={data.buckets.map((b) => ({
+            label: type === "hour_of_day" ? b.label.replace(":00", "") : b.label,
+            value: b.avgDelaySeconds,
+            observations: b.observations,
+          }))}
+        />
+      ) : (
+        <EmptyState title="No data yet" hint="These appear once the live feed has recorded trips." />
+      )}
+    </Card>
+  );
+}
+
+function HistoryPanel() {
+  const { data } = useApi(api.systemHistory());
+  if (data.annual.length === 0) return null;
+  return (
+    <Card title="NJT on-time history (system)" subtitle="Real published figures across every year on record">
+      <HistoryCharts history={data} />
+    </Card>
   );
 }
 
