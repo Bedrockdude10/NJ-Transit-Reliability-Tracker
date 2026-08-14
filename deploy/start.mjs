@@ -98,10 +98,29 @@ process.on("SIGTERM", () => shutdown(0));
 process.on("SIGINT", () => shutdown(0));
 
 /**
+ * How often to drain the snapshot archive to object storage.
+ *
+ * Hourly, because the volume fills at 130 MB/day and a copy that runs often is
+ * what keeps it flat — the alternative is a large periodic job on a small
+ * machine, which is what caused an outage. Each run moves the hours that have
+ * closed since the last one, so a missed run costs nothing but a bigger next one.
+ */
+const COPY_INTERVAL_MS = 60 * 60 * 1000;
+
+/** Built by the Dockerfile; absent in a plain checkout. */
+const COPY_BUNDLE = "dist/archive-copy.mjs";
+
+/**
+ * Leave the last two hours in SQLite. Recent snapshots are the ones a replay is
+ * most likely to want, and the current hour is still being written to.
+ */
+const COPY_RETAIN_HOURS = 2;
+
+/**
  * Replication needs credentials *and* an explicit opt-in.
  *
  * These were one switch, which was wrong in a way that showed up immediately:
- * the same `NJT_R2_BUCKET` that lets `sweep:archive` reach object storage also
+ * the same `NJT_R2_BUCKET` that lets `archive:copy` reach object storage also
  * started Litestream, so there was no way to follow the documented order —
  * shrink the database first, replicate second. Enabling both at once is exactly
  * what starved the API into an outage, replicating 3.8 GB on a 512 MB box.
@@ -166,8 +185,58 @@ if (REPLICATION_CONFIGURED && !hasLitestream()) {
       : "replication off — set NJT_R2_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY, then NJT_REPLICATION_ENABLED=true",
   );
 }
+/**
+ * Run the archive copy on a timer, never two at once.
+ *
+ * Deliberately not a supervised child: this is a job that finishes, and the
+ * restart policy is about processes that are supposed to stay up. A run that
+ * fails is logged and retried at the next tick — the copy is idempotent and
+ * deletes nothing it has not confirmed, so a failed run leaves the archive
+ * intact rather than half-moved.
+ *
+ * It has to live inside this container: a Fly volume attaches to exactly one
+ * machine, so nothing else can read the database.
+ */
+function scheduleArchiveCopy() {
+  let running = false;
+  const run = () => {
+    if (running || shuttingDown) return;
+    running = true;
+    // The precompiled bundle, not `npm run archive:copy`: that would add an npm
+    // process and tsx's compiler to a machine that has ~173 MB to spare. Falls
+    // back to the source when the bundle is absent, so this works in a checkout.
+    const [bin, args] = existsSync(COPY_BUNDLE)
+      ? ["node", [COPY_BUNDLE]]
+      : ["npm", ["run", "archive:copy", "--"]];
+    const child = spawn(bin, [...args, "--older-than-hours", String(COPY_RETAIN_HOURS)], {
+      stdio: "inherit",
+      env: process.env,
+    });
+    child.on("error", (error) => {
+      running = false;
+      log("archive copy failed to start", { error: error.message });
+    });
+    child.on("exit", (code) => {
+      running = false;
+      if (code !== 0) log("archive copy exited non-zero; will retry next tick", { code });
+    });
+  };
+
+  setInterval(run, COPY_INTERVAL_MS).unref();
+  // Not at boot: let the API come up and pass its health check first.
+  setTimeout(run, 5 * 60 * 1000).unref();
+  log("archive copy scheduled", { everyMinutes: COPY_INTERVAL_MS / 60_000, retainHours: COPY_RETAIN_HOURS });
+}
+
+if (HAS_R2 && process.env.NJT_ARCHIVE_COPY_ENABLED === "true") {
+  scheduleArchiveCopy();
+} else if (HAS_R2) {
+  log("archive copy off — set NJT_ARCHIVE_COPY_ENABLED=true to drain snapshots hourly");
+}
+
 log("supervisor ready", {
   pipeline: Boolean(process.env.NJT_RAIL_DATA_USERNAME),
   objectStorage: HAS_R2,
   replication: REPLICATION_CONFIGURED,
+  archiveCopy: HAS_R2 && process.env.NJT_ARCHIVE_COPY_ENABLED === "true",
 });

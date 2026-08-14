@@ -1,19 +1,18 @@
 import { createRepositories, openDatabase } from "@njt/db";
 import { consoleLogger } from "@njt/shared/logger";
+import { copySnapshots } from "./copy-snapshots";
 import type { ObjectStore } from "./export-events";
-import { sweepSnapshots } from "./sweep-snapshots";
 
 /**
- * CLI: drain the raw snapshot archive out of SQLite into object storage.
+ * CLI: move raw snapshots out of SQLite and into object storage.
  *
- *   npm run sweep:archive                             # days older than 2
- *   npm run sweep:archive -- --older-than 7
- *   npm run sweep:archive -- --older-than 7 --max-days 2
- *   npm run sweep:archive -- --memory-limit 48         # tighter box
+ *   npm run archive:copy                          # hours older than 48
+ *   npm run archive:copy -- --older-than-hours 168 --max-hours 24
+ *   npm run archive:copy -- --keep                # upload, delete nothing
  *
- * Whole UTC days only, hash-verified before anything is deleted, and no VACUUM —
- * the file stops growing rather than shrinking. Safe to run on a schedule and
- * safe to rerun: a day already swept has nothing left to do.
+ * Whole closed hours only, each object verified by the store against its
+ * `Content-MD5` before anything is deleted. Safe to rerun: an hour already copied
+ * has no rows left to find.
  */
 function required(name: string): string {
   const value = process.env[name];
@@ -42,20 +41,17 @@ const store: ObjectStore = {
 const dbPath = process.env.NJT_DB_PATH ?? "./data/njt.sqlite";
 const db = openDatabase(dbPath);
 // Runs against a live database the pipeline is writing to: wait for the lock
-// rather than failing, and yield between delete batches so polls get a turn.
+// rather than failing.
 db.exec("PRAGMA busy_timeout = 60000;");
-const sleep = (ms: number) => Atomics.wait(new Int32Array(new SharedArrayBuffer(4)), 0, 0, ms);
 
-const swept = await sweepSnapshots({
-  dbPath,
+const copied = await copySnapshots({
   repos: createRepositories(db),
   store,
-  olderThanDays: Number(flag("older-than") ?? process.env.NJT_ARCHIVE_RETAIN_DAYS ?? 2),
-  maxDays: flag("max-days") ? Number(flag("max-days")) : undefined,
-  memoryLimitMb: flag("memory-limit") ? Number(flag("memory-limit")) : undefined,
-  betweenBatches: () => sleep(Number(process.env.NJT_SWEEP_PAUSE_MS ?? 100)),
+  olderThanHours: Number(flag("older-than-hours") ?? process.env.NJT_ARCHIVE_RETAIN_HOURS ?? 48),
+  maxHours: flag("max-hours") ? Number(flag("max-hours")) : undefined,
+  deleteAfterCopy: !process.argv.includes("--keep"),
   log: consoleLogger,
 });
 db.close();
 
-if (swept.length === 0) consoleLogger.info("nothing eligible to sweep");
+if (copied.length === 0) consoleLogger.info("nothing eligible to copy");

@@ -38,6 +38,17 @@ COPY pipeline ./pipeline
 COPY api ./api
 COPY deploy ./deploy
 
+# Precompile the archive copy to plain JavaScript.
+#
+# It is the one job that runs *while* the API and the pipeline are running, on a
+# machine with ~173 MB to spare, so its footprint is the constraint. Under tsx the
+# process is ~155 MB, ~25 MB of which is the runtime TypeScript compiler, plus
+# another ~20 MB for the `npm run` wrapper — overhead that buys nothing here
+# because the source never changes after the image is built.
+RUN node_modules/.bin/esbuild pipeline/src/archive/copy-cli.ts \
+  --bundle --platform=node --format=esm --external:@aws-sdk/* \
+  --outfile=dist/archive-copy.mjs
+
 # Bake DuckDB's extensions into the image.
 #
 # `sweep:archive` and `export:events` need httpfs (S3) and aws (credential

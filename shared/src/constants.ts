@@ -1,5 +1,7 @@
 /** Project-wide constants. */
 
+import type { FeedType } from "./domain";
+
 /** IANA timezone for all NJT service. Used for service-date and hour-of-day math. */
 export const NJT_TIMEZONE = "America/New_York";
 
@@ -121,3 +123,19 @@ export const RATE_LIMITS = {
 export const DISCLAIMER_TEXT =
   "Data sourced from NJ Transit's public feeds. Independent of NJT official reporting. " +
   "Not guaranteed accurate, complete, or real-time.";
+
+/**
+ * Every GTFS-RT feed the pipeline records, in one place.
+ *
+ * Anything walking the archive has to visit each feed in turn — the snapshot
+ * index is keyed `(feed_type, …)`, so per-feed paging is what keeps a walk an
+ * ordered index scan rather than a sort. The assertion below fails to compile if
+ * a new {@link FeedType} is added without being listed here, which is the point:
+ * a forgotten feed would look like an empty one, and the archive copy would
+ * conclude it had moved everything.
+ */
+export const FEED_TYPES = ["TripUpdates", "VehiclePositions", "ServiceAlerts"] as const;
+
+type UnlistedFeedType = Exclude<FeedType, (typeof FEED_TYPES)[number]>;
+const _everyFeedTypeIsListed: UnlistedFeedType extends never ? true : never = true;
+void _everyFeedTypeIsListed;

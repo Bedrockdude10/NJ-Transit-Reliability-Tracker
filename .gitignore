@@ -222,3 +222,4 @@ web-build/
 /gtfs-cache/
 # agent worktrees (isolation)
 .claude/worktrees/
+dist/

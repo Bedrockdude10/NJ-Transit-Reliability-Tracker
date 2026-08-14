@@ -15,6 +15,7 @@
     "start": "tsx src/main.ts"
   },
   "dependencies": {
+    "@aws-sdk/client-s3": "^3.1111.0",
     "@njt/db": "*",
     "@njt/shared": "*",
     "fast-xml-parser": "^4.5.1",
