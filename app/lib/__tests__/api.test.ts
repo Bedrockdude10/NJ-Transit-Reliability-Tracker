@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
-import { api, buildUrl } from "../api";
+import type { LineSummaryResponse } from "@njt/shared";
+import { ApiContractError, api, buildUrl } from "../api";
 
 describe("buildUrl", () => {
   it("appends defined params and drops empty ones", () => {
@@ -10,20 +11,75 @@ describe("buildUrl", () => {
   });
 });
 
+/**
+ * A response the real API could actually return. The previous fixture here was
+ * `{ lines: [] }` — a shape `/lines/:id/summary` has never produced — and the
+ * test passed regardless, because a type assertion cannot check what arrives
+ * over the wire. Adding schema validation is what surfaced it.
+ */
+const emptyOtp = {
+  tripsOperated: 0,
+  tripsCancelled: 0,
+  cancellationRatePercent: 0,
+  avgDelaySeconds: 0,
+  medianDelaySeconds: 0,
+  p90DelaySeconds: 0,
+  thresholds: [],
+  delayDistribution: [],
+};
+
+const lineSummary: LineSummaryResponse = {
+  lineId: "northeast-corridor",
+  name: "Northeast Corridor Line",
+  from: "2025-07-01",
+  to: "2025-07-15",
+  overall: emptyOtp,
+  inbound: emptyOtp,
+  outbound: emptyOtp,
+  njtOfficial: null,
+  njtCancellations: null,
+  officialCoverage: null,
+};
+
 describe("api client", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("requests the right URL and returns parsed JSON", async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => ({ lines: [] }) });
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, json: async () => lineSummary });
     vi.stubGlobal("fetch", fetchMock);
     const result = await api.lineSummary("NE", { from: "2025-07-01", to: "2025-07-15" });
     expect(fetchMock).toHaveBeenCalledWith("http://localhost:4000/lines/NE/summary?from=2025-07-01&to=2025-07-15");
-    expect(result).toEqual({ lines: [] });
+    expect(result).toEqual(lineSummary);
   });
 
   it("throws on a non-OK response", async () => {
     vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: false, status: 500 }));
     await expect(api.health()).rejects.toThrow("API 500");
+  });
+
+  it("rejects a response that does not match the contract", async () => {
+    // The deploy-skew case: the API drops or renames a field the app expects.
+    const { name: _renamed, ...drifted } = lineSummary;
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({ ok: true, json: async () => drifted }));
+    await expect(api.lineSummary("NE", {})).rejects.toThrow(ApiContractError);
+  });
+
+  it("names the field that drifted", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...lineSummary, name: 42 }),
+    }));
+    // Without the field name, a skew in production is a guessing game.
+    await expect(api.lineSummary("NE", {})).rejects.toThrow(/"name"/);
+  });
+
+  it("tolerates a field the API has added", async () => {
+    // Additive changes must not break an older app: zod strips unknown keys.
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValue({
+      ok: true,
+      json: async () => ({ ...lineSummary, somethingNew: "ignored" }),
+    }));
+    await expect(api.lineSummary("NE", {})).resolves.toEqual(lineSummary);
   });
 
   it("builds a CSV export URL", () => {

@@ -4,6 +4,14 @@ export * from "./constants";
 export * from "./domain";
 export * from "./aggregates";
 export * from "./api";
+// Runtime validators for the DTOs above. Exported from the index deliberately:
+// the app is the consumer that needs them, since it is the side that receives
+// a response from a separately-deployed API.
+export * from "./api.zod";
+// Runtime validators for the DTOs above. Exported from the index deliberately:
+// the app is the consumer that needs them, since it is the side that receives
+// a response from a separately-deployed API.
+
 export * from "./lines";
 export * from "./geo";
 export * from "./time";

@@ -53,7 +53,8 @@ Pipeline tick: `fetch (FeedClient) → parse → repos.events.record → aggrega
 npm install                      # from repo root
 npm test                         # Vitest: shared, db, pipeline, api, app/lib
 npm test --workspace app         # jest-expo component tests (.test.tsx only)
-npm run typecheck                # strict tsc for the 4 node packages
+npm run typecheck                # strict tsc for the 4 node packages (also proves api.zod.ts matches api.ts)
+npm run generate:contract        # regenerate shared/src/api.zod.ts from api.ts (ts-to-zod)
 npm run typecheck --workspace app
 npm run import:gtfs              # real GTFS static network (stops/coords/lines/colors/trips) from a local dir
 npm run import:official          # real NJT monthly OTP + cancellations + MDBF + light rail from CSVs in ./data (keyless)
@@ -79,7 +80,8 @@ See [DEPLOY.md](DEPLOY.md). Tier 1: pipeline + API ship as **one container** (`D
 - **GTFS static** maps GTFS `route_short_name` → canonical catalog line, collapses variant routes (NJCL + NJCLL → one; Main/Bergen/Port Jervis → `main-bergen`), keeps real colors + coordinates, and excludes light rail (`route_type` 0). The route mapping is shared (`pipeline/src/gtfs-static/route-mapping.ts`, accepts rail `route_type` **2 or 113**) between two ingest paths: the `import:gtfs` CLI (`gtfs/import-static.ts`, from a local dir) and the pipeline's **startup getGTFS sync** (`gtfs-static/parse.ts` + `load.ts`, fetched from NJT's own API via the token). **Prefer getGTFS** — its numeric `route_id`/`stop_id`/`trip_id` match the real-time feed, so RT trips resolve to real stations/lines; a third-party mirror's ids won't. It becomes the current GTFS version, so the app runs on the real network.
 - **No synthetic data.** All measurement (OTP, delays, station stats, connections) is derived from the live GTFS-RT feed. There is no seed — the independent metrics are honestly empty/sparse until real data accrues. `deploy/purge-synthetic.mjs` clears any pre-API synthetic data left in a database (keeps `gtfs_*` + `official_*`).
 - **Map:** `/map` returns real geometry (stop coords + per-line stop paths), colors, and OTP. `SystemMap` projects lat/lon (cosine-latitude correction) over the union of stations and `NJ_STATE_OUTLINE` (`shared/src/geo.ts`, a coarse silhouette) and colors lines by reliability or NJT color.
-- **The contract is `@njt/shared`** — all DTOs (`api.ts`), domain types (`domain.ts`), constants, and pure math live there; it's the single source of truth and the only thing `app` may import. Add a type once, here.
+- **The contract is `@njt/shared`** — all DTOs (`api.ts`), domain types (`domain.ts`), constants, and pure math live there; it's the single source of truth and the only thing `app` may import. Add a type once, here. `api.zod.ts` is its **generated** runtime shadow (`npm run generate:contract`) — never hand-edit it; the app validates every response against it, because api and app deploy independently and can drift.
+- **Time:** `time.ts` is `Intl`-only and app-safe; the DST-sensitive local-parts→instant direction lives in `time-zoned.ts` behind `@njt/shared/zoned` so the Temporal polyfill stays out of the app bundle (`shared/test/bundle-boundary.test.ts` enforces it). GTFS stop times anchor at **noon−12h**, per spec, not local midnight.
 - **Pipeline I/O is injected** (`Clock`, `FeedClient`, repos) so logic is unit-tested with fakes; HTTP/protobuf parsing lives at the edges.
 - **Frontend logic** lives in `app/lib/` (pure, no React Native — tested by Vitest). Screens/components are thin wrappers; charts render pure geometry from `app/lib/charts.ts`.
 
