@@ -38,6 +38,24 @@ COPY pipeline ./pipeline
 COPY api ./api
 COPY deploy ./deploy
 
+# Bake DuckDB's extensions into the image.
+#
+# `sweep:archive` and `export:events` need httpfs (S3) and aws (credential
+# chain). DuckDB fetches extensions on first use by default, which failed on this
+# slim image with an SSL CA error — and a maintenance job that needs the network
+# to reach the network is a bad dependency regardless. ca-certificates is
+# installed for the build-time download, then the extensions are resolved once
+# here so nothing is fetched at runtime.
+RUN apt-get update \
+  && apt-get install -y --no-install-recommends ca-certificates \
+  && rm -rf /var/lib/apt/lists/* \
+  && node -e "const {DuckDBInstance}=require('@duckdb/node-api'); \
+       DuckDBInstance.create(':memory:') \
+         .then(i => i.connect()) \
+         .then(c => c.run('INSTALL httpfs; INSTALL aws;')) \
+         .then(() => console.log('duckdb extensions installed')) \
+         .catch(e => { console.error(e); process.exit(1); });"
+
 ENV NODE_ENV=production
 ENV NJT_DB_PATH=/data/njt.sqlite
 ENV PORT=4000
