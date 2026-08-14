@@ -1,4 +1,5 @@
 import { createRepositories, openDatabase, type Repositories } from "@njt/db";
+import { silentLogger } from "@njt/shared/logger";
 import type { LineTrendResponse } from "@njt/shared";
 import type { Hono } from "hono";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -34,7 +35,7 @@ function seedDays(): { app: Hono; repos: Repositories } {
       sumDelaySeconds: 0,
     });
   }
-  return { app: createApp(repos), repos };
+  return { app: createApp(repos, silentLogger), repos };
 }
 
 describe("GET /lines/:id/trend?interval=weekly", () => {

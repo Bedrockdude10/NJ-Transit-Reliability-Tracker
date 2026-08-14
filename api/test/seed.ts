@@ -1,4 +1,5 @@
 import { createRepositories, openDatabase, type Repositories } from "@njt/db";
+import { silentLogger } from "@njt/shared/logger";
 import type { Hono } from "hono";
 import { createApp } from "../src/app";
 
@@ -99,5 +100,5 @@ export function seededApp(): { app: Hono; repos: Repositories } {
   repos.health.ensureCollectionStart("2025-07-01");
   repos.health.recordSuccess("TripUpdates", SEEN_MS);
 
-  return { app: createApp(repos), repos };
+  return { app: createApp(repos, silentLogger), repos };
 }

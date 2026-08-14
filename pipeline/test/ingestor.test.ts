@@ -5,7 +5,7 @@ import type { Clock } from "../src/clock";
 import { loadConfig } from "../src/config";
 import type { FeedClient } from "../src/feeds";
 import { Ingestor } from "../src/ingestor";
-import { silentLogger } from "../src/logger";
+import { silentLogger } from "@njt/shared/logger";
 import { RateLimiter } from "../src/rate-limiter";
 
 const { transit_realtime: tr } = GtfsRealtimeBindings;

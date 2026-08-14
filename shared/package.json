@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Domain types, constants, and pure utilities shared across the NJT tracker. No I/O — safe to bundle into the React Native app.",
+  "description": "Domain types, constants, and pure utilities shared across the NJT tracker. No I/O \u2014 safe to bundle into the React Native app.",
   "exports": {
     ".": {
       "types": "./src/index.ts",
@@ -12,6 +12,10 @@
     "./zoned": {
       "types": "./src/time-zoned.ts",
       "default": "./src/time-zoned.ts"
+    },
+    "./logger": {
+      "types": "./src/logger.ts",
+      "default": "./src/logger.ts"
     }
   },
   "types": "./src/index.ts",

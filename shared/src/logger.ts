@@ -1,4 +1,12 @@
-/** Structured logger. JSON lines so pipeline output is greppable in prod. */
+/**
+ * Structured logger. JSON lines, so production output is greppable and a Fly
+ * log drain can filter on fields rather than on substrings.
+ *
+ * Lives in `shared` because both the pipeline and the API need it and neither
+ * may import the other, and is reached through `@njt/shared/logger` rather than
+ * the package index so it stays out of the app bundle — the app has no use for
+ * a server logger. Same reasoning as `@njt/shared/zoned`.
+ */
 export interface Logger {
   info(message: string, meta?: Record<string, unknown>): void;
   warn(message: string, meta?: Record<string, unknown>): void;

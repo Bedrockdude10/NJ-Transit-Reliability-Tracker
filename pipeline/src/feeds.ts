@@ -1,6 +1,6 @@
 import { type Clock, systemClock } from "./clock";
 import type { PipelineConfig } from "./config";
-import { type Logger, consoleLogger } from "./logger";
+import { type Logger, consoleLogger } from "@njt/shared/logger";
 
 /**
  * Fetches raw bytes from the NJT real-time feeds. The interface is what the

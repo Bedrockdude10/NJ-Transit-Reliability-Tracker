@@ -2,7 +2,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { Clock } from "../src/clock";
 import { loadConfig, type PipelineConfig } from "../src/config";
 import { HttpFeedClient, TokenManager, type TokenStore } from "../src/feeds";
-import { silentLogger } from "../src/logger";
+import { silentLogger } from "@njt/shared/logger";
 
 const BASE = "https://testraildata.njtransit.com/api/GTFSRT";
 

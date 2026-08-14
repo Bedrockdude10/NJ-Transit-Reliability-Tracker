@@ -1,4 +1,5 @@
 import { createRepositories, openDatabase, type Repositories } from "@njt/db";
+import { silentLogger } from "@njt/shared/logger";
 import type { StationDeparturesResponse, TripStopEvent } from "@njt/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
@@ -50,7 +51,7 @@ describe("GET /stations/:stopId/departures", () => {
       { tripId: "T1", routeId: "NE", directionId: 1, tripHeadsign: "New York Penn" },
       { tripId: "T2", routeId: "NE", directionId: 1, tripHeadsign: "Trenton" },
     ]);
-    app = createApp(repos);
+    app = createApp(repos, silentLogger);
   });
 
   const board = async (query = "") => {

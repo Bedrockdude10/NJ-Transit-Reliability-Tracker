@@ -8,7 +8,7 @@ import {
   TokenManager,
   type TokenStore,
 } from "../src/feeds";
-import { silentLogger } from "../src/logger";
+import { silentLogger } from "@njt/shared/logger";
 
 /**
  * Every outbound NJT call had no deadline, which made a stalled feed

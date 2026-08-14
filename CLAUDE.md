@@ -86,6 +86,9 @@ See [DEPLOY.md](DEPLOY.md). Tier 1: pipeline + API ship as **one container** (`D
 - **The contract is `@njt/shared`** — all DTOs (`api.ts`), domain types (`domain.ts`), constants, and pure math live there; it's the single source of truth and the only thing `app` may import. Add a type once, here. `api.zod.ts` is its **generated** runtime shadow (`npm run generate:contract`) — never hand-edit it; the app validates every response against it, because api and app deploy independently and can drift.
 - **Time:** `time.ts` is `Intl`-only and app-safe; the DST-sensitive local-parts→instant direction lives in `time-zoned.ts` behind `@njt/shared/zoned` so the Temporal polyfill stays out of the app bundle (`shared/test/bundle-boundary.test.ts` enforces it). GTFS stop times anchor at **noon−12h**, per spec, not local midnight.
 - **Pipeline I/O is injected** (`Clock`, `FeedClient`, repos) so logic is unit-tested with fakes; HTTP/protobuf parsing lives at the edges.
+- **Every outbound NJT call has a deadline** (`FEED_TIMEOUT_MS`, `GTFS_STATIC_TIMEOUT_MS` in `pipeline/src/feeds.ts`). Without one a hung connection stalls ingest silently — `/health` keeps returning 200, since the API is a separate process.
+- **Logging is `@njt/shared/logger`** (JSON lines, server-only subpath so it stays out of the app bundle). Inject it into `createApp(repos, log)`; tests pass `silentLogger`. `console.log` is for CLI scripts only.
+- **The supervisor restarts a dead child** rather than tearing the machine down (`deploy/restart-policy.mjs`, tested). Only a crash loop escalates. The two processes can't be split into separate Fly machines — a volume attaches to one machine and they share the SQLite file.
 - **Frontend logic** lives in `app/lib/` (pure, no React Native — tested by Vitest). Screens/components are thin wrappers; charts render pure geometry from `app/lib/charts.ts`.
 
 ## Testing notes

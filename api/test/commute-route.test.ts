@@ -1,4 +1,5 @@
 import { createRepositories, openDatabase, type Repositories } from "@njt/db";
+import { silentLogger } from "@njt/shared/logger";
 import type { CommuteResponse, TripStopEvent } from "@njt/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
@@ -40,7 +41,7 @@ describe("GET /commute", () => {
       { stopId: "A", stopName: "Newark Penn", stopLat: 40.73, stopLon: -74.16 },
       { stopId: "B", stopName: "New York Penn", stopLat: 40.75, stopLon: -73.99 },
     ]);
-    app = createApp(repos);
+    app = createApp(repos, silentLogger);
   });
 
   const ask = async (q: string) => {

@@ -27,4 +27,4 @@ export {
   type PerformanceImportResult,
 } from "./official/njt-performance";
 export { parseCsv, parseCsvRows } from "./csv";
-export { type Logger, consoleLogger, silentLogger } from "./logger";
+export { type Logger, consoleLogger, silentLogger } from "@njt/shared/logger";

@@ -19,6 +19,7 @@ import type {
   WorstTripsResponse,
 } from "@njt/shared";
 import { createRepositories, openDatabase } from "@njt/db";
+import { silentLogger } from "@njt/shared/logger";
 import { beforeEach, describe, expect, it } from "vitest";
 import type { Hono } from "hono";
 import { createApp } from "../src/app";
@@ -358,7 +359,7 @@ describe("API integration", () => {
   });
 
   it("GET /map returns an empty payload before any GTFS version is ingested", async () => {
-    const empty = createApp(createRepositories(openDatabase()));
+    const empty = createApp(createRepositories(openDatabase()), silentLogger);
     const res = await empty.request("/map?from=2025-07-01&to=2025-07-31");
     expect(res.status).toBe(200);
     const body = (await res.json()) as MapResponse;
@@ -440,7 +441,7 @@ describe("multi-line official batching", () => {
       scope: "line", scopeId: "NC", serviceDate: "2025-07-15", direction: "all",
       tripsOperated: 100, tripsCancelled: 0, onTimeCounts: { "900": 75 }, sumDelaySeconds: 0,
     });
-    return createApp(repos);
+    return createApp(repos, silentLogger);
   }
 
   it("GET /lines gives each line its own latest month", async () => {

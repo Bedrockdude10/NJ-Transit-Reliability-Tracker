@@ -5,7 +5,7 @@ import { systemClock } from "./clock";
 import { loadConfig } from "./config";
 import { HttpFeedClient, TokenManager, type TokenStore } from "./feeds";
 import { Ingestor } from "./ingestor";
-import { consoleLogger } from "./logger";
+import { consoleLogger } from "@njt/shared/logger";
 import { RateLimiter } from "./rate-limiter";
 import { startScheduler } from "./scheduler";
 
