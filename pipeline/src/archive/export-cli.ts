@@ -13,7 +13,7 @@ import { availableServiceDates, exportEvents, type ObjectStore } from "./export-
 function required(name: string): string {
   const value = process.env[name];
   if (!value) {
-    console.error(`${name} is not set. See DEPLOY.md for the object-storage variables.`);
+    console.error(`${name} is not set. See the Backups section of DEPLOY.md.`);
     process.exit(1);
   }
   return value;
@@ -24,13 +24,22 @@ function flag(name: string): string | undefined {
   return index === -1 ? undefined : process.argv[index + 1];
 }
 
+/**
+ * The same four `NJT_R2_*` variables Litestream reads.
+ *
+ * Litestream wants an endpoint with a scheme; DuckDB's S3 client wants a bare
+ * host. Rather than asking for both and documenting the difference — which is a
+ * trap, not a configuration — the scheme is taken off here and its presence
+ * decides TLS.
+ */
+const endpoint = required("NJT_R2_ENDPOINT");
 const store: ObjectStore = {
-  bucket: required("NJT_ARCHIVE_BUCKET"),
-  endpoint: required("NJT_ARCHIVE_ENDPOINT"),
-  accessKeyId: required("NJT_ARCHIVE_ACCESS_KEY_ID"),
-  secretAccessKey: required("NJT_ARCHIVE_SECRET_ACCESS_KEY"),
-  region: process.env.NJT_ARCHIVE_REGION ?? "auto",
-  useSsl: process.env.NJT_ARCHIVE_USE_SSL !== "false",
+  bucket: required("NJT_R2_BUCKET"),
+  endpoint: endpoint.replace(/^https?:\/\//, ""),
+  accessKeyId: required("NJT_R2_ACCESS_KEY_ID"),
+  secretAccessKey: required("NJT_R2_SECRET_ACCESS_KEY"),
+  region: process.env.NJT_R2_REGION ?? "auto",
+  useSsl: !endpoint.startsWith("http://"),
 };
 
 const dbPath = process.env.NJT_DB_PATH ?? "./data/njt.sqlite";

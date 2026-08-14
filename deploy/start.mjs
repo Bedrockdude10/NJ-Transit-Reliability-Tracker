@@ -97,7 +97,7 @@ function start(name, command) {
 process.on("SIGTERM", () => shutdown(0));
 process.on("SIGINT", () => shutdown(0));
 
-const REPLICATION_CONFIGURED = Boolean(process.env.LITESTREAM_BUCKET && process.env.LITESTREAM_ACCESS_KEY_ID);
+const REPLICATION_CONFIGURED = Boolean(process.env.NJT_R2_BUCKET && process.env.NJT_R2_ACCESS_KEY_ID);
 const LITESTREAM_CONFIG = "deploy/litestream.yml";
 
 /**
@@ -148,7 +148,7 @@ if (REPLICATION_CONFIGURED && !hasLitestream()) {
 } else if (REPLICATION_CONFIGURED) {
   start("litestream", ["litestream", ["replicate", "-config", LITESTREAM_CONFIG]]);
 } else {
-  log("replication disabled — set LITESTREAM_BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY/ENDPOINT to enable");
+  log("replication disabled — set NJT_R2_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY to enable");
 }
 log("supervisor ready", {
   pipeline: Boolean(process.env.NJT_RAIL_DATA_USERNAME),

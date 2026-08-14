@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { DuckDBInstance } from "@duckdb/node-api";
 import type { Logger } from "@njt/shared/logger";
 
@@ -45,44 +46,62 @@ export interface ExportedPartition {
 }
 
 /**
- * The contract projection: SQLite columns aliased to the field names in
- * `trip-stop-event.schema.json`.
+ * The contract, as read at runtime from the schema the Python repo generates
+ * from.
  *
- * Booleans are the one real conversion — SQLite stores 0/1 and the contract says
- * boolean, so an unconverted export would produce integer columns that fail
- * validation on the Python side.
+ * There was a hand-maintained list of `[sqliteColumn, contractField]` pairs here,
+ * with a third tuple element whose *presence* meant "cast to boolean". Two
+ * problems: it was a second place the column set could disagree with the
+ * contract, and the test asserting they matched had to restate the mapping it was
+ * checking. Deriving both from the schema removes the disagreement rather than
+ * testing for it.
  */
-export const EVENT_COLUMNS = [
-  ["trip_id", "tripId"],
-  ["route_id", "routeId"],
-  ["line_name", "lineName"],
-  ["stop_id", "stopId"],
-  ["stop_name", "stopName"],
-  ["stop_sequence", "stopSequence"],
-  ["direction", "direction"],
-  ["service_date", "serviceDate"],
-  ["scheduled_arrival", "scheduledArrival"],
-  ["scheduled_departure", "scheduledDeparture"],
-  ["observed_arrival", "observedArrival"],
-  ["delay_seconds", "delaySeconds"],
-  ["stop_skipped", "stopSkipped", "boolean"],
-  ["trip_cancelled", "tripCancelled", "boolean"],
-  ["gtfs_static_version", "gtfsStaticVersion"],
-  ["ingested_at_ms", "ingestedAtMs"],
-] as const satisfies readonly (readonly [string, string] | readonly [string, string, "boolean"])[];
-
-/** The SELECT list, with 0/1 columns cast to real booleans. */
-export function selectList(): string {
-  return EVENT_COLUMNS.map((column) => {
-    const [source, alias] = column;
-    const expression = column.length === 3 ? `CAST(${source} AS BOOLEAN)` : source;
-    return `${expression} AS "${alias}"`;
-  }).join(", ");
+interface ContractSchema {
+  properties: Record<string, { type?: string; anyOf?: { type?: string }[] }>;
 }
 
-/** Field names the export produces, for checking against the JSON Schema. */
+const SCHEMA_PATH = new URL("../../../contract/v1/trip-stop-event.schema.json", import.meta.url);
+
+function contract(): ContractSchema {
+  return JSON.parse(readFileSync(SCHEMA_PATH, "utf8")) as ContractSchema;
+}
+
+/** `ingestedAtMs` → `ingested_at_ms`. The repo's own naming convention. */
+export function sqliteColumn(field: string): string {
+  return field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+}
+
+/** Fields the contract declares boolean, wherever nullability puts the type. */
+function booleanFields(schema: ContractSchema): Set<string> {
+  return new Set(
+    Object.entries(schema.properties)
+      .filter(([, spec]) => [spec, ...(spec.anyOf ?? [])].some((s) => s.type === "boolean"))
+      .map(([field]) => field),
+  );
+}
+
+/** Field names the export produces — every field the contract declares. */
 export function exportedFields(): string[] {
-  return EVENT_COLUMNS.map(([, alias]) => alias);
+  return Object.keys(contract().properties);
+}
+
+/**
+ * The SELECT list.
+ *
+ * SQLite stores booleans as 0/1 while the contract says boolean, so those are the
+ * one real conversion: without the cast they export as integers and every row
+ * fails strict validation on the Python side.
+ */
+export function selectList(): string {
+  const schema = contract();
+  const booleans = booleanFields(schema);
+  return Object.keys(schema.properties)
+    .map((field) => {
+      const column = sqliteColumn(field);
+      const expression = booleans.has(field) ? `CAST(${column} AS BOOLEAN)` : column;
+      return `${expression} AS "${field}"`;
+    })
+    .join(", ");
 }
 
 /**
@@ -97,28 +116,38 @@ export function partitionKey(prefix: string, serviceDate: string): string {
 }
 
 /**
- * A SQL string literal.
+ * A SQL string literal, for the statements that cannot bind parameters.
  *
- * DuckDB's DDL — `ATTACH`, `CREATE SECRET` — does not accept bind parameters, so
- * these values have to be interpolated. Queries below still bind their
- * parameters; this is only for the statements that cannot.
+ * `ATTACH` is DDL and takes no placeholders. Credentials never go through here —
+ * see {@link configureStore}.
  */
 function literal(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
-/** Configure DuckDB's S3 client. */
+/**
+ * Configure DuckDB's S3 client.
+ *
+ * Credentials reach DuckDB through its credential chain, from the environment,
+ * rather than interpolated into a `CREATE SECRET` statement. The keys then never
+ * appear in a SQL string that could be logged or surfaced in an error.
+ */
 async function configureStore(
   connection: Awaited<ReturnType<DuckDBInstance["connect"]>>,
   store: ObjectStore,
 ): Promise<void> {
-  await connection.run("INSTALL sqlite; LOAD sqlite; INSTALL httpfs; LOAD httpfs;");
+  process.env.AWS_ACCESS_KEY_ID = store.accessKeyId;
+  process.env.AWS_SECRET_ACCESS_KEY = store.secretAccessKey;
+  process.env.AWS_DEFAULT_REGION = store.region;
+
+  await connection.run(
+    "INSTALL sqlite; LOAD sqlite; INSTALL httpfs; LOAD httpfs; INSTALL aws; LOAD aws;",
+  );
   await connection.run(
     `CREATE OR REPLACE SECRET njt_store (
        TYPE s3,
-       KEY_ID ${literal(store.accessKeyId)},
-       SECRET ${literal(store.secretAccessKey)},
-       REGION ${literal(store.region)},
+       PROVIDER credential_chain,
+       CHAIN 'env',
        ENDPOINT ${literal(store.endpoint)},
        USE_SSL ${store.useSsl ?? true},
        URL_STYLE 'path'

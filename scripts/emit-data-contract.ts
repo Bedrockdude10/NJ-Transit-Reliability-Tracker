@@ -57,31 +57,29 @@ const CONTRACT = [
  * JavaScript's safe-integer range, which `z.int()` records as minimum/maximum.
  *
  * A language artifact, not a domain rule — every integer a JS producer can emit
- * is inside it by definition — and it does real harm downstream: constraints on
- * a scalar make `datamodel-code-generator` wrap it in a `RootModel`, so
- * `event.delaySeconds` becomes an object with a `.root` instead of an int, which
- * would infect every feature expression in the modelling repo.
+ * is inside it by definition — and it does real harm downstream: constraints on a
+ * scalar make `datamodel-code-generator` wrap it in a `RootModel`, so
+ * `event.delaySeconds` arrives in Python as an object with a `.root` instead of an
+ * int, which would infect every feature expression in the modelling repo.
+ *
+ * Dropped through Zod's own `override` hook. This was a recursive walk over the
+ * emitted document deleting any minimum/maximum that happened to equal ±2^53 —
+ * which worked, but pattern-matched on a magic number after the fact and would
+ * have quietly eaten a real bound that happened to share the value.
  */
 const JS_SAFE_INTEGER = 9_007_199_254_740_991;
-
-/** Strip the safe-integer bounds wherever they appear, however deeply nested. */
-function withoutSafeIntegerBounds(node: unknown): unknown {
-  if (Array.isArray(node)) return node.map(withoutSafeIntegerBounds);
-  if (node === null || typeof node !== "object") return node;
-
-  const entries = Object.entries(node as Record<string, unknown>).filter(([key, value]) => {
-    const isBound = key === "minimum" || key === "maximum";
-    return !(isBound && Math.abs(value as number) === JS_SAFE_INTEGER);
-  });
-  return Object.fromEntries(entries.map(([key, value]) => [key, withoutSafeIntegerBounds(value)]));
-}
 
 mkdirSync(OUT_DIR, { recursive: true });
 
 for (const entry of CONTRACT) {
-  const jsonSchema = withoutSafeIntegerBounds(
-    z.toJSONSchema(entry.schema, { target: "draft-7" }),
-  ) as Record<string, unknown>;
+  const jsonSchema = z.toJSONSchema(entry.schema, {
+    target: "draft-7",
+    override: ({ jsonSchema: node }) => {
+      if (node.type !== "integer") return;
+      if (node.minimum === -JS_SAFE_INTEGER) delete node.minimum;
+      if (node.maximum === JS_SAFE_INTEGER) delete node.maximum;
+    },
+  });
   const document = {
     $schema: "http://json-schema.org/draft-07/schema#",
     $id: `https://njt-reliability-tracker/contract/${VERSION}/${entry.id}.schema.json`,

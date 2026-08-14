@@ -15,10 +15,13 @@
 # settings are global here; the 0.3.x format found in most tutorials used a
 # `replicas:` list with per-replica `snapshot-interval`, and will not load.
 
-# Values come from the environment so no credential is ever in the repo.
+# One set of NJT_R2_* variables serves both this and `npm run export:events`.
+# They previously had a set each — eight secrets for four values, with the two
+# endpoints differing only in whether they carried a scheme, which is the kind of
+# distinction that gets pasted wrong once and then debugged for an hour.
 # Litestream expands $VAR and ${VAR} itself.
-access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
-secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+access-key-id: ${NJT_R2_ACCESS_KEY_ID}
+secret-access-key: ${NJT_R2_SECRET_ACCESS_KEY}
 
 snapshot:
   # A full snapshot daily, keeping a week. Restores replay WAL forward from the
@@ -31,9 +34,9 @@ dbs:
   - path: ${NJT_DB_PATH}
     replica:
       type: s3
-      bucket: ${LITESTREAM_BUCKET}
+      bucket: ${NJT_R2_BUCKET}
       path: njt
       # R2 is S3-compatible: the endpoint is account-specific and the region is
       # always the literal "auto".
-      endpoint: ${LITESTREAM_ENDPOINT}
+      endpoint: ${NJT_R2_ENDPOINT}
       region: auto

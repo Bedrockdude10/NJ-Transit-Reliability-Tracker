@@ -289,17 +289,10 @@ the column list is asserted against `contract/v1/trip-stop-event.schema.json` by
 export fails the build rather than being silently absent from every file.
 
 ```bash
-fly secrets set \
-  NJT_ARCHIVE_BUCKET=njt-archive \
-  NJT_ARCHIVE_ENDPOINT=<ACCOUNT_ID>.r2.cloudflarestorage.com \
-  NJT_ARCHIVE_ACCESS_KEY_ID=<access key id> \
-  NJT_ARCHIVE_SECRET_ACCESS_KEY=<secret access key>
-
 fly ssh console -C "npm run export:events -- --from 2026-08-01"
 ```
 
-Note the endpoint here carries **no scheme** (DuckDB's S3 client wants a bare
-host), unlike `LITESTREAM_ENDPOINT` above, which needs `https://`.
+Uses the same `NJT_R2_*` secrets as replication.
 
 Verified end to end against MinIO locally: 36 service dates, 20,736 rows written
 and read back by the Python repo with every row passing strict contract
