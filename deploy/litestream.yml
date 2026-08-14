@@ -1,0 +1,39 @@
+# Continuous replication of the SQLite database to object storage.
+#
+# The raw snapshot archive is the one thing in this system that cannot be
+# rebuilt: it is a recording of a live feed, and NJT does not serve history. It
+# lives on a single Fly volume. `npm run snapshot` produces a portable copy but
+# leaves it on that same disk, so this is what actually survives losing it.
+#
+# Litestream tails the WAL, so what reaches the replica is seconds behind rather
+# than hours. It runs as a sibling process of the API and pipeline, supervised
+# by start.mjs — which is not merely convenient: a Fly volume attaches to
+# exactly one machine, so nothing outside this container can read the database,
+# and a scheduled backup machine is not an option.
+#
+# Written for Litestream 0.5.x. Note `replica:` is singular and snapshot
+# settings are global here; the 0.3.x format found in most tutorials used a
+# `replicas:` list with per-replica `snapshot-interval`, and will not load.
+
+# Values come from the environment so no credential is ever in the repo.
+# Litestream expands $VAR and ${VAR} itself.
+access-key-id: ${LITESTREAM_ACCESS_KEY_ID}
+secret-access-key: ${LITESTREAM_SECRET_ACCESS_KEY}
+
+snapshot:
+  # A full snapshot daily, keeping a week. Restores replay WAL forward from the
+  # most recent snapshot, so this bounds how much log a recovery has to chew
+  # through, and a week gives room to notice damage before it ages out.
+  interval: 24h
+  retention: 168h
+
+dbs:
+  - path: ${NJT_DB_PATH}
+    replica:
+      type: s3
+      bucket: ${LITESTREAM_BUCKET}
+      path: njt
+      # R2 is S3-compatible: the endpoint is account-specific and the region is
+      # always the literal "auto".
+      endpoint: ${LITESTREAM_ENDPOINT}
+      region: auto

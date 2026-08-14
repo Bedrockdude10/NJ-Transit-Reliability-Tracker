@@ -13,8 +13,8 @@
 // would be the usual answer: a Fly volume attaches to exactly one machine, and
 // they share a SQLite file on it. The coupling is a consequence of the storage
 // choice, so the supervisor has to be the thing that limits the damage.
-import { spawn } from "node:child_process";
-import { mkdirSync } from "node:fs";
+import { spawn, spawnSync } from "node:child_process";
+import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { RESTART_WINDOW_MS, decideRestart } from "./restart-policy.mjs";
 
@@ -36,11 +36,16 @@ function shutdown(code) {
   setTimeout(() => process.exit(code), 3000).unref();
 }
 
-function start(script) {
-  const entry = supervised.get(script) ?? { child: null, failures: [] };
-  supervised.set(script, entry);
+/**
+ * @param {string} name label used for logging and failure accounting
+ * @param {[string, string[]]} [command] defaults to `npm run <name>`
+ */
+function start(name, command) {
+  const entry = supervised.get(name) ?? { child: null, failures: [] };
+  supervised.set(name, entry);
 
-  const child = spawn("npm", ["run", script], { stdio: "inherit", env: process.env });
+  const [bin, args] = command ?? ["npm", ["run", name]];
+  const child = spawn(bin, args, { stdio: "inherit", env: process.env });
   entry.child = child;
 
   child.on("exit", (code, signal) => {
@@ -51,13 +56,13 @@ function start(script) {
     entry.failures = decision.failures;
 
     if (decision.action === "ignore") {
-      log("child exited cleanly; not restarting", { script });
+      log("child exited cleanly; not restarting", { script: name });
       return;
     }
 
     if (decision.action === "escalate") {
       log("child keeps failing; giving up so the platform replaces the machine", {
-        script,
+        script: name,
         failures: decision.failures.length,
         windowMinutes: RESTART_WINDOW_MS / 60_000,
       });
@@ -66,7 +71,7 @@ function start(script) {
     }
 
     log("child died; restarting", {
-      script,
+      script: name,
       code,
       signal,
       failures: decision.failures.length,
@@ -76,7 +81,7 @@ function start(script) {
     // only handle keeping the process alive, and an unref'd one let Node exit
     // before it fired — the supervisor logged "restarting" and then died.
     setTimeout(() => {
-      if (!shuttingDown) start(script);
+      if (!shuttingDown) start(name, command);
     }, decision.delayMs);
   });
 }
@@ -84,10 +89,48 @@ function start(script) {
 process.on("SIGTERM", () => shutdown(0));
 process.on("SIGINT", () => shutdown(0));
 
+const REPLICATION_CONFIGURED = Boolean(process.env.LITESTREAM_BUCKET && process.env.LITESTREAM_ACCESS_KEY_ID);
+const LITESTREAM_CONFIG = "deploy/litestream.yml";
+
+/**
+ * On an empty volume, pull the database back from the replica before anything
+ * opens it.
+ *
+ * This is the half of a backup that people discover they never had. Replicating
+ * is easy to verify; restoring is what actually matters, and it has to happen
+ * before the API runs a migration against a blank file and starts serving zeroes
+ * over the top of recoverable history.
+ *
+ * Synchronous and blocking on purpose. A missing replica is not an error — a
+ * genuinely first deploy has nothing to restore — so it logs and continues.
+ */
+function restoreIfMissing() {
+  if (!REPLICATION_CONFIGURED || existsSync(dbPath)) return;
+
+  log("no database on the volume; attempting restore from replica", { dbPath });
+  const result = spawnSync("litestream", ["restore", "-config", LITESTREAM_CONFIG, dbPath], {
+    stdio: "inherit",
+    env: process.env,
+  });
+
+  if (result.status === 0 && existsSync(dbPath)) log("restored database from replica", { dbPath });
+  else log("nothing to restore; starting with an empty database", { status: result.status });
+}
+
+restoreIfMissing();
+
 start("api");
 if (process.env.NJT_RAIL_DATA_USERNAME) {
   start("pipeline");
-  log("API + pipeline started");
 } else {
-  log("API started; pipeline disabled — set NJT_RAIL_DATA_USERNAME/PASSWORD to enable live collection");
+  log("pipeline disabled — set NJT_RAIL_DATA_USERNAME/PASSWORD to enable live collection");
 }
+if (REPLICATION_CONFIGURED) {
+  start("litestream", ["litestream", ["replicate", "-config", LITESTREAM_CONFIG]]);
+} else {
+  log("replication disabled — set LITESTREAM_BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY/ENDPOINT to enable");
+}
+log("supervisor ready", {
+  pipeline: Boolean(process.env.NJT_RAIL_DATA_USERNAME),
+  replication: REPLICATION_CONFIGURED,
+});

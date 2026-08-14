@@ -207,21 +207,68 @@ npm run snapshot -- --restore njt-20260814T152502Z.sqlite.gz --to ./restored.sql
 
 ### Getting it off the volume
 
-**On its own this is a restore point, not a backup** — the snapshot sits beside
-the database it protects, so it survives a bad migration but not the loss of the
-volume, which is the risk that actually matters. Pick a destination:
+**A snapshot on its own is a restore point, not a backup** — it sits beside the
+database it protects, so it survives a bad migration but not the loss of the
+volume, which is the risk that matters.
 
-| | Setup | Data at risk |
-|---|---|---|
-| **Litestream → R2** | R2 → Manage API Tokens → Create (an access key and secret; R2 is S3-*compatible*, no AWS involved). Free tier: 10 GB, 1M writes/mo, no egress fees — this workload fits. | seconds |
-| **rclone → Drive** | `rclone authorize drive` for a token, stored as a Fly secret. Litestream cannot target Drive, so this is `npm run snapshot` on a schedule plus an upload. ~320 MB per run; Drive's free 15 GB holds ~47. | since the last run |
+Litestream is wired in for that: it tails the WAL to object storage, so the
+replica is seconds behind rather than a day. It runs as a third supervised child
+of `deploy/start.mjs`, which is not just convenient — a Fly volume attaches to
+exactly one machine, so nothing outside this container can read the database and
+a scheduled backup machine is not an option.
 
-The snapshot command prints the path it wrote on stdout, so an uploader can be
-bolted on without touching it:
+It stays switched off until configured, so deploying without the secrets below
+changes nothing (`replication disabled` in the logs).
+
+**What you need to provide:**
+
+1. In the Cloudflare dashboard (the account already serving the web app):
+   **R2 → Create bucket**, e.g. `njt-backups`.
+2. **R2 → Manage API Tokens → Create** with Object Read & Write. It gives an
+   **Access Key ID** and a **Secret Access Key**. R2 is S3-*compatible*; no AWS
+   account is involved.
+3. Note your **Account ID** from the R2 overview page — the endpoint is
+   `https://<ACCOUNT_ID>.r2.cloudflarestorage.com`.
+
+Then:
 
 ```bash
-rclone copy "$(npm run --silent snapshot -- --keep 7)" gdrive:njt-backups/
+fly secrets set \
+  LITESTREAM_BUCKET=njt-backups \
+  LITESTREAM_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com \
+  LITESTREAM_ACCESS_KEY_ID=<access key id> \
+  LITESTREAM_SECRET_ACCESS_KEY=<secret access key>
+
+fly deploy
 ```
+
+Confirm it took:
+
+```bash
+fly logs | grep litestream          # expect: replicating to  type=s3
+fly ssh console -C "litestream status -config deploy/litestream.yml"
+fly ssh console -C "litestream ltx list -config deploy/litestream.yml /data/njt.sqlite"
+```
+
+**Recovery is automatic.** On boot, if the volume has no database, the supervisor
+runs `litestream restore` before anything opens it — deliberately, because
+otherwise the API migrates a blank file and starts serving zeroes over the top of
+recoverable history. A first deploy with nothing to restore logs and continues.
+
+To restore by hand:
+
+```bash
+fly ssh console -C "litestream restore -config deploy/litestream.yml -o /data/recovered.sqlite /data/njt.sqlite"
+```
+
+Cost: writes land roughly every 30s, so about 86k uploads/month against R2's
+1M free Class A operations, with a gzipped snapshot and WAL well inside the 10 GB
+allowance and no egress fees. This workload should sit in the free tier.
+
+**If you would rather not use R2:** Litestream cannot target Google Drive, so
+that route means `npm run snapshot` on a schedule plus an rclone upload — and
+because of the single-volume-attach constraint, that schedule has to run inside
+this container too. It is more work than the above, not less.
 
 ## VPS alternative (cheapest, most metered-friendly)
 

@@ -90,6 +90,7 @@ See [DEPLOY.md](DEPLOY.md). Tier 1: pipeline + API ship as **one container** (`D
 - **Every outbound NJT call has a deadline** (`FEED_TIMEOUT_MS`, `GTFS_STATIC_TIMEOUT_MS` in `pipeline/src/feeds.ts`). Without one a hung connection stalls ingest silently — `/health` keeps returning 200, since the API is a separate process.
 - **Logging is `@njt/shared/logger`** (JSON lines, server-only subpath so it stays out of the app bundle). Inject it into `createApp(repos, log)`; tests pass `silentLogger`. `console.log` is for CLI scripts only.
 - **The supervisor restarts a dead child** rather than tearing the machine down (`deploy/restart-policy.mjs`, tested). Only a crash loop escalates. The two processes can't be split into separate Fly machines — a volume attaches to one machine and they share the SQLite file.
+- **Durability:** `npm run snapshot` writes a verified gzipped copy (a restore point, still on the volume); Litestream replicates the WAL off-box continuously and restores on boot if the volume is empty (`deploy/litestream.yml`, off until `LITESTREAM_*` is set). Config is 0.5.x format — `replica:` singular, global `snapshot:` block; 0.3.x examples won't load.
 - **Frontend logic** lives in `app/lib/` (pure, no React Native — tested by Vitest). Screens/components are thin wrappers; charts render pure geometry from `app/lib/charts.ts`.
 
 ## Testing notes

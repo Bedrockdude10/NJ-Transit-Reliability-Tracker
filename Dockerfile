@@ -5,6 +5,20 @@
 FROM node:24-bookworm-slim
 WORKDIR /app
 
+# Litestream, for continuous replication of the SQLite file to object storage.
+# Pinned: this is the process guarding the only copy of the raw archive, and an
+# unpinned backup tool silently changing behaviour is the last thing we want.
+# Installed via the release .deb (amd64 — Fly's shared-cpu-1x), checksum-verified
+# against the release's own checksums.txt.
+ARG LITESTREAM_VERSION=0.5.16
+ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/litestream-${LITESTREAM_VERSION}-linux-x86_64.deb /tmp/litestream.deb
+ADD https://github.com/benbjohnson/litestream/releases/download/v${LITESTREAM_VERSION}/checksums.txt /tmp/checksums.txt
+RUN cd /tmp \
+  && grep "litestream-${LITESTREAM_VERSION}-linux-x86_64.deb" checksums.txt | sed "s|litestream-${LITESTREAM_VERSION}-linux-x86_64.deb|litestream.deb|" | sha256sum -c - \
+  && dpkg -i /tmp/litestream.deb \
+  && rm -f /tmp/litestream.deb /tmp/checksums.txt \
+  && litestream version
+
 # Install dependencies for the SERVER workspaces only. We rewrite the
 # "workspaces" list so npm never resolves the heavy Expo `app` package, keeping
 # the image lean. --include=dev because we run via tsx (a dev dependency).
@@ -29,5 +43,6 @@ ENV NJT_DB_PATH=/data/njt.sqlite
 ENV PORT=4000
 EXPOSE 4000
 
-# Supervisor runs the API always, and the pipeline once GTFS-RT is configured.
+# Supervisor runs the API always, the pipeline once GTFS-RT is configured, and
+# Litestream once a replication bucket is configured.
 CMD ["node", "deploy/start.mjs"]
