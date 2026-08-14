@@ -8,7 +8,7 @@ import { GradeBadge } from "../../components/Indicators";
 import { Badge, Card, EmptyState, ErrorView, Loading, PageTitle, Screen } from "../../components/ui";
 
 export default function LinesList() {
-  const { data, loading, error, reload } = useApi(() => api.lines(), []);
+  const { data, loading, error, reload } = useApi(api.lines());
 
   // Rank by NJT's reported OTP, least reliable first; lines without data last.
   const lines = [...(data?.lines ?? [])].sort((a, b) => {

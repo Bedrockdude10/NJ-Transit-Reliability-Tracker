@@ -15,6 +15,7 @@
   "dependencies": {
     "@expo/metro-runtime": "~56.0.15",
     "@njt/shared": "*",
+    "@tanstack/react-query": "^5.101.4",
     "expo": "^56.0.0",
     "expo-constants": "~56.0.18",
     "expo-linking": "~56.0.14",

@@ -37,12 +37,9 @@ export default function Commute() {
   const setDestination = (v: string) => setParams({ destination: v });
   const swap = () => setParams({ origin: destination, destination: origin });
 
-  const stations = useApi(() => api.stations(), []);
+  const stations = useApi(api.stations());
   const ready = Boolean(origin && destination && origin !== destination);
-  const commute = useApi(
-    () => (ready ? api.commute(origin!, destination!, range) : Promise.resolve(null)),
-    [origin, destination, ready, range.from, range.to],
-  );
+  const commute = useApi(ready ? api.commute(origin!, destination!, range) : null);
   const data = commute.data;
 
   return (

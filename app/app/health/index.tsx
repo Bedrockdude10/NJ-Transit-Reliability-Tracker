@@ -6,7 +6,7 @@ import { Table } from "../../components/Table";
 import { Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
 
 export default function Health() {
-  const { data, loading, error, reload } = useApi(() => api.health(), []);
+  const { data, loading, error, reload } = useApi(api.health());
 
   return (
     <Screen>

@@ -26,7 +26,6 @@ import {
 } from "@njt/shared";
 import type { z } from "zod";
 import { API_BASE_URL } from "./config";
-import { RequestCache } from "./request-cache";
 
 export interface DateRange {
   from?: string;
@@ -65,11 +64,20 @@ export class ApiContractError extends Error {
   }
 }
 
-// Read-only GETs are deduped + briefly cached by URL: concurrent callers (e.g. a
-// screen and the global footer both requesting /health) share one request, and
-// re-running an effect over a list of ids where only one changed hits at most
-// one network request per id.
-const cache = new RequestCache();
+/**
+ * A request that has not been made yet: its cache key and how to run it.
+ *
+ * Methods below return one of these rather than a `Promise`, so the key is
+ * always the URL that will actually be fetched. The hooks used to take a
+ * hand-written dependency array instead, and two of them already collided —
+ * `systemSummary` and `lightRailSummary` were both keyed `[from, to]`. Deriving
+ * the key from the request makes that class of mistake unrepresentable.
+ */
+export interface ApiQuery<T> {
+  /** TanStack Query key. The URL, so distinct requests can never collide. */
+  readonly key: readonly [string];
+  readonly run: () => Promise<T>;
+}
 
 async function fetchJson<S extends z.ZodType>(schema: S, url: string, path: string): Promise<z.infer<S>> {
   const res = await fetch(url);
@@ -83,23 +91,17 @@ async function fetchJson<S extends z.ZodType>(schema: S, url: string, path: stri
 }
 
 /**
- * Every request carries its response schema. Taking it as an argument rather
- * than a type parameter is the point: a type parameter can be supplied and
- * still be a lie, whereas omitting the schema here will not compile.
+ * Describe a GET. Every request carries its response schema: taking it as an
+ * argument rather than a type parameter is the point, since a type parameter
+ * can be supplied and still be a lie, whereas omitting the argument will not
+ * compile.
+ *
+ * Deduplication, caching and retries are TanStack Query's job now — this layer
+ * only says what to fetch and how to check it.
  */
-async function get<S extends z.ZodType>(schema: S, path: string, params?: Params): Promise<z.infer<S>> {
+function get<S extends z.ZodType>(schema: S, path: string, params?: Params): ApiQuery<z.infer<S>> {
   const url = buildUrl(path, params);
-  return cache.get(url, () => fetchJson(schema, url, path));
-}
-
-/**
- * A GET that must never be served from cache. Live endpoints (departures,
- * vehicle positions) refresh on a timer, and a 30s cache would hand the timer
- * back the same payload it already has. Concurrent callers still dedupe.
- */
-async function getLive<S extends z.ZodType>(schema: S, path: string, params?: Params): Promise<z.infer<S>> {
-  const url = buildUrl(path, params);
-  return cache.live(url, () => fetchJson(schema, url, path));
+  return { key: [url], run: () => fetchJson(schema, url, path) };
 }
 
 /** Typed client for the backend API. One method per endpoint. */
@@ -109,7 +111,7 @@ export const api = {
   systemHeatmap: (r: DateRange, type: HeatmapType) => get(heatmapResponseSchema, "/system/heatmap", { ...r, type }),
   lines: () => get(lineListResponseSchema, "/lines"),
   map: (r: DateRange) => get(mapResponseSchema, "/map", { ...r }),
-  mapVehicles: (lineId?: string) => getLive(mapVehiclesResponseSchema, "/map/vehicles", lineId ? { lineId } : {}),
+  mapVehicles: (lineId?: string) => get(mapVehiclesResponseSchema, "/map/vehicles", lineId ? { lineId } : {}),
   systemTrends: (days?: number) => get(trendsResponseSchema, "/system/trends", days ? { days } : {}),
   systemHistory: () => get(historyResponseSchema, "/system/history"),
   lineHistory: (id: string) => get(historyResponseSchema, `/lines/${encodeURIComponent(id)}/history`),
@@ -128,7 +130,7 @@ export const api = {
   stationRankings: (r: DateRange, sort: "delay" | "amplification") =>
     get(stationRankingsResponseSchema, "/stations/rankings", { ...r, sort }),
   stationDepartures: (id: string, horizonMinutes?: number) =>
-    getLive(stationDeparturesResponseSchema, `/stations/${encodeURIComponent(id)}/departures`, horizonMinutes ? { horizonMinutes } : {}),
+    get(stationDeparturesResponseSchema, `/stations/${encodeURIComponent(id)}/departures`, horizonMinutes ? { horizonMinutes } : {}),
   stationSummary: (id: string, r: DateRange) => get(stationSummaryResponseSchema, `/stations/${encodeURIComponent(id)}/summary`, { ...r }),
   stationTopTrips: (id: string, r: DateRange) =>
     get(worstTripsResponseSchema, `/stations/${encodeURIComponent(id)}/top-delayed-trips`, { ...r }),

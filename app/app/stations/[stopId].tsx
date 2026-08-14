@@ -28,15 +28,15 @@ export default function StationDetail() {
   const [days, setDays] = useState(30);
   const range = useMemo(() => windowToRange(days), [days]);
 
-  const summary = useApi(() => api.stationSummary(id, range), [id, range.from, range.to]);
-  const topTrips = useApi(() => api.stationTopTrips(id, range), [id, range.from, range.to]);
-  const health = useApi(() => api.health(), []);
+  const summary = useApi(api.stationSummary(id, range));
+  const topTrips = useApi(api.stationTopTrips(id, range));
+  const health = useApi(api.health());
   const collectionStartDate = health.data?.collectionStartDate ?? null;
   const measured = hasStationData(summary.data);
 
   // The board polls; the countdown ticks. Keeping them on separate clocks means
   // "3 min" counts down every second without re-fetching every second.
-  const departures = useLiveApi(() => api.stationDepartures(id), [id], DEPARTURES_REFRESH_MS);
+  const departures = useLiveApi(api.stationDepartures(id), DEPARTURES_REFRESH_MS);
   const now = useNow();
 
   return (

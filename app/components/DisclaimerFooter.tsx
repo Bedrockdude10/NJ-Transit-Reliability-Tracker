@@ -11,7 +11,7 @@ import { StatusDot } from "./ui";
  * time, and the required disclaimer (PRD compliance).
  */
 export function DisclaimerFooter() {
-  const { data } = useApi(() => api.health(), []);
+  const { data } = useApi(api.health());
   const lastIngest = data?.feeds.find((f) => f.feedType === "TripUpdates")?.lastSuccessAtMs ?? null;
   const live = lastIngest !== null;
 

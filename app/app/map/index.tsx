@@ -22,8 +22,8 @@ export default function MapScreen() {
   const [mode, setMode] = useState<MapColorMode>("reliability");
   const [showLive, setShowLive] = useState(true);
   const range = useMemo(() => windowToRange(days), [days]);
-  const map = useApi(() => api.map(range), [range.from, range.to]);
-  const vehicles = useLiveApi(() => api.mapVehicles(), [], VEHICLES_REFRESH_MS);
+  const map = useApi(api.map(range));
+  const vehicles = useLiveApi(api.mapVehicles(), VEHICLES_REFRESH_MS);
   const now = useNow(5_000);
 
   // The feed leaves departed trains in place, so anything stale is withheld

@@ -24,13 +24,13 @@ export default function SystemOverview() {
   const range = useMemo(() => windowToRange(days), [days]);
   const chartColors = useChartColors();
 
-  const summary = useApi(() => api.systemSummary(range), [range.from, range.to]);
-  const dow = useApi(() => api.systemHeatmap(range, "day_of_week"), [range.from, range.to]);
-  const hour = useApi(() => api.systemHeatmap(range, "hour_of_day"), [range.from, range.to]);
-  const history = useApi(() => api.systemHistory(), []);
-  const lines = useApi(() => api.lines(), []);
-  const health = useApi(() => api.health(), []);
-  const trends = useApi(() => api.systemTrends(), []);
+  const summary = useApi(api.systemSummary(range));
+  const dow = useApi(api.systemHeatmap(range, "day_of_week"));
+  const hour = useApi(api.systemHeatmap(range, "hour_of_day"));
+  const history = useApi(api.systemHistory());
+  const lines = useApi(api.lines());
+  const health = useApi(api.health());
+  const trends = useApi(api.systemTrends());
   const collectionStartDate = health.data?.collectionStartDate ?? null;
 
   const ranked = useMemo(

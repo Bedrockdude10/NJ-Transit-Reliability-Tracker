@@ -20,20 +20,18 @@ export default function Connections() {
   const range = useMemo(() => windowToRange(days), [days]);
   const [selected, setSelected] = useState<ConnectionTopItem | null>(null);
 
-  const top = useApi(() => api.connectionsTop(10), []);
-  const health = useApi(() => api.health(), []);
+  const top = useApi(api.connectionsTop(10));
+  const health = useApi(api.health());
   const collectionStartDate = health.data?.collectionStartDate ?? null;
   const conn = useApi(
-    () =>
-      selected
-        ? api.connections({
-            inbound_trip_id: selected.inboundTripId,
-            transfer_stop_id: selected.transferStopId,
-            outbound_trip_id: selected.outboundTripId,
-            ...range,
-          })
-        : Promise.resolve(null),
-    [selected, range.from, range.to],
+    selected
+      ? api.connections({
+          inbound_trip_id: selected.inboundTripId,
+          transfer_stop_id: selected.transferStopId,
+          outbound_trip_id: selected.outboundTripId,
+          ...range,
+        })
+      : null,
   );
 
   return (

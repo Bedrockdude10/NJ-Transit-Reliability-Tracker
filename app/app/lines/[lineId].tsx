@@ -27,19 +27,16 @@ export default function LineDetail() {
   const range = useMemo(() => windowToRange(days), [days]);
   const c = useChartColors();
 
-  const summary = useApi(() => api.lineSummary(id, range), [id, range.from, range.to]);
-  const trend = useApi(() => api.lineTrend(id, range, "daily"), [id, range.from, range.to]);
-  const worst = useApi(() => api.lineWorst(id, range, 10), [id, range.from, range.to]);
-  const monthly = useApi(() => api.lineMonthly(id), [id]);
-  const history = useApi(() => api.lineHistory(id), [id]);
-  const health = useApi(() => api.health(), []);
+  const summary = useApi(api.lineSummary(id, range));
+  const trend = useApi(api.lineTrend(id, range, "daily"));
+  const worst = useApi(api.lineWorst(id, range, 10));
+  const monthly = useApi(api.lineMonthly(id));
+  const history = useApi(api.lineHistory(id));
+  const health = useApi(api.health());
   const collectionStartDate = health.data?.collectionStartDate ?? null;
   const measured = hasMeasuredOtp(summary.data?.overall);
   const [propDirection, setPropDirection] = useState<"inbound" | "outbound">("inbound");
-  const propagation = useApi(
-    () => api.linePropagation(id, range, propDirection),
-    [id, range.from, range.to, propDirection],
-  );
+  const propagation = useApi(api.linePropagation(id, range, propDirection));
   // Directional ≤15m OTP — computed once instead of a repeated .find() per StatTile.
   const inbound15 = summary.data?.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;
   const outbound15 = summary.data?.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;

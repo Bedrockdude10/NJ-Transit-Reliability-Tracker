@@ -42,7 +42,7 @@ Pipeline tick: `fetch (FeedClient) → parse → repos.events.record → aggrega
 
 ## Where to add things
 
-- **New screen:** `app/app/<route>/index.tsx` + a link in `app/components/NavBar.tsx`. Fetch via `app/lib/api.ts` (`useApi` hook).
+- **New screen:** `app/app/<route>/index.tsx` + a link in `app/components/NavBar.tsx`. Fetch via `app/lib/api.ts` (`useApi` / `useApis` / `useLiveApi`, thin wrappers over TanStack Query). Client methods return an `ApiQuery` — a cache key plus how to run it — not a promise, so the key is always the URL and can never disagree with the request.
 - **New API endpoint:** `api/src/routes/<group>.ts`, mount in `api/src/app.ts`; add the response DTO to `shared/src/api.ts` and a client method to `app/lib/api.ts`.
 - **New metric:** emit a daily row in `pipeline/src/aggregator.ts`, store it via `db/src/repositories/aggregates.ts` (add a migration), sum it in `api/src/aggregation.ts`, surface in a DTO + screen. Don't compute it at request time.
 - **New data source:** an importer under `pipeline/src/<source>/` + a repository + a migration; keep HTTP/parse at the edges, logic pure.

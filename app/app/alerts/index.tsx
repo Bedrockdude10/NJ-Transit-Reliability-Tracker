@@ -38,12 +38,9 @@ export default function Alerts() {
   const [line, setLine] = useState<string | undefined>();
   const [effect, setEffect] = useState<string | undefined>();
 
-  const lines = useApi(() => api.lines(), []);
-  const list = useApi(
-    () => api.alerts({ page, pageSize: PAGE_SIZE, line, effect_type: effect, ...range }),
-    [page, line, effect, range.from, range.to],
-  );
-  const freq = useApi(() => api.alertFrequency(range), [range.from, range.to]);
+  const lines = useApi(api.lines());
+  const list = useApi(api.alerts({ page, pageSize: PAGE_SIZE, line, effect_type: effect, ...range }));
+  const freq = useApi(api.alertFrequency(range));
   const totalPages = list.data ? Math.max(1, Math.ceil(list.data.total / PAGE_SIZE)) : 1;
   // NJT doesn't populate GTFS-RT `effect`, so offer only effects the data has.
   const effects = useMemo(() => availableEffects(freq.data), [freq.data]);

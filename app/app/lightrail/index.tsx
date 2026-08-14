@@ -16,7 +16,7 @@ export default function LightRail() {
   const range = useMemo(() => windowToRange(days), [days]);
   const c = useChartColors();
 
-  const summary = useApi(() => api.lightRailSummary(range), [range.from, range.to]);
+  const summary = useApi(api.lightRailSummary(range));
 
   return (
     <Screen>

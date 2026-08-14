@@ -5,7 +5,7 @@ import { buildComparison, fillForward, type CompareInput } from "../../lib/compa
 import { formatMonth, formatPercent } from "../../lib/format";
 import { theme } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
-import { useApi } from "../../hooks/useApi";
+import { useApi, useApis } from "../../hooks/useApi";
 import { LineChart, type LineSeries } from "../../components/charts/LineChart";
 import { Table } from "../../components/Table";
 import { Card, ErrorView, Loading, Muted, PageTitle, SectionTitle, Screen } from "../../components/ui";
@@ -18,7 +18,7 @@ const MAX_SELECTED = 5;
 let remembered: string[] | null = null;
 
 export default function Compare() {
-  const list = useApi(() => api.lines(), []);
+  const list = useApi(api.lines());
   const lines = list.data?.lines ?? [];
   const cc = useChartColors();
   // Fallback palette (concrete, for SVG) for lines NJT publishes no color for.
@@ -43,11 +43,7 @@ export default function Compare() {
   );
   const effective = selected ?? defaultIds;
 
-  const key = effective.join(",");
-  const monthly = useApi(
-    () => Promise.all(effective.map((id) => api.lineMonthly(id))),
-    [key],
-  );
+  const monthly = useApis(effective.map((id) => api.lineMonthly(id)));
 
   const comparison = useMemo(() => {
     if (!monthly.data) return null;

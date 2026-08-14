@@ -10,11 +10,11 @@ import { Table } from "../../components/Table";
 import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, SegmentedControl, Screen } from "../../components/ui";
 
 export default function StationsList() {
-  const { data, loading, error, reload } = useApi(() => api.stations(), []);
+  const { data, loading, error, reload } = useApi(api.stations());
   const [query, setQuery] = useState("");
   const [sort, setSort] = useState<"delay" | "amplification">("delay");
   const range = useMemo(() => windowToRange(30), []);
-  const rankings = useApi(() => api.stationRankings(range, sort), [range.from, range.to, sort]);
+  const rankings = useApi(api.stationRankings(range, sort));
 
   const stations = useMemo(() => {
     const all = data?.stations ?? [];
