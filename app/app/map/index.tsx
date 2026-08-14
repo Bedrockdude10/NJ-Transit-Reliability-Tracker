@@ -4,7 +4,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
 import { formatPercent } from "../../lib/format";
 import { otpColor, theme } from "../../lib/theme";
-import { windowToRange, type WindowKey } from "../../lib/windows";
+import { useWindow } from "../../hooks/useWindow";
 import { useApi } from "../../hooks/useApi";
 import { useLiveApi } from "../../hooks/useLiveApi";
 import { useNow } from "../../hooks/useNow";
@@ -17,11 +17,9 @@ import { Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatusDo
 const VEHICLES_REFRESH_MS = 20_000;
 
 export default function MapScreen() {
-  const [windowKey, setWindowKey] = useState<WindowKey>("90d");
-  const [days, setDays] = useState(90);
+  const { key: windowKey, range, select: selectWindow } = useWindow("90d");
   const [mode, setMode] = useState<MapColorMode>("reliability");
   const [showLive, setShowLive] = useState(true);
-  const range = useMemo(() => windowToRange(days), [days]);
   const map = useApi(api.map(range));
   const vehicles = useLiveApi(api.mapVehicles(), VEHICLES_REFRESH_MS);
   const now = useNow(5_000);
@@ -46,7 +44,7 @@ export default function MapScreen() {
     <Screen>
       <PageTitle title="System Map" subtitle="NJ Transit rail network from the real GTFS feed" />
       <Row>
-        <WindowPicker value={windowKey} onChange={(k, d) => { setWindowKey(k); setDays(d); }} />
+        <WindowPicker value={windowKey} onChange={selectWindow} />
         <View style={styles.toggle}>
           {(["reliability", "line"] as MapColorMode[]).map((m) => (
             <Pressable key={m} onPress={() => setMode(m)} style={[styles.toggleBtn, mode === m && styles.toggleActive]}>

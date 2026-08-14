@@ -1,10 +1,11 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
-import { useCallback, useMemo } from "react";
+import { useCallback } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
 import { formatDelayShort, formatInt, formatPercent } from "../../lib/format";
 import { otpColor, theme } from "../../lib/theme";
-import { parseWindowKey, windowDays, windowToRange } from "../../lib/windows";
+
+import { useWindow } from "../../hooks/useWindow";
 import { useApi } from "../../hooks/useApi";
 import { StationPicker } from "../../components/StationPicker";
 import { Table } from "../../components/Table";
@@ -19,15 +20,14 @@ export default function Commute() {
   const params = useLocalSearchParams<{ origin?: string; destination?: string; window?: string }>();
   const origin = params.origin ?? null;
   const destination = params.destination ?? null;
-  const windowKey = parseWindowKey(params.window);
-  const range = useMemo(() => windowToRange(windowDays(windowKey)), [windowKey]);
+  const { key: windowKey, range, select: selectWindow } = useWindow();
 
   const setParams = useCallback(
-    (next: { origin?: string | null; destination?: string | null; window?: string }) => {
+    (next: { origin?: string | null; destination?: string | null }) => {
       router.setParams({
         origin: next.origin ?? origin ?? undefined,
         destination: next.destination ?? destination ?? undefined,
-        window: next.window ?? windowKey,
+        window: windowKey,
       } as never);
     },
     [router, origin, destination, windowKey],
@@ -67,7 +67,7 @@ export default function Commute() {
           />
         </Row>
         <Row>
-          <WindowPicker value={windowKey} onChange={(k) => setParams({ window: k })} />
+          <WindowPicker value={windowKey} onChange={selectWindow} />
           {origin && destination ? (
             <Pressable onPress={swap} style={styles.swap}>
               <Text style={styles.swapText}>⇄ Reverse</Text>

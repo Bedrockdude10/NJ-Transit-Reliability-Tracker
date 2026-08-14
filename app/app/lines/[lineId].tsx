@@ -1,12 +1,12 @@
 import { useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
 import { officialPeriodLabel, formatDelayShort, formatDelaySeconds, formatInt, formatMonth, formatPercent } from "../../lib/format";
 import { hasMeasuredOtp } from "../../lib/measurement";
 import { theme, otpColor, otpColorAt } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
-import { windowToRange, type WindowKey } from "../../lib/windows";
+import { useWindow } from "../../hooks/useWindow";
 import { useApi } from "../../hooks/useApi";
 import { GradeBadge, LiveBadge, TrendBadge } from "../../components/Indicators";
 import { Sparkline } from "../../components/charts/Sparkline";
@@ -22,9 +22,7 @@ import { PropagationChart } from "../../components/PropagationChart";
 export default function LineDetail() {
   const { lineId } = useLocalSearchParams<{ lineId: string }>();
   const id = lineId ?? "";
-  const [windowKey, setWindowKey] = useState<WindowKey>("30d");
-  const [days, setDays] = useState(30);
-  const range = useMemo(() => windowToRange(days), [days]);
+  const { key: windowKey, range, select: selectWindow } = useWindow("30d");
   const c = useChartColors();
 
   const summary = useApi(api.lineSummary(id, range));
@@ -78,10 +76,7 @@ export default function LineDetail() {
       <Row>
         <WindowPicker
           value={windowKey}
-          onChange={(key, d) => {
-            setWindowKey(key);
-            setDays(d);
-          }}
+          onChange={selectWindow}
         />
         <CsvExportButton url={api.exportUrl("line", range, id)} />
       </Row>

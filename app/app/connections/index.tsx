@@ -1,10 +1,10 @@
 import { OTP_GOOD_THRESHOLD_PERCENT, type ConnectionTopItem } from "@njt/shared";
-import { useMemo, useState } from "react";
+import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
 import { hasConnectionData } from "../../lib/measurement";
 import { theme } from "../../lib/theme";
-import { windowToRange, type WindowKey } from "../../lib/windows";
+import { useWindow } from "../../hooks/useWindow";
 import { useApi } from "../../hooks/useApi";
 import { DelayHistogram } from "../../components/metrics";
 import { LiveBanner } from "../../components/Indicators";
@@ -15,9 +15,7 @@ import { Badge, Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, Sec
 const DOW = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
 
 export default function Connections() {
-  const [windowKey, setWindowKey] = useState<WindowKey>("90d");
-  const [days, setDays] = useState(90);
-  const range = useMemo(() => windowToRange(days), [days]);
+  const { key: windowKey, range, select: selectWindow } = useWindow("90d");
   const [selected, setSelected] = useState<ConnectionTopItem | null>(null);
 
   const top = useApi(api.connectionsTop(10));
@@ -43,10 +41,7 @@ export default function Connections() {
       </LiveBanner>
       <WindowPicker
         value={windowKey}
-        onChange={(key, d) => {
-          setWindowKey(key);
-          setDays(d);
-        }}
+        onChange={selectWindow}
       />
 
       <Card>

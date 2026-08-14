@@ -1,11 +1,11 @@
-import { useMemo, useState } from "react";
+import { useMemo } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { api } from "../lib/api";
 import { officialPeriodLabel, formatDelayShort, formatInt, formatPercent } from "../lib/format";
 import { hasHeatmapData, hasMeasuredOtp } from "../lib/measurement";
 import { otpColor, otpColorAt, theme } from "../lib/theme";
 import { useChartColors } from "../lib/useChartColors";
-import { windowToRange, type WindowKey } from "../lib/windows";
+import { useWindow } from "../hooks/useWindow";
 import { useApi } from "../hooks/useApi";
 import { CsvExportButton } from "../components/CsvExportButton";
 import { LiveBadge } from "../components/Indicators";
@@ -19,9 +19,7 @@ import { WindowPicker } from "../components/WindowPicker";
 import { Card, EmptyState, Eyebrow, ErrorView, Loading, PageTitle, Row, SkeletonCard, StatTile, Screen } from "../components/ui";
 
 export default function SystemOverview() {
-  const [windowKey, setWindowKey] = useState<WindowKey>("30d");
-  const [days, setDays] = useState(30);
-  const range = useMemo(() => windowToRange(days), [days]);
+  const { key: windowKey, range, select: selectWindow } = useWindow("30d");
   const chartColors = useChartColors();
 
   const summary = useApi(api.systemSummary(range));
@@ -58,7 +56,7 @@ export default function SystemOverview() {
     <Screen>
       <PageTitle title="System Overview" subtitle="NJ Transit commuter rail — independently measured reliability" />
       <Row>
-        <WindowPicker value={windowKey} onChange={(key, d) => { setWindowKey(key); setDays(d); }} />
+        <WindowPicker value={windowKey} onChange={selectWindow} />
         <CsvExportButton url={api.exportUrl("system", range)} />
       </Row>
 

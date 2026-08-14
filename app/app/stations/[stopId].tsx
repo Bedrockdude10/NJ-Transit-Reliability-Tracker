@@ -1,11 +1,11 @@
 import { useLocalSearchParams } from "expo-router";
-import { useMemo, useState } from "react";
+
 import { View } from "react-native";
 import { api } from "../../lib/api";
 import { formatDelaySeconds, formatPercent } from "../../lib/format";
 import { hasHeatmapData, hasStationData } from "../../lib/measurement";
 import { theme } from "../../lib/theme";
-import { windowToRange, type WindowKey } from "../../lib/windows";
+import { useWindow } from "../../hooks/useWindow";
 import { useApi } from "../../hooks/useApi";
 import { useLiveApi } from "../../hooks/useLiveApi";
 import { useNow } from "../../hooks/useNow";
@@ -24,9 +24,7 @@ const DEPARTURES_REFRESH_MS = 30_000;
 export default function StationDetail() {
   const { stopId } = useLocalSearchParams<{ stopId: string }>();
   const id = stopId ?? "";
-  const [windowKey, setWindowKey] = useState<WindowKey>("30d");
-  const [days, setDays] = useState(30);
-  const range = useMemo(() => windowToRange(days), [days]);
+  const { key: windowKey, range, select: selectWindow } = useWindow("30d");
 
   const summary = useApi(api.stationSummary(id, range));
   const topTrips = useApi(api.stationTopTrips(id, range));
@@ -71,10 +69,7 @@ export default function StationDetail() {
       <Row>
         <WindowPicker
           value={windowKey}
-          onChange={(key, d) => {
-            setWindowKey(key);
-            setDays(d);
-          }}
+          onChange={selectWindow}
         />
         <CsvExportButton url={api.exportUrl("station", range, id)} />
       </Row>

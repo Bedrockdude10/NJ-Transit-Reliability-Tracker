@@ -1,9 +1,9 @@
-import { useMemo, useState } from "react";
+
 import { api } from "../../lib/api";
 import { officialPeriodLabel, formatInt, formatPercent } from "../../lib/format";
 import { otpColor } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
-import { windowToRange, type WindowKey } from "../../lib/windows";
+import { useWindow } from "../../hooks/useWindow";
 import { useApi } from "../../hooks/useApi";
 import { LineChart } from "../../components/charts/LineChart";
 import { Table } from "../../components/Table";
@@ -11,9 +11,7 @@ import { WindowPicker } from "../../components/WindowPicker";
 import { Card, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile, Screen } from "../../components/ui";
 
 export default function LightRail() {
-  const [windowKey, setWindowKey] = useState<WindowKey>("1y");
-  const [days, setDays] = useState(365);
-  const range = useMemo(() => windowToRange(days), [days]);
+  const { key: windowKey, range, select: selectWindow } = useWindow("1y");
   const c = useChartColors();
 
   const summary = useApi(api.lightRailSummary(range));
@@ -23,10 +21,7 @@ export default function LightRail() {
       <PageTitle title="Light Rail" subtitle="Hudson-Bergen, Newark, and River Line — NJT's reported figures" />
       <WindowPicker
         value={windowKey}
-        onChange={(key, d) => {
-          setWindowKey(key);
-          setDays(d);
-        }}
+        onChange={selectWindow}
       />
 
       {summary.loading ? <Loading /> : null}
