@@ -39,10 +39,14 @@ const MS_PER_HOUR = 3_600_000;
 
 /**
  * What one run needs, measured on the production image against real snapshots:
- * 131 MB to move an hour, 141 MB to move three, plus margin. Most of it is fixed
- * — Node and the S3 client — so the number barely moves with the workload.
+ * 128 MB to move an hour, 132 MB to move three, plus ~10% margin. Most of it is
+ * fixed — Node and the S3 client — so the number barely moves with the workload.
+ *
+ * Kept close to the measurement on purpose. The machine has 148–185 MB free
+ * depending on what else is happening, so an over-generous figure here does not
+ * make anything safer; it just refuses runs that would have succeeded.
  */
-const REQUIRED_MEMORY_MB = 160;
+const REQUIRED_MEMORY_MB = 145;
 
 /**
  * Allocatable memory in MB, from `/proc/meminfo`, or null where that is not the
@@ -85,11 +89,18 @@ export function insufficientMemory(availableMb: number | null): string | null {
   );
 }
 
-/** Rows held in memory at once: ~32 KB each, so a page is ~1.6 MB. */
-const PAGE_SIZE = 50;
+/** Rows held in memory at once: ~32 KB each, so a page is ~0.8 MB. */
+const PAGE_SIZE = 25;
 
-/** Uploads in flight. Network-bound work on a shared CPU; enough to keep it busy. */
-const CONCURRENCY = 6;
+/**
+ * Uploads in flight.
+ *
+ * Four rather than more because the constraint here is memory, not throughput:
+ * each in-flight request holds its body plus the client's own per-request state,
+ * and this runs beside the API on a machine with ~150 MB to spare. Even at four,
+ * an hour of snapshots moves in a few seconds.
+ */
+const CONCURRENCY = 4;
 
 export interface CopyOptions {
   repos: Repositories;
