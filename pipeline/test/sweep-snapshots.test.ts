@@ -154,3 +154,21 @@ describe.skipIf(!online)("sweeping against object storage", () => {
     expect(yields).toBeGreaterThan(1);
   }, 120_000);
 });
+
+describe.skipIf(!online)("bounding a run", () => {
+  it("stops after maxDays, leaving the rest for the next run", async () => {
+    // The first production run has ~29 days to move on a box that has already
+    // been starved into an outage by one large job.
+    seed(["2026-08-08", "2026-08-09", "2026-08-10"]);
+    const first = await run({ olderThanDays: 2, maxDays: 2 });
+    expect(first.map((d) => d.date)).toEqual(["2026-08-08", "2026-08-09"]);
+
+    const second = await run({ olderThanDays: 2, maxDays: 2 });
+    expect(second.map((d) => d.date)).toEqual(["2026-08-10"]);
+  }, 60_000);
+
+  it("sweeps everything eligible when uncapped", async () => {
+    seed(["2026-08-08", "2026-08-09"]);
+    expect((await run({ olderThanDays: 2 })).length).toBe(2);
+  }, 60_000);
+});

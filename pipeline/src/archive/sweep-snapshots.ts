@@ -46,6 +46,14 @@ export interface SweepOptions {
   store: ObjectStore;
   /** Days must be at least this old before being swept. */
   olderThanDays: number;
+  /**
+   * Stop after this many days in one run. Unbounded by default.
+   *
+   * The first production run has ~29 days to move on a box that has already been
+   * starved into an outage by a big one-off job. A cap makes the blast radius a
+   * choice: run a couple of days, watch the health check, then widen.
+   */
+  maxDays?: number;
   prefix?: string;
   /** Injected for tests. */
   now?: () => number;
@@ -145,8 +153,13 @@ export async function sweepSnapshots(options: SweepOptions): Promise<SweptDay[]>
     );
     await configureStore(connection, store);
 
-    const candidates = sweepableDates(datesPresent(repos), olderThanDays, now());
-    log?.info("sweep starting", { daysEligible: candidates.length, olderThanDays });
+    const eligible = sweepableDates(datesPresent(repos), olderThanDays, now());
+    const candidates = options.maxDays ? eligible.slice(0, options.maxDays) : eligible;
+    log?.info("sweep starting", {
+      daysEligible: eligible.length,
+      daysThisRun: candidates.length,
+      olderThanDays,
+    });
 
     for (const date of candidates) {
       const { startMs, endMs } = dayBounds(date);

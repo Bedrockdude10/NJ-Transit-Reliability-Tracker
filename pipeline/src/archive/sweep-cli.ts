@@ -6,8 +6,9 @@ import { sweepSnapshots } from "./sweep-snapshots";
 /**
  * CLI: drain the raw snapshot archive out of SQLite into object storage.
  *
- *   npm run sweep:archive                        # days older than 2
+ *   npm run sweep:archive                             # days older than 2
  *   npm run sweep:archive -- --older-than 7
+ *   npm run sweep:archive -- --older-than 7 --max-days 2
  *
  * Whole UTC days only, hash-verified before anything is deleted, and no VACUUM —
  * the file stops growing rather than shrinking. Safe to run on a schedule and
@@ -49,6 +50,7 @@ const swept = await sweepSnapshots({
   repos: createRepositories(db),
   store,
   olderThanDays: Number(flag("older-than") ?? process.env.NJT_ARCHIVE_RETAIN_DAYS ?? 2),
+  maxDays: flag("max-days") ? Number(flag("max-days")) : undefined,
   betweenBatches: () => sleep(Number(process.env.NJT_SWEEP_PAUSE_MS ?? 100)),
   log: consoleLogger,
 });
