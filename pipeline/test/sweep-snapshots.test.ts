@@ -4,8 +4,20 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createRepositories, openDatabase, type Database, type Repositories } from "@njt/db";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import type { ObjectStore } from "../src/archive/export-events";
-import { archiveKey, dayBounds, sweepSnapshots, sweepableDates, utcDate } from "../src/archive/sweep-snapshots";
+import { DuckDBInstance } from "@duckdb/node-api";
+import { configureStore, type ObjectStore } from "../src/archive/export-events";
+import {
+  archiveKey,
+  dayBounds,
+  insufficientMemory,
+  integerLiteral,
+  parseAvailableMemoryMb,
+  typedProjection,
+  sweepSnapshots,
+  sweepableDates,
+  utcDate,
+  windowQuery,
+} from "../src/archive/sweep-snapshots";
 
 /**
  * The sweep deletes the only copy of data NJT does not serve twice. These tests
@@ -90,6 +102,78 @@ describe("choosing what to sweep", () => {
   });
 });
 
+describe("fitting on the machine", () => {
+  it("refuses to start when the box has no room, before touching anything", async () => {
+    // The first production run was OOM-killed: 192 MB for DuckDB on a box with
+    // 184 MB free, because the limit had been set against the machine's nominal
+    // 512 MB rather than what the API and pipeline leave behind. Exit code 137
+    // explains none of that, so the check happens up front and says so.
+    seed(["2026-08-10"]);
+    await expect(run({ availableMemoryMb: () => 150 })).rejects.toThrow(/not enough memory/);
+    const { startMs, endMs } = dayBounds("2026-08-10");
+    expect(repos.snapshots.dayExtent(startMs, endMs).rows).toBe(6);
+  });
+
+  it("reports how much is needed and how much there is", () => {
+    expect(insufficientMemory(64, 100)).toMatch(/need ~279 MB \(64 MB for DuckDB.*100 MB available/);
+  });
+
+  it("proceeds when the budget fits", () => {
+    expect(insufficientMemory(64, 279)).toBeNull();
+  });
+
+  it("reads the kernel's own estimate of what is allocatable", () => {
+    // MemAvailable, not MemFree: the two differ by the reclaimable page cache,
+    // which is most of a busy machine's memory.
+    const meminfo = "MemTotal:         469852 kB\nMemFree:          130360 kB\nMemAvailable:     184384 kB\n";
+    expect(parseAvailableMemoryMb(meminfo)).toBe(180);
+  });
+
+  it("skips the check where the kernel does not answer, rather than guessing", () => {
+    // Off Linux there is no MemAvailable. os.freemem() is not a substitute — on
+    // macOS it reported 71 MB on a 64 GB machine.
+    expect(parseAvailableMemoryMb("VmStat: nope")).toBeNull();
+    expect(insufficientMemory(64, null)).toBeNull();
+  });
+
+  it("reads each window through SQLite rather than scanning the table in DuckDB", () => {
+    // The distinction is the whole memory profile: DuckDB filtering an attached
+    // table pulls every blob in the archive through its buffer manager, so cost
+    // scales with the archive; SQLite answers the same window from a covering
+    // index and returns only those rows.
+    const q = windowQuery("id", 1_000, 2_000);
+    expect(q).toContain("sqlite_query('live'");
+    expect(q).toContain("fetched_at_ms >= 1000");
+    expect(q).toContain("fetched_at_ms < 2000");
+  });
+
+  it("restores the live table's types, which sqlite_query flattens to strings", () => {
+    // Every column comes back VARCHAR, blobs included. Left alone, the archive
+    // quietly becomes an all-strings copy, and reading a blob back fails outright
+    // because those bytes are not valid UTF-8.
+    const projection = typedProjection([
+      { name: "id", type: "BIGINT" },
+      { name: "feed_type", type: "VARCHAR" },
+      { name: "raw_bytes", type: "BLOB" },
+    ]);
+    expect(projection).toBe(
+      "CAST(id AS BIGINT) AS id, CAST(feed_type AS VARCHAR) AS feed_type, encode(raw_bytes) AS raw_bytes",
+    );
+  });
+
+  it("rejects anything odd in a column name or type before interpolating it", () => {
+    expect(() => typedProjection([{ name: "id; DROP TABLE", type: "BIGINT" }])).toThrow(/column name/);
+    expect(() => typedProjection([{ name: "id", type: "BIGINT); --" }])).toThrow(/column type/);
+  });
+
+  it("refuses a bound that is not a plain integer, since it is interpolated", () => {
+    // sqlite_query nests SQL in SQL and the inner string cannot bind parameters.
+    expect(() => integerLiteral(1.5)).toThrow(/safe integer/);
+    expect(() => integerLiteral(Number.NaN)).toThrow(/safe integer/);
+    expect(integerLiteral(1_755_000_000_000)).toBe("1755000000000");
+  });
+});
+
 describe.skipIf(!online)("sweeping against object storage", () => {
   it("archives an eligible day and removes it from sqlite", async () => {
     seed(["2026-08-10", "2026-08-11", "2026-08-14"]);
@@ -101,6 +185,33 @@ describe.skipIf(!online)("sweeping against object storage", () => {
     expect(swept.every((d) => d.deleted === d.rows)).toBe(true);
     // Today's rows survive.
     expect(repos.snapshots.count()).toBe(before - swept.reduce((n, d) => n + d.rows, 0));
+  }, 60_000);
+
+  it("writes the archive with the live table's schema, not stringified", async () => {
+    // The guarantee is that a swept day can be read back as what it was. An
+    // earlier version wrote every column as VARCHAR; the read-back failed on the
+    // blob, which is the only reason it was noticed.
+    seed(["2026-08-10"]);
+    const [day] = await run();
+    const instance = await DuckDBInstance.create(":memory:");
+    const connection = await instance.connect();
+    try {
+      await connection.run("INSTALL sqlite; LOAD sqlite;");
+      await configureStore(connection, STORE);
+      await connection.run(`ATTACH '${dbPath}' AS live (TYPE sqlite, READ_ONLY)`);
+      const describe = async (source: string) =>
+        (await connection.runAndReadAll(`DESCRIBE SELECT * FROM ${source}`))
+          .getRowObjects()
+          .map((row) => `${row.column_name}:${row.column_type}`);
+      const live = await describe("live.raw_snapshots");
+      const archived = await describe(`'${day!.hours[0]!.uri}'`);
+      // The two extras are the hive partition columns DuckDB reads out of the key
+      // path itself (`date=…/hour=…`), not data.
+      expect(archived).toEqual([...live, "date:DATE", "hour:VARCHAR"]);
+    } finally {
+      connection.closeSync();
+      instance.closeSync();
+    }
   }, 60_000);
 
   it("keeps the blobs byte-identical, verified by digest", async () => {

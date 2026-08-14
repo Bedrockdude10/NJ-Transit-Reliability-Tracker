@@ -9,6 +9,7 @@ import { sweepSnapshots } from "./sweep-snapshots";
  *   npm run sweep:archive                             # days older than 2
  *   npm run sweep:archive -- --older-than 7
  *   npm run sweep:archive -- --older-than 7 --max-days 2
+ *   npm run sweep:archive -- --memory-limit 48         # tighter box
  *
  * Whole UTC days only, hash-verified before anything is deleted, and no VACUUM —
  * the file stops growing rather than shrinking. Safe to run on a schedule and
@@ -51,6 +52,7 @@ const swept = await sweepSnapshots({
   store,
   olderThanDays: Number(flag("older-than") ?? process.env.NJT_ARCHIVE_RETAIN_DAYS ?? 2),
   maxDays: flag("max-days") ? Number(flag("max-days")) : undefined,
+  memoryLimitMb: flag("memory-limit") ? Number(flag("memory-limit")) : undefined,
   betweenBatches: () => sleep(Number(process.env.NJT_SWEEP_PAUSE_MS ?? 100)),
   log: consoleLogger,
 });

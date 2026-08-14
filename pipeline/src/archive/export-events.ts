@@ -143,6 +143,18 @@ export async function configureStore(
   await connection.run(
     "INSTALL sqlite; LOAD sqlite; INSTALL httpfs; LOAD httpfs; INSTALL aws; LOAD aws;",
   );
+
+  // Size the multipart upload buffer to the machine, not to the theoretical
+  // maximum object.
+  //
+  // DuckDB derives its part size from `s3_uploader_max_filesize / 10000`, and the
+  // default 800 GB gives an 80 MB buffer allocated up front per upload thread.
+  // That single allocation — not the data, which is ~5 MB an hour — was the
+  // memory floor here: it OOM-killed the first production sweep and then failed
+  // locally at a 64 MB budget with "could not allocate block of size 76.5 MiB"
+  // while holding 780 KB of actual rows. 50 GB gives 5 MB parts, which is S3's
+  // minimum part size and still allows a 50 GB object.
+  await connection.run("SET s3_uploader_max_filesize='50GB'; SET s3_uploader_thread_limit=1;");
   await connection.run(
     `CREATE OR REPLACE SECRET njt_store (
        TYPE s3,

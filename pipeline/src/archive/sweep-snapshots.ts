@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { DuckDBInstance } from "@duckdb/node-api";
 import type { Repositories } from "@njt/db";
 import type { Logger } from "@njt/shared/logger";
@@ -33,19 +34,85 @@ import { configureStore, literal } from "./export-events";
 const MS_PER_DAY = 86_400_000;
 const MS_PER_HOUR = 3_600_000;
 
+/** Default DuckDB budget. An hour of snapshots is ~5 MB; this is already ample. */
+const DEFAULT_MEMORY_LIMIT_MB = 64;
+
+/**
+ * What this process needs before it reads a single row: Node, tsx, the DuckDB
+ * library, and its sqlite/httpfs/aws extensions.
+ *
+ * Measured on the production image, stage by stage: 98 MB once the DuckDB library
+ * is loaded, 132 MB with an instance open, 204 MB once the three extensions are
+ * loaded, 211 MB with S3 configured and the database attached. It is a fixed cost
+ * and it dwarfs the work — which is why a 512 MB machine already running the API
+ * and the pipeline (~280 MB) cannot host this at all, whatever the budget.
+ */
+const PROCESS_OVERHEAD_MB = 215;
+
+/**
+ * Allocatable memory in MB, from `/proc/meminfo`, or null where that is not the
+ * kernel's own answer.
+ *
+ * `MemAvailable` specifically, not `MemFree`: it is the kernel's own estimate of
+ * what a new process can get without swapping, which is the question being asked.
+ * `os.freemem()` was tried first and is not that — on macOS it counts free pages
+ * and reported 71 MB on a 64 GB machine, blocking the test suite.
+ *
+ * Returns null off Linux rather than guessing, and the check is then skipped: a
+ * developer machine is not where this needs protecting.
+ */
+export function parseAvailableMemoryMb(meminfo: string): number | null {
+  const match = /^MemAvailable:\s+(\d+) kB$/m.exec(meminfo);
+  return match ? Math.floor(Number(match[1]) / 1024) : null;
+}
+
+function availableMemoryMb(): number | null {
+  try {
+    return parseAvailableMemoryMb(readFileSync("/proc/meminfo", "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Whether there is room to run, given DuckDB's budget and what is allocatable.
+ *
+ * Returns the reason it cannot, or null. The point is to fail in the first second
+ * with a sentence explaining what to do, instead of being OOM-killed partway
+ * through — which is survivable here (nothing is deleted until a whole day is
+ * verified) but reports itself only as exit code 137.
+ */
+export function insufficientMemory(budgetMb: number, availableMb: number | null): string | null {
+  const needMb = budgetMb + PROCESS_OVERHEAD_MB;
+  if (availableMb === null || availableMb >= needMb) return null;
+  return (
+    `not enough memory to sweep: need ~${needMb} MB (${budgetMb} MB for DuckDB ` +
+    `plus ~${PROCESS_OVERHEAD_MB} MB for this process), ${availableMb} MB available. ` +
+    `Lower --memory-limit, give the machine more memory, or run when it is quieter.`
+  );
+}
+
 export interface SweepOptions {
   dbPath: string;
   /**
-   * Scratch space for DuckDB to spill into. A day is ~130 MB of blobs and this
-   * box has 512 MB shared with the API and the pipeline, so the exporter is
-   * capped and told to go to disk rather than compete for memory. Defaults
-   * beside the database, which is the volume with room.
+   * Scratch space for DuckDB to spill into, rather than competing for memory with
+   * the API and the pipeline. Defaults beside the database, which is the volume
+   * with room.
    */
   tempDir?: string;
   repos: Repositories;
   store: ObjectStore;
   /** Days must be at least this old before being swept. */
   olderThanDays: number;
+  /**
+   * How much memory DuckDB may use, in MB.
+   *
+   * Small on purpose: with the window pushed into SQLite ({@link windowQuery}) an
+   * hour is ~5 MB, and the same work that needed 192 MB before now completes at
+   * 32 MB. This is the budget for the *work*; the fixed library cost is
+   * {@link PROCESS_OVERHEAD_MB} and is much larger.
+   */
+  memoryLimitMb?: number;
   /**
    * Stop after this many days in one run. Unbounded by default.
    *
@@ -57,6 +124,8 @@ export interface SweepOptions {
   prefix?: string;
   /** Injected for tests. */
   now?: () => number;
+  /** Injected for tests. Allocatable memory in MB, or null if unknown. */
+  availableMemoryMb?: () => number | null;
   /** Called between delete batches, to let the ingest poller take the lock. */
   betweenBatches?: () => void;
   log?: Logger;
@@ -105,10 +174,10 @@ export function sweepableDates(
 /**
  * Object key for one hour of one day.
  *
- * Hours rather than whole days because a day is ~130 MB of blobs and DuckDB
- * cannot hold that on a 512 MB box — measured, it dies with "failed to pin
- * block" partway through, and giving it a spill directory does not help because
- * large values cannot be paged mid-operation. An hour is ~5 MB.
+ * Hours rather than whole days to keep each object and each read small: ~5 MB
+ * rather than ~130 MB. This was originally believed to be what bounded the
+ * sweep's memory; it was not — see {@link windowQuery} — but small objects are
+ * still worth having, since a failed hour costs an hour of work to redo.
  *
  * Splitting a *closed* day is safe: nothing is writing to it. The day is still
  * the unit of deletion — every hour must be verified before any of it goes.
@@ -127,29 +196,112 @@ export function archiveKey(prefix: string, date: string, hour: number): string {
  */
 const DIGEST = "md5(string_agg(md5(raw_bytes), '' ORDER BY id))";
 
+/**
+ * An integer SQL literal.
+ *
+ * {@link windowQuery} nests SQL inside SQL, and the inner string cannot carry bind
+ * parameters, so its bounds are interpolated. They are always epoch milliseconds
+ * computed here — never user input — and this refuses anything that is not a plain
+ * integer rather than trusting that to stay true.
+ */
+export function integerLiteral(value: number): string {
+  if (!Number.isSafeInteger(value)) throw new Error(`not a safe integer: ${value}`);
+  return String(value);
+}
+
+/**
+ * One time window, read through SQLite's own planner.
+ *
+ * The obvious form — `ATTACH` the file, then `SELECT … WHERE fetched_at_ms
+ * BETWEEN …` — makes DuckDB scan the table and apply the filter itself, so an hour
+ * holding 120 rows pulls *every* blob in the table through DuckDB's buffer
+ * manager. Memory then scales with the archive rather than the hour: measured, the
+ * unit tests' 12 KB table passes at a 64 MB budget while a 126 MB table fails at
+ * 128 MB, and production's 3.7 GB table was hopeless at any budget. That is why
+ * the first production sweep was OOM-killed, and why chunking by hour did not save
+ * it — the chunk was never what determined the cost.
+ *
+ * `sqlite_query` hands the SQL to SQLite instead, which answers it from
+ * `idx_snapshots_feed_time` — a covering index for this predicate — and returns
+ * only the matching rows. Measured on the production table: 16 ms to select an
+ * hour out of 175,346 rows, and the same window now completes at a 32 MB budget.
+ */
+export function windowQuery(projection: string, fromMs: number, toMs: number): string {
+  const inner =
+    `SELECT * FROM raw_snapshots WHERE fetched_at_ms >= ${integerLiteral(fromMs)} ` +
+    `AND fetched_at_ms < ${integerLiteral(toMs)} ORDER BY id`;
+  return `(SELECT ${projection} FROM sqlite_query('live', ${literal(inner)}))`;
+}
+
+/**
+ * Column expressions that restore the live table's own types.
+ *
+ * `sqlite_query` returns every column as VARCHAR — ids, timestamps and blobs
+ * alike. Written straight out, the archive would silently become an all-strings
+ * copy of itself, and reading the Parquet back fails outright on a blob, since
+ * those bytes are not valid UTF-8. Blobs go through `encode`, which is a
+ * reinterpretation rather than a conversion (`CAST(… AS BLOB)` demands escaped
+ * hex and refuses); the rest are cast back.
+ *
+ * Derived from the attached table rather than written out here, so adding a column
+ * cannot leave the archive with a stale schema. The digest is computed over these
+ * same expressions, so what is verified is exactly what is written.
+ */
+export function typedProjection(columns: readonly { name: string; type: string }[]): string {
+  return columns
+    .map(({ name, type }) => {
+      if (!/^[a-z_][a-z0-9_]*$/i.test(name)) throw new Error(`unexpected column name: ${name}`);
+      if (!/^[A-Z0-9 ()]+$/i.test(type)) throw new Error(`unexpected column type: ${type}`);
+      const expression = type === "BLOB" ? `encode(${name})` : `CAST(${name} AS ${type})`;
+      return `${expression} AS ${name}`;
+    })
+    .join(", ");
+}
+
+async function liveProjection(
+  connection: Awaited<ReturnType<DuckDBInstance["connect"]>>,
+): Promise<string> {
+  const described = await connection.runAndReadAll("DESCRIBE live.raw_snapshots");
+  return typedProjection(
+    described.getRowObjects().map((row) => ({
+      name: String((row as { column_name: unknown }).column_name),
+      type: String((row as { column_type: unknown }).column_type),
+    })),
+  );
+}
+
 export async function sweepSnapshots(options: SweepOptions): Promise<SweptDay[]> {
   const { dbPath, repos, store, olderThanDays } = options;
   const prefix = options.prefix ?? "archive";
   const now = options.now ?? Date.now;
   const log = options.log;
 
+  // Checked before opening DuckDB, so a box with no room to spare says so in the
+  // first second rather than at whatever point the kernel loses patience.
+  const memoryLimitMb = options.memoryLimitMb ?? DEFAULT_MEMORY_LIMIT_MB;
+  const availableMb = (options.availableMemoryMb ?? availableMemoryMb)();
+  const shortfall = insufficientMemory(memoryLimitMb, availableMb);
+  if (shortfall) throw new Error(shortfall);
+  log?.info("sweep memory plan", { memoryLimitMb, availableMb });
+
   const instance = await DuckDBInstance.create(":memory:");
   const connection = await instance.connect();
   const swept: SweptDay[] = [];
 
   try {
-    // This box has 512 MB and has been OOM-killed twice. A day is ~130 MB of
-    // blobs, so cap DuckDB rather than let it decide how much to buffer.
+    // Budget and thread count are both about fitting alongside the API and the
+    // pipeline on a 512 MB machine: a second thread buys nothing on ~5 MB of work
+    // per hour and duplicates DuckDB's per-thread buffers.
     // TimeZone pinned to UTC as a matter of hygiene: DuckDB's date functions
     // render timezone-aware values in the session zone, and a whole class of
     // off-by-a-day bug lives there. Nothing below relies on it — dates are
     // derived in TypeScript — but a future query should not have to know that.
-    // Capped and given somewhere to spill. Without a temp directory this dies
+    // The temp directory is on the volume: without somewhere to spill this dies
     // with "failed to pin block" partway through a day — measured, on a
     // production-shaped database, before it ever ran anywhere real.
     const tempDir = options.tempDir ?? `${dbPath}.duckdb-tmp`;
     await connection.run(
-      `SET memory_limit='192MB'; SET threads=2; SET TimeZone='UTC'; SET temp_directory=${literal(tempDir)};`,
+      `SET memory_limit='${memoryLimitMb}MB'; SET threads=1; SET TimeZone='UTC'; SET temp_directory=${literal(tempDir)};`,
     );
     await configureStore(connection, store);
 
@@ -174,6 +326,7 @@ export async function sweepSnapshots(options: SweepOptions): Promise<SweptDay[]>
       // first, or it sees a partial day and we delete a whole one.
       repos.snapshots.checkpointWal();
       await connection.run(`ATTACH ${literal(dbPath)} AS live (TYPE sqlite, READ_ONLY)`);
+      const projection = await liveProjection(connection);
 
       const hours: SweptHour[] = [];
       try {
@@ -182,9 +335,7 @@ export async function sweepSnapshots(options: SweepOptions): Promise<SweptDay[]>
           const toMs = fromMs + MS_PER_HOUR;
 
           const read = await connection.runAndReadAll(
-            `SELECT COUNT(*) AS rows, ${DIGEST} AS digest
-             FROM live.raw_snapshots WHERE fetched_at_ms >= ? AND fetched_at_ms < ?`,
-            [fromMs, toMs],
+            `SELECT COUNT(*) AS rows, ${DIGEST} AS digest FROM ${windowQuery(projection, fromMs, toMs)}`,
           );
           const row = read.getRowObjects()[0] as { rows: bigint | number; digest: string };
           const rows = Number(row.rows);
@@ -192,9 +343,8 @@ export async function sweepSnapshots(options: SweepOptions): Promise<SweptDay[]>
 
           const uri = `s3://${store.bucket}/${archiveKey(prefix, date, hour)}`;
           await connection.run(
-            `COPY (SELECT * FROM live.raw_snapshots WHERE fetched_at_ms >= ? AND fetched_at_ms < ? ORDER BY id)
+            `COPY (SELECT * FROM ${windowQuery(projection, fromMs, toMs)})
              TO '${uri}' (FORMAT PARQUET, COMPRESSION ZSTD, OVERWRITE_OR_IGNORE)`,
-            [fromMs, toMs],
           );
 
           // Read it back. Nothing is deleted until every hour has matched.
