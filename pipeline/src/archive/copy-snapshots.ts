@@ -80,11 +80,19 @@ function availableMemoryMb(): number | null {
  * first second, with the numbers, beats being OOM-killed partway — which is safe
  * here (nothing is deleted before it is confirmed stored) but reports itself only
  * as exit code 137. The scheduled run simply tries again an hour later.
+ *
+ * What matters is the memory still to be taken, not the total: by the time this
+ * runs the process already holds ~90 MB of its eventual ~130 MB, and
+ * `MemAvailable` already reflects that. Asking for the full figure on top of what
+ * had been taken counted this process twice, and refused run after run on a
+ * machine with 168 MB free.
  */
-export function insufficientMemory(availableMb: number | null): string | null {
-  if (availableMb === null || availableMb >= REQUIRED_MEMORY_MB) return null;
+export function insufficientMemory(availableMb: number | null, alreadyHeldMb: number): string | null {
+  const stillNeededMb = Math.max(0, REQUIRED_MEMORY_MB - alreadyHeldMb);
+  if (availableMb === null || availableMb >= stillNeededMb) return null;
   return (
-    `not enough memory to copy: need ~${REQUIRED_MEMORY_MB} MB, ${availableMb} MB available. ` +
+    `not enough memory to copy: needs ~${stillNeededMb} MB more (~${REQUIRED_MEMORY_MB} MB in total, ` +
+    `${Math.round(alreadyHeldMb)} MB already held), ${availableMb} MB available. ` +
     `Retrying next run, or give the machine more memory.`
   );
 }
@@ -215,7 +223,10 @@ export async function copySnapshots(options: CopyOptions): Promise<CopiedHour[]>
   const client = options.client ?? createClient(store);
   const deleteAfterCopy = options.deleteAfterCopy ?? true;
 
-  const shortfall = insufficientMemory((options.availableMemoryMb ?? availableMemoryMb)());
+  const shortfall = insufficientMemory(
+    (options.availableMemoryMb ?? availableMemoryMb)(),
+    process.memoryUsage().rss / 1_048_576,
+  );
   if (shortfall) throw new Error(shortfall);
 
   const range = repos.snapshots.timeRange();

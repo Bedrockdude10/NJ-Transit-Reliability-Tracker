@@ -125,7 +125,7 @@ describe("fitting on the machine", () => {
     // code 137.
     seed("2026-08-14T08:00:00Z");
     const before = repos.snapshots.count();
-    await expect(run({ availableMemoryMb: () => 100 })).rejects.toThrow(/not enough memory/);
+    await expect(run({ availableMemoryMb: () => 1 })).rejects.toThrow(/not enough memory/);
     expect(repos.snapshots.count()).toBe(before);
   });
 
@@ -139,7 +139,16 @@ describe("fitting on the machine", () => {
 
   it("skips the check where the kernel does not answer, rather than guessing", () => {
     expect(parseAvailableMemoryMb("VmStat: nope")).toBeNull();
-    expect(insufficientMemory(null)).toBeNull();
+    expect(insufficientMemory(null, 0)).toBeNull();
+  });
+
+  it("counts only the memory still to be taken, not this process twice", () => {
+    // By the time the check runs, the process already holds most of its
+    // footprint and MemAvailable already reflects it. Asking for the full figure
+    // on top refused run after run on a machine with 168 MB free.
+    expect(insufficientMemory(60, 90)).toBeNull();
+    expect(insufficientMemory(160, 0)).toBeNull();
+    expect(insufficientMemory(20, 90)).toMatch(/needs ~55 MB more/);
   });
 });
 
