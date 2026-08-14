@@ -38,6 +38,17 @@ export default defineConfig({
           include: ["test/**/*.test.ts", "src/**/*.test.ts"],
         },
       })),
+      // The container supervisor. Its restart decision caused both of this
+      // month's outages and had no tests at all; the pure policy is covered
+      // here, the spawn plumbing around it is verified by hand.
+      {
+        test: {
+          name: "deploy",
+          root: "./deploy",
+          environment: "node",
+          include: ["test/**/*.test.mjs"],
+        },
+      },
       // The app's pure logic (no React Native imports) runs under Vitest; its
       // components use jest-expo via `npm test --workspace app`.
       {
