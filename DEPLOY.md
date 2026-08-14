@@ -232,9 +232,14 @@ changes nothing (`replication disabled` in the logs).
 
 Then:
 
+**Deploy before setting the secrets.** Setting them restarts the machine on the
+image it already has, and if that image predates Litestream the supervisor finds
+no binary. It degrades loudly rather than crashing — see `hasLitestream()` — but
+you get a running site with no replication and a warning you have to notice.
+
 ```bash
 fly secrets set \
-  LITESTREAM_BUCKET=njt-backups \
+  LITESTREAM_BUCKET=njt-archive \
   LITESTREAM_ENDPOINT=https://<ACCOUNT_ID>.r2.cloudflarestorage.com \
   LITESTREAM_ACCESS_KEY_ID=<access key id> \
   LITESTREAM_SECRET_ACCESS_KEY=<secret access key>

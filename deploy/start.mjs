@@ -48,6 +48,14 @@ function start(name, command) {
   const child = spawn(bin, args, { stdio: "inherit", env: process.env });
   entry.child = child;
 
+  // A spawn that fails outright — a missing binary, typically — emits "error"
+  // and never "exit". Unhandled, that throws and takes the supervisor with it,
+  // which is worse than the thing that failed: the API was serving fine.
+  child.on("error", (error) => {
+    log("child failed to start", { script: name, error: error.message });
+    if (!child.killed) child.emit("exit", 1, null);
+  });
+
   child.on("exit", (code, signal) => {
     entry.child = null;
     if (shuttingDown) return;
@@ -104,8 +112,13 @@ const LITESTREAM_CONFIG = "deploy/litestream.yml";
  * Synchronous and blocking on purpose. A missing replica is not an error — a
  * genuinely first deploy has nothing to restore — so it logs and continues.
  */
+/** Whether the litestream binary is available to this container. */
+function hasLitestream() {
+  return spawnSync("litestream", ["version"], { stdio: "ignore" }).status === 0;
+}
+
 function restoreIfMissing() {
-  if (!REPLICATION_CONFIGURED || existsSync(dbPath)) return;
+  if (!REPLICATION_CONFIGURED || existsSync(dbPath) || !hasLitestream()) return;
 
   log("no database on the volume; attempting restore from replica", { dbPath });
   const result = spawnSync("litestream", ["restore", "-config", LITESTREAM_CONFIG, dbPath], {
@@ -125,7 +138,14 @@ if (process.env.NJT_RAIL_DATA_USERNAME) {
 } else {
   log("pipeline disabled — set NJT_RAIL_DATA_USERNAME/PASSWORD to enable live collection");
 }
-if (REPLICATION_CONFIGURED) {
+if (REPLICATION_CONFIGURED && !hasLitestream()) {
+  // Replication configured but the binary is not in the image — almost always
+  // secrets set before deploying. Losing off-site backup is serious, but taking
+  // the site down does not restore it, so this degrades loudly instead.
+  log("REPLICATION CONFIGURED BUT litestream IS NOT INSTALLED — no off-site backup", {
+    hint: "deploy the current image, which installs it, then this starts on the next boot",
+  });
+} else if (REPLICATION_CONFIGURED) {
   start("litestream", ["litestream", ["replicate", "-config", LITESTREAM_CONFIG]]);
 } else {
   log("replication disabled — set LITESTREAM_BUCKET/ACCESS_KEY_ID/SECRET_ACCESS_KEY/ENDPOINT to enable");
