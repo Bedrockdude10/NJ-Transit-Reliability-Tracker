@@ -340,8 +340,14 @@ Uses the same `NJT_R2_*` secrets as replication.
 Replication and the sweep interact. Enable them in this order, or the first
 Litestream snapshot has 3.7 GB to copy on a box that cannot afford it:
 
-1. **Sweep first**, until the database is small and no longer growing.
-2. **Then** set `NJT_R2_BUCKET` to enable replication.
+1. Set the four `NJT_R2_*` secrets. These give `sweep:archive` access to object
+   storage and **do not** start replication on their own.
+2. **Sweep**, until the database is small and no longer growing.
+3. **Then** `fly secrets set NJT_REPLICATION_ENABLED=true`.
+
+Credentials being present is deliberately not consent to run the replication
+daemon: enabling both at once is what starved the API into an outage, with
+Litestream trying to snapshot 3.8 GB on a 512 MB box.
 
 ## VPS alternative (cheapest, most metered-friendly)
 

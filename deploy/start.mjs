@@ -97,7 +97,19 @@ function start(name, command) {
 process.on("SIGTERM", () => shutdown(0));
 process.on("SIGINT", () => shutdown(0));
 
-const REPLICATION_CONFIGURED = Boolean(process.env.NJT_R2_BUCKET && process.env.NJT_R2_ACCESS_KEY_ID);
+/**
+ * Replication needs credentials *and* an explicit opt-in.
+ *
+ * These were one switch, which was wrong in a way that showed up immediately:
+ * the same `NJT_R2_BUCKET` that lets `sweep:archive` reach object storage also
+ * started Litestream, so there was no way to follow the documented order —
+ * shrink the database first, replicate second. Enabling both at once is exactly
+ * what starved the API into an outage, replicating 3.8 GB on a 512 MB box.
+ *
+ * Credentials being present is not consent to run a daemon.
+ */
+const HAS_R2 = Boolean(process.env.NJT_R2_BUCKET && process.env.NJT_R2_ACCESS_KEY_ID);
+const REPLICATION_CONFIGURED = HAS_R2 && process.env.NJT_REPLICATION_ENABLED === "true";
 const LITESTREAM_CONFIG = "deploy/litestream.yml";
 
 /**
@@ -148,9 +160,14 @@ if (REPLICATION_CONFIGURED && !hasLitestream()) {
 } else if (REPLICATION_CONFIGURED) {
   start("litestream", ["litestream", ["replicate", "-config", LITESTREAM_CONFIG]]);
 } else {
-  log("replication disabled — set NJT_R2_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY to enable");
+  log(
+    HAS_R2
+      ? "replication off — credentials present; set NJT_REPLICATION_ENABLED=true to start it"
+      : "replication off — set NJT_R2_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY, then NJT_REPLICATION_ENABLED=true",
+  );
 }
 log("supervisor ready", {
   pipeline: Boolean(process.env.NJT_RAIL_DATA_USERNAME),
+  objectStorage: HAS_R2,
   replication: REPLICATION_CONFIGURED,
 });
