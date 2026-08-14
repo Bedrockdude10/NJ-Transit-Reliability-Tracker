@@ -28,6 +28,54 @@ export interface TokenStore {
  */
 const TOKEN_TTL_MS = 20 * 60 * 60 * 1000;
 
+/**
+ * Ceilings on how long a single outbound NJT call may take.
+ *
+ * Without them a hung connection stalls ingest indefinitely and nothing
+ * notices: the poller sits in a `fetch` that never settles while `/health`
+ * keeps answering, because the API is a separate process and perfectly fine.
+ * A stalled feed therefore looked exactly like a healthy one.
+ *
+ * The real-time ceiling sits below the poll interval on purpose, so a stalled
+ * poll is abandoned before the next is due rather than accumulating.
+ */
+export const FEED_TIMEOUT_MS = 15_000;
+
+/** getGTFS ships the entire static schedule as a zip, so it needs far longer. */
+export const GTFS_STATIC_TIMEOUT_MS = 120_000;
+
+/**
+ * Run an outbound call under a deadline, and say so plainly if it expires.
+ *
+ * The deadline is an `AbortController` driven by `setTimeout` rather than
+ * `AbortSignal.timeout`, which reads slightly worse but is testable: the
+ * built-in uses an internal timer that fake timers cannot advance, so a
+ * deadline built on it could only be verified by actually waiting fifteen
+ * seconds.
+ *
+ * The abort reason carries the message, because the default surfaces as "This
+ * operation was aborted" — naming neither the call nor the limit, and
+ * diagnosing a stall from logs is the whole point of having a deadline.
+ */
+async function withDeadline<T>(
+  label: string,
+  timeoutMs: number,
+  run: (signal: AbortSignal) => Promise<T>,
+): Promise<T> {
+  const controller = new AbortController();
+  const expired = new Error(`${label} timed out after ${timeoutMs}ms`);
+  const timer = setTimeout(() => controller.abort(expired), timeoutMs);
+  try {
+    return await run(controller.signal);
+  } catch (error) {
+    // Any failure once the deadline has passed is the deadline, however `fetch`
+    // chose to report it.
+    throw controller.signal.aborted ? expired : error;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 interface GetTokenResponse {
   Authenticated?: string;
   UserToken?: string;
@@ -71,15 +119,17 @@ export class TokenManager {
     const form = new FormData();
     form.append("username", username);
     form.append("password", password);
-    const res = await this.fetchImpl(`${baseUrl}/getToken`, {
-      method: "POST",
-      body: form,
-      headers: { accept: "text/plain" },
+    const data = await withDeadline("getToken", FEED_TIMEOUT_MS, async (signal) => {
+      const res = await this.fetchImpl(`${baseUrl}/getToken`, {
+        method: "POST",
+        body: form,
+        headers: { accept: "text/plain" },
+        signal,
+      });
+      if (!res.ok) throw new Error(`getToken failed: ${res.status} ${res.statusText}`);
+      // Returns `null` when credentials are missing, else a JSON envelope.
+      return (await res.json().catch(() => null)) as GetTokenResponse | null;
     });
-    if (!res.ok) throw new Error(`getToken failed: ${res.status} ${res.statusText}`);
-
-    // Returns `null` when credentials are missing, else a JSON envelope.
-    const data = (await res.json().catch(() => null)) as GetTokenResponse | null;
     if (!data) throw new Error("getToken returned null (missing or unrecognized credentials)");
     if (data.errorMessage) throw new Error(`getToken error: ${data.errorMessage}`);
     if (data.Authenticated !== "True" || !data.UserToken) throw new Error("getToken authentication failed");
@@ -122,31 +172,41 @@ export class HttpFeedClient implements FeedClient {
    * ids resolve against the static network.
    */
   fetchGtfsStatic(): Promise<Uint8Array> {
-    return this.fetchProto("getGTFS");
+    return this.fetchProto("getGTFS", GTFS_STATIC_TIMEOUT_MS);
   }
 
-  private async fetchProto(method: string): Promise<Uint8Array> {
-    const first = await this.post(method, await this.tokens.get());
+  private async fetchProto(method: string, timeoutMs = FEED_TIMEOUT_MS): Promise<Uint8Array> {
+    const first = await this.post(method, await this.tokens.get(), timeoutMs);
     if (first !== INVALID_TOKEN) return first;
 
     // Token was rejected (expired/rotated) — mint a fresh one and retry once.
-    const retry = await this.post(method, await this.tokens.get(true));
+    const retry = await this.post(method, await this.tokens.get(true), timeoutMs);
     if (retry === INVALID_TOKEN) throw new Error(`${method}: invalid token after refresh`);
     return retry;
   }
 
-  private async post(method: string, token: string): Promise<Uint8Array | typeof INVALID_TOKEN> {
+  private async post(
+    method: string,
+    token: string,
+    timeoutMs: number,
+  ): Promise<Uint8Array | typeof INVALID_TOKEN> {
     const form = new FormData();
     form.append("token", token);
-    const res = await this.fetchImpl(`${this.config.railData.baseUrl}/${method}`, {
-      method: "POST",
-      body: form,
-      headers: { accept: "*/*" },
+    // The deadline covers reading the body, not just opening the response: a
+    // download that stalls halfway is the same stall as one that never starts.
+    const { bytes, contentType } = await withDeadline(method, timeoutMs, async (signal) => {
+      const res = await this.fetchImpl(`${this.config.railData.baseUrl}/${method}`, {
+        method: "POST",
+        body: form,
+        headers: { accept: "*/*" },
+        signal,
+      });
+      if (!res.ok) throw new Error(`${method} failed: ${res.status} ${res.statusText}`);
+      return {
+        bytes: new Uint8Array(await res.arrayBuffer()),
+        contentType: res.headers.get("content-type") ?? "",
+      };
     });
-    if (!res.ok) throw new Error(`${method} failed: ${res.status} ${res.statusText}`);
-
-    const bytes = new Uint8Array(await res.arrayBuffer());
-    const contentType = res.headers.get("content-type") ?? "";
     // Proto payloads are binary; any JSON/text body is an error envelope.
     if (contentType.includes("octet-stream") || contentType.includes("protobuf")) return bytes;
 
