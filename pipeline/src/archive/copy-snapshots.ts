@@ -199,6 +199,11 @@ export function createClient(store: ObjectStore): S3Client {
     credentials: { accessKeyId: store.accessKeyId, secretAccessKey: store.secretAccessKey },
     // R2 and MinIO both serve path-style; virtual-host style would need per-bucket DNS.
     forcePathStyle: true,
+    // Send only the checksum this code asked for. Recent SDK versions attach a
+    // CRC32 to every upload by default, and R2 rejects the pair outright:
+    // "You can only specify one non-default checksum at a time." MinIO accepts
+    // both, so this surfaced only against the real store.
+    requestChecksumCalculation: "WHEN_REQUIRED",
   });
 }
 
