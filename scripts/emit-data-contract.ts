@@ -53,10 +53,35 @@ const CONTRACT = [
   },
 ] as const;
 
+/**
+ * JavaScript's safe-integer range, which `z.int()` records as minimum/maximum.
+ *
+ * A language artifact, not a domain rule — every integer a JS producer can emit
+ * is inside it by definition — and it does real harm downstream: constraints on
+ * a scalar make `datamodel-code-generator` wrap it in a `RootModel`, so
+ * `event.delaySeconds` becomes an object with a `.root` instead of an int, which
+ * would infect every feature expression in the modelling repo.
+ */
+const JS_SAFE_INTEGER = 9_007_199_254_740_991;
+
+/** Strip the safe-integer bounds wherever they appear, however deeply nested. */
+function withoutSafeIntegerBounds(node: unknown): unknown {
+  if (Array.isArray(node)) return node.map(withoutSafeIntegerBounds);
+  if (node === null || typeof node !== "object") return node;
+
+  const entries = Object.entries(node as Record<string, unknown>).filter(([key, value]) => {
+    const isBound = key === "minimum" || key === "maximum";
+    return !(isBound && Math.abs(value as number) === JS_SAFE_INTEGER);
+  });
+  return Object.fromEntries(entries.map(([key, value]) => [key, withoutSafeIntegerBounds(value)]));
+}
+
 mkdirSync(OUT_DIR, { recursive: true });
 
 for (const entry of CONTRACT) {
-  const jsonSchema = z.toJSONSchema(entry.schema, { target: "draft-7" });
+  const jsonSchema = withoutSafeIntegerBounds(
+    z.toJSONSchema(entry.schema, { target: "draft-7" }),
+  ) as Record<string, unknown>;
   const document = {
     $schema: "http://json-schema.org/draft-07/schema#",
     $id: `https://njt-reliability-tracker/contract/${VERSION}/${entry.id}.schema.json`,

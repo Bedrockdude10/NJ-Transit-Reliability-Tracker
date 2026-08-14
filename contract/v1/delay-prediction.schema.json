@@ -21,14 +21,10 @@
       "type": "string"
     },
     "predictedAtEpochSeconds": {
-      "type": "integer",
-      "minimum": -9007199254740991,
-      "maximum": 9007199254740991
+      "type": "integer"
     },
     "horizonSeconds": {
-      "type": "integer",
-      "minimum": -9007199254740991,
-      "maximum": 9007199254740991
+      "type": "integer"
     },
     "predictedDelaySeconds": {
       "type": "number"

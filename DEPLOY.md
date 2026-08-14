@@ -270,6 +270,36 @@ that route means `npm run snapshot` on a schedule plus an rclone upload — and
 because of the single-volume-attach constraint, that schedule has to run inside
 this container too. It is more work than the above, not less.
 
+## Publishing events for the modelling repo
+
+`npm run export:events` writes derived events to object storage as Parquet, one
+hive-partitioned object per service date, for
+[njt-delay-modeling](https://github.com/Bedrockdude10/njt-delay-modeling) to read.
+Re-running a date replaces its object, so it is safe to schedule and safe to
+rerun after a backfill.
+
+DuckDB does the work in SQL (attach the SQLite file, `COPY … TO 's3://…'`), and
+the column list is asserted against `contract/v1/trip-stop-event.schema.json` by
+`archive-export.test.ts` — a field added to the contract and forgotten in the
+export fails the build rather than being silently absent from every file.
+
+```bash
+fly secrets set \
+  NJT_ARCHIVE_BUCKET=njt-archive \
+  NJT_ARCHIVE_ENDPOINT=<ACCOUNT_ID>.r2.cloudflarestorage.com \
+  NJT_ARCHIVE_ACCESS_KEY_ID=<access key id> \
+  NJT_ARCHIVE_SECRET_ACCESS_KEY=<secret access key>
+
+fly ssh console -C "npm run export:events -- --from 2026-08-01"
+```
+
+Note the endpoint here carries **no scheme** (DuckDB's S3 client wants a bare
+host), unlike `LITESTREAM_ENDPOINT` above, which needs `https://`.
+
+Verified end to end against MinIO locally: 36 service dates, 20,736 rows written
+and read back by the Python repo with every row passing strict contract
+validation.
+
 ## VPS alternative (cheapest, most metered-friendly)
 
 On any small box (Hetzner, a free Oracle ARM VM, etc.) with Docker:

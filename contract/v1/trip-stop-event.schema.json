@@ -21,9 +21,7 @@
       "type": "string"
     },
     "stopSequence": {
-      "type": "integer",
-      "minimum": -9007199254740991,
-      "maximum": 9007199254740991
+      "type": "integer"
     },
     "direction": {
       "anyOf": [
@@ -43,9 +41,7 @@
     "scheduledArrival": {
       "anyOf": [
         {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991
+          "type": "integer"
         },
         {
           "type": "null"
@@ -55,9 +51,7 @@
     "scheduledDeparture": {
       "anyOf": [
         {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991
+          "type": "integer"
         },
         {
           "type": "null"
@@ -67,9 +61,7 @@
     "observedArrival": {
       "anyOf": [
         {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991
+          "type": "integer"
         },
         {
           "type": "null"
@@ -79,9 +71,7 @@
     "delaySeconds": {
       "anyOf": [
         {
-          "type": "integer",
-          "minimum": -9007199254740991,
-          "maximum": 9007199254740991
+          "type": "integer"
         },
         {
           "type": "null"
@@ -98,9 +88,7 @@
       "type": "string"
     },
     "ingestedAtMs": {
-      "type": "integer",
-      "minimum": -9007199254740991,
-      "maximum": 9007199254740991
+      "type": "integer"
     }
   },
   "required": [

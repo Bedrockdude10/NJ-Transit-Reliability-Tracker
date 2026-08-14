@@ -18,9 +18,7 @@
       "type": "number"
     },
     "predictions": {
-      "type": "integer",
-      "minimum": -9007199254740991,
-      "maximum": 9007199254740991
+      "type": "integer"
     },
     "maeSeconds": {
       "type": "number"

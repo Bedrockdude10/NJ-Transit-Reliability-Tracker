@@ -31,6 +31,7 @@
     "purge:seed": "tsx pipeline/src/maintenance/purge-seed.ts",
     "replay": "tsx pipeline/src/replay/cli.ts",
     "snapshot": "tsx pipeline/src/maintenance/snapshot-cli.ts",
+    "export:events": "tsx pipeline/src/archive/export-cli.ts",
     "export:predictions": "tsx pipeline/src/replay/export-predictions.ts",
     "dev:fixture": "tsx pipeline/src/maintenance/dev-fixture-cli.ts",
     "bootstrap": "npm run import:gtfs && npm run import:official",
@@ -46,5 +47,8 @@
     "typescript": "^5.7.2",
     "vitest": "^3.0.0",
     "zod": "^4.4.3"
+  },
+  "dependencies": {
+    "@duckdb/node-api": "^1.5.5-r.4"
   }
 }
