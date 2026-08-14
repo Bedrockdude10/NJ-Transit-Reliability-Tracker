@@ -1,5 +1,5 @@
 import { createRepositories, openDatabase, type Repositories } from "@njt/db";
-import { gtfsStopTimeToEpochSeconds } from "@njt/shared";
+import { gtfsStopTimeToEpochSeconds } from "@njt/shared/zoned";
 import { describe, expect, it } from "vitest";
 import { directionFromId } from "../src/gtfs-rt/parse";
 import { createScheduleContext } from "../src/gtfs-rt/schedule-context";

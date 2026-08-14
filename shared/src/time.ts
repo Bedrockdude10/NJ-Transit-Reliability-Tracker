@@ -1,5 +1,10 @@
 /**
- * Timezone-aware time utilities, dependency-free via the built-in `Intl` API.
+ * Timezone-aware time utilities.
+ *
+ * Dependency-free: everything here is `Intl` or plain `Date` arithmetic.
+ * Instant -> local parts is unambiguous, so it needs nothing more. The reverse
+ * direction is where DST bites and lives in `time-zoned.ts`, kept separate so
+ * the app bundle does not carry a Temporal polyfill it never calls.
  *
  * GTFS encodes stop times as "HH:MM:SS" where the hour may exceed 23 (e.g.
  * "25:30:00" is 1:30am the following calendar day, still belonging to the prior
@@ -58,38 +63,6 @@ export function getLocalParts(
   };
 }
 
-/**
- * Offset (ms) such that `local = utc + offset` at the given instant, accounting
- * for DST. Positive east of UTC; for NJT this is negative (EST -5h / EDT -4h).
- */
-function timezoneOffsetMs(utcMs: number, timeZone: string): number {
-  const p = getLocalParts(Math.round(utcMs / 1000), timeZone);
-  const asIfUtc = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second);
-  return asIfUtc - utcMs;
-}
-
-/**
- * Convert local wall-clock parts in a timezone to epoch seconds (UTC). Resolves
- * DST by refining the offset once, which is correct except inside the ~1h
- * ambiguous fall-back window (acceptable for reliability analytics).
- */
-export function localPartsToEpochSeconds(
-  parts: LocalParts,
-  timeZone: string = NJT_TIMEZONE,
-): number {
-  const naiveUtc = Date.UTC(
-    parts.year,
-    parts.month - 1,
-    parts.day,
-    parts.hour,
-    parts.minute,
-    parts.second,
-  );
-  const offset1 = timezoneOffsetMs(naiveUtc, timeZone);
-  const offset2 = timezoneOffsetMs(naiveUtc - offset1, timeZone);
-  return Math.round((naiveUtc - offset2) / 1000);
-}
-
 /** Local calendar date (`YYYY-MM-DD`) of an epoch-seconds instant. */
 export function toLocalDateString(
   epochSeconds: number,
@@ -122,54 +95,6 @@ export function parseGtfsTimeToSeconds(time: string): number {
   const match = /^(\d{1,3}):([0-5]\d):([0-5]\d)$/.exec(time);
   if (!match) throw new Error(`Invalid GTFS time: ${time}`);
   return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
-}
-
-/**
- * Local-midnight (epoch seconds) of a service date, memoized by
- * `serviceDate|timeZone`. Resolving it runs two `Intl.formatToParts` passes;
- * every stop time on a service date shares the same midnight, and each is
- * resolved twice (arrival + departure), so caching removes near-all of that
- * `Intl` work during aggregation and schedule resolution.
- */
-const MIDNIGHT_CACHE = new Map<string, number>();
-
-function localMidnightEpochSeconds(serviceDate: string, timeZone: string): number {
-  const cacheKey = `${serviceDate}|${timeZone}`;
-  const cached = MIDNIGHT_CACHE.get(cacheKey);
-  if (cached !== undefined) return cached;
-  const { year, month, day } = parseDateString(serviceDate);
-  const midnight = localPartsToEpochSeconds(
-    { year, month, day, hour: 0, minute: 0, second: 0 },
-    timeZone,
-  );
-  MIDNIGHT_CACHE.set(cacheKey, midnight);
-  return midnight;
-}
-
-/**
- * Resolve a GTFS stop time (service date + "HH:MM:SS", hours may exceed 24) to
- * an absolute epoch-seconds instant in the given timezone.
- */
-export function gtfsStopTimeToEpochSeconds(
-  serviceDate: string,
-  gtfsTime: string,
-  timeZone: string = NJT_TIMEZONE,
-): number {
-  const secondsPastMidnight = parseGtfsTimeToSeconds(gtfsTime);
-  // Anchor at local midnight of the service date, then add the GTFS offset.
-  return localMidnightEpochSeconds(serviceDate, timeZone) + secondsPastMidnight;
-}
-
-/**
- * Local midnight starting a service date, as epoch seconds. The anchor every
- * "what happened on this day?" question resolves against — a service date is a
- * local calendar day, not a UTC one, so this cannot be done with `Date.parse`.
- */
-export function startOfLocalDayEpochSeconds(
-  serviceDate: string,
-  timeZone: string = NJT_TIMEZONE,
-): number {
-  return localMidnightEpochSeconds(serviceDate, timeZone);
 }
 
 /** Day of week for an instant in a timezone. 0 = Sunday … 6 = Saturday. */

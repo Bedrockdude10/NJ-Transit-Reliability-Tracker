@@ -1,5 +1,5 @@
 import type { GtfsRepository } from "@njt/db";
-import { gtfsStopTimeToEpochSeconds } from "@njt/shared";
+import { gtfsStopTimeToEpochSeconds } from "@njt/shared/zoned";
 import { directionFromId, type ResolvedRoute, type ScheduleContext, type TripSchedule } from "./parse";
 
 /**

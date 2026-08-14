@@ -1,13 +1,12 @@
 import type { Repositories } from "@njt/db";
 import {
   RAIL_LINES,
-  gtfsStopTimeToEpochSeconds,
-  startOfLocalDayEpochSeconds,
   type AlertFrequencyLine,
   type AlertFrequencyResponse,
   type AlertListItem,
   type AlertListResponse,
 } from "@njt/shared";
+import { gtfsStopTimeToEpochSeconds, startOfLocalDayEpochSeconds } from "@njt/shared/zoned";
 import { Hono } from "hono";
 import { resolveRange } from "../dates";
 import { parsePositiveInt } from "../util";
