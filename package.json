@@ -29,6 +29,7 @@
     "repair:line-names": "tsx pipeline/src/gtfs/repair.ts",
     "purge:seed": "tsx pipeline/src/maintenance/purge-seed.ts",
     "replay": "tsx pipeline/src/replay/cli.ts",
+    "snapshot": "tsx pipeline/src/maintenance/snapshot-cli.ts",
     "export:predictions": "tsx pipeline/src/replay/export-predictions.ts",
     "dev:fixture": "tsx pipeline/src/maintenance/dev-fixture-cli.ts",
     "bootstrap": "npm run import:gtfs && npm run import:official",

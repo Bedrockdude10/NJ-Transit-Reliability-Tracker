@@ -176,9 +176,52 @@ Cloudflare builds remotely (no bandwidth from you beyond the `git push`). CORS i
 
 ## Ongoing
 
-- **Durability now:** enable Fly volume snapshots (`fly volumes` → daily snapshots). That's the launch-time safety net; add Litestream → R2 once you've collected RT history worth protecting.
+- **Durability now:** enable Fly volume snapshots (`fly volumes` → daily snapshots), and see **Backups** below. The RT history is now worth protecting: it exists on one volume and no replay can re-derive it from anywhere else.
 - **Updates:** `git push` → `fly deploy` (server) and Cloudflare auto-builds (web).
 - **Keep it always-on:** don't change `auto_stop_machines`/`min_machines_running` in `fly.toml` — the pipeline must run continuously or you get permanent data gaps.
+
+## Backups
+
+`npm run snapshot` writes a verified, compressed copy of the live database:
+
+```bash
+fly ssh console -C "npm run snapshot -- --keep 7"
+```
+
+It uses `VACUUM INTO`, not a file copy — the database is written to continuously,
+so a plain copy captures a torn mid-transaction state. Under WAL this takes a
+read transaction and does **not** block the pipeline's polling, so it is safe to
+run against production. It refuses to start if the volume lacks room, since
+filling the volume would take the live database down with it, and it runs
+`integrity_check` on the copy before keeping it — an unverified backup is a guess.
+
+Measured on a 385 MB database: ~14s, compressing to **11%** of the original (the
+raw protobuf blobs compress hard). Extrapolating to production's ~3 GB: roughly
+2 minutes and ~320 MB per snapshot.
+
+Restore:
+
+```bash
+npm run snapshot -- --restore njt-20260814T152502Z.sqlite.gz --to ./restored.sqlite
+```
+
+### Getting it off the volume
+
+**On its own this is a restore point, not a backup** — the snapshot sits beside
+the database it protects, so it survives a bad migration but not the loss of the
+volume, which is the risk that actually matters. Pick a destination:
+
+| | Setup | Data at risk |
+|---|---|---|
+| **Litestream → R2** | R2 → Manage API Tokens → Create (an access key and secret; R2 is S3-*compatible*, no AWS involved). Free tier: 10 GB, 1M writes/mo, no egress fees — this workload fits. | seconds |
+| **rclone → Drive** | `rclone authorize drive` for a token, stored as a Fly secret. Litestream cannot target Drive, so this is `npm run snapshot` on a schedule plus an upload. ~320 MB per run; Drive's free 15 GB holds ~47. | since the last run |
+
+The snapshot command prints the path it wrote on stdout, so an uploader can be
+bolted on without touching it:
+
+```bash
+rclone copy "$(npm run --silent snapshot -- --keep 7)" gdrive:njt-backups/
+```
 
 ## VPS alternative (cheapest, most metered-friendly)
 
