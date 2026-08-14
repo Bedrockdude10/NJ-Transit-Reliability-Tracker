@@ -1,0 +1,125 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://njt-reliability-tracker/contract/v1/trip-stop-event.schema.json",
+  "title": "TripStopEvent",
+  "description": "One observed reading per (trip, stop, service date). Written by the ingest pipeline. Object-storage prefix: events/",
+  "type": "object",
+  "properties": {
+    "tripId": {
+      "type": "string"
+    },
+    "routeId": {
+      "type": "string"
+    },
+    "lineName": {
+      "type": "string"
+    },
+    "stopId": {
+      "type": "string"
+    },
+    "stopName": {
+      "type": "string"
+    },
+    "stopSequence": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "direction": {
+      "anyOf": [
+        {
+          "type": "string",
+          "const": "inbound"
+        },
+        {
+          "type": "string",
+          "const": "outbound"
+        }
+      ]
+    },
+    "serviceDate": {
+      "type": "string"
+    },
+    "scheduledArrival": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "scheduledDeparture": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "observedArrival": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "delaySeconds": {
+      "anyOf": [
+        {
+          "type": "integer",
+          "minimum": -9007199254740991,
+          "maximum": 9007199254740991
+        },
+        {
+          "type": "null"
+        }
+      ]
+    },
+    "stopSkipped": {
+      "type": "boolean"
+    },
+    "tripCancelled": {
+      "type": "boolean"
+    },
+    "gtfsStaticVersion": {
+      "type": "string"
+    },
+    "ingestedAtMs": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    }
+  },
+  "required": [
+    "tripId",
+    "routeId",
+    "lineName",
+    "stopId",
+    "stopName",
+    "stopSequence",
+    "direction",
+    "serviceDate",
+    "scheduledArrival",
+    "scheduledDeparture",
+    "observedArrival",
+    "delaySeconds",
+    "stopSkipped",
+    "tripCancelled",
+    "gtfsStaticVersion",
+    "ingestedAtMs"
+  ],
+  "additionalProperties": false
+}

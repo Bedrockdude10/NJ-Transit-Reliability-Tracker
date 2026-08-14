@@ -36,22 +36,36 @@ export interface TripStopEvent {
   lineName: string;
   stopId: string;
   stopName: string;
+  /** @format int */
   stopSequence: number;
   direction: Direction;
   /** GTFS service date, `YYYY-MM-DD`. */
   serviceDate: string;
-  /** Scheduled arrival, epoch seconds UTC (null if the stop has no arrival time). */
+  /**
+   * Scheduled arrival, epoch seconds UTC (null if the stop has no arrival time).
+   * @format int
+   */
   scheduledArrival: number | null;
+  /** @format int */
   scheduledDeparture: number | null;
-  /** Predicted/observed arrival at the time of the final reading, epoch seconds UTC. */
+  /**
+   * Predicted/observed arrival at the time of the final reading, epoch seconds UTC.
+   * @format int
+   */
   observedArrival: number | null;
-  /** Positive = late, negative = early. Null when not yet observed. */
+  /**
+   * Positive = late, negative = early. Null when not yet observed.
+   * @format int
+   */
   delaySeconds: number | null;
   stopSkipped: boolean;
   tripCancelled: boolean;
   /** Which GTFS static snapshot the trip was matched against. */
   gtfsStaticVersion: string;
-  /** When this reading was ingested, epoch milliseconds. */
+  /**
+   * When this reading was ingested, epoch milliseconds.
+   * @format int
+   */
   ingestedAtMs: number;
 }
 

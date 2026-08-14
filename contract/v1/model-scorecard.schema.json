@@ -1,0 +1,46 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://njt-reliability-tracker/contract/v1/model-scorecard.schema.json",
+  "title": "ModelScorecard",
+  "description": "Per-model, per-day accuracy summary. Written by njt-delay-modeling. Object-storage prefix: scorecards/",
+  "type": "object",
+  "properties": {
+    "modelVersion": {
+      "type": "string"
+    },
+    "runId": {
+      "type": "string"
+    },
+    "serviceDate": {
+      "type": "string"
+    },
+    "horizonSeconds": {
+      "type": "number"
+    },
+    "predictions": {
+      "type": "integer",
+      "minimum": -9007199254740991,
+      "maximum": 9007199254740991
+    },
+    "maeSeconds": {
+      "type": "number"
+    },
+    "biasSeconds": {
+      "type": "number"
+    },
+    "falselyReassuringPercent": {
+      "type": "number"
+    }
+  },
+  "required": [
+    "modelVersion",
+    "runId",
+    "serviceDate",
+    "horizonSeconds",
+    "predictions",
+    "maeSeconds",
+    "biasSeconds",
+    "falselyReassuringPercent"
+  ],
+  "additionalProperties": false
+}

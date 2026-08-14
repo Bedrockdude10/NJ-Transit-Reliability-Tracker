@@ -29,6 +29,12 @@ import { fileURLToPath } from "node:url";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const SOURCE = resolve(ROOT, "shared/src/api.ts");
+/**
+ * Self-contained modules that also need runtime schemas, for the object-storage
+ * contract shared with the Python modelling repo. They import nothing, so unlike
+ * `api.ts` they need no inlining pass.
+ */
+const DATA_CONTRACT_SOURCES = ["domain", "predictions"] as const;
 const SCRATCH = resolve(ROOT, "shared/src/api.gen-input.ts");
 const OUTPUT = resolve(ROOT, "shared/src/api.zod.ts");
 
@@ -88,3 +94,11 @@ import { z } from "zod";
 writeFileSync(OUTPUT, generated.replace(generatedHeader, HEADER));
 
 console.log(`Wrote ${OUTPUT}`);
+
+for (const name of DATA_CONTRACT_SOURCES) {
+  execFileSync("npx", ["ts-to-zod", `shared/src/${name}.ts`, `shared/src/${name}.zod.ts`, "--keepComments", "--skipValidation"], {
+    cwd: ROOT,
+    stdio: "inherit",
+  });
+  console.log(`Wrote shared/src/${name}.zod.ts`);
+}
