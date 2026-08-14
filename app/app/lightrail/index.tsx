@@ -1,6 +1,6 @@
 import { useMemo, useState } from "react";
 import { api } from "../../lib/api";
-import { coverageNote, formatInt, formatPercent } from "../../lib/format";
+import { officialPeriodLabel, formatInt, formatPercent } from "../../lib/format";
 import { otpColor } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
 import { windowToRange, type WindowKey } from "../../lib/windows";
@@ -34,15 +34,19 @@ export default function LightRail() {
 
       {summary.data ? (
         <>
-          <Row>
-            <StatTile
-              label="On-time performance"
-              value={formatPercent(summary.data.otpPercent)}
-              color={summary.data.otpPercent !== null ? otpColor(summary.data.otpPercent) : undefined}
-              hint={`NJT systemwide, ${summary.data.monthsCovered} mo`}
-            />
-          </Row>
-          {coverageNote(summary.data.coverage) ? <Muted>{coverageNote(summary.data.coverage)}</Muted> : null}
+          <Card
+            title="NJ Transit's own published figures"
+            subtitle={officialPeriodLabel(summary.data.coverage) ?? "Not yet published for any month"}
+          >
+            <Row>
+              <StatTile
+                label="On-time performance"
+                value={formatPercent(summary.data.otpPercent)}
+                color={summary.data.otpPercent !== null ? otpColor(summary.data.otpPercent) : undefined}
+                hint={`NJT systemwide, ${summary.data.monthsCovered} mo`}
+              />
+            </Row>
+          </Card>
 
           {summary.data.otpTrend.length > 1 ? (
             <Card>

@@ -79,18 +79,32 @@ export function formatClockTime(epochSeconds: number | null | undefined): string
 }
 
 /**
- * Caption for an official (monthly) figure whose months fall outside the
- * selected date range. NJT publishes in arrears, so the API substitutes its
- * newest published month — that substitution must be visible, or a May figure
- * reads as if it described the July window the user asked for.
+ * What period NJT's own published figures actually cover.
  *
- * Returns null when the figure really does cover the requested range.
+ * Always returns a label, never null-when-fine. The previous version only spoke
+ * up when the months fell outside the selected range, which left two problems.
+ * It said nothing at all when the overlap was merely partial — a 90-day window
+ * starting mid-May counts May as "in range" and dropped the caveat while still
+ * showing a figure for all of May. And as a bare line of text under an unlabelled
+ * row of tiles, "NJT hasn't published this period yet" read as a statement about
+ * the whole screen, as though the live measurements above it were stale too.
+ *
+ * Stating the period unconditionally, as the subtitle of the card holding those
+ * figures, removes both: the scope is structural rather than prose, and there is
+ * no boundary at which the label silently switches off.
  */
-export function coverageNote(coverage: PublishedCoverage | null | undefined): string | null {
-  if (!coverage || !coverage.outsideRequestedRange) return null;
+export function officialPeriodLabel(coverage: PublishedCoverage | null | undefined): string | null {
+  if (!coverage) return null;
   const span =
-    coverage.fromMonth === coverage.toMonth ? coverage.fromMonth : `${coverage.fromMonth}–${coverage.toMonth}`;
-  return `NJT hasn't published this period yet — showing ${span}, its most recent.`;
+    coverage.fromMonth === coverage.toMonth
+      ? formatMonth(coverage.fromMonth)
+      : `${formatMonth(coverage.fromMonth)} – ${formatMonth(coverage.toMonth)}`;
+  // NJT publishes months in arrears, so the newest available month routinely
+  // predates the window. Say so where it is true, without implying anything
+  // about the independently measured figures elsewhere on the page.
+  return coverage.outsideRequestedRange
+    ? `${span} — NJT's most recent published month, before your selected window`
+    : span;
 }
 
 /** "reduced_service" -> "Reduced service". */

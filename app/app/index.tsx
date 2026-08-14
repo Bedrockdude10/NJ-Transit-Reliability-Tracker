@@ -1,7 +1,7 @@
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { api } from "../lib/api";
-import { coverageNote, formatDelayShort, formatInt, formatPercent } from "../lib/format";
+import { officialPeriodLabel, formatDelayShort, formatInt, formatPercent } from "../lib/format";
 import { hasHeatmapData, hasMeasuredOtp } from "../lib/measurement";
 import { otpColor, otpColorAt, theme } from "../lib/theme";
 import { useChartColors } from "../lib/useChartColors";
@@ -16,7 +16,7 @@ import { HistoryCharts } from "../components/HistoryCharts";
 import { TrendList } from "../components/TrendList";
 import { Table } from "../components/Table";
 import { WindowPicker } from "../components/WindowPicker";
-import { Card, EmptyState, Eyebrow, ErrorView, Loading, Muted, PageTitle, Row, SkeletonCard, StatTile, Screen } from "../components/ui";
+import { Card, EmptyState, Eyebrow, ErrorView, Loading, PageTitle, Row, SkeletonCard, StatTile, Screen } from "../components/ui";
 
 export default function SystemOverview() {
   const [windowKey, setWindowKey] = useState<WindowKey>("30d");
@@ -98,14 +98,22 @@ export default function SystemOverview() {
             </View>
           </Card>
 
-          {/* Real, NJT-reported operations for the period. */}
-          <Row>
-            <StatTile label="Trips operated (NJT)" value={s.njtOfficial ? formatInt(s.njtOfficial.tripsOperated) : "—"} accent={theme.colors.accent} hint={s.njtOfficial ? `${s.njtOfficial.monthsCovered} mo published` : "no NJT data this period"} />
-            <StatTile label="Cancellations (NJT)" value={s.njtOfficial ? formatInt(s.njtOfficial.cancellations) : "—"} color={theme.colors.bad} />
-            <StatTile label="Cancellation rate (NJT)" value={s.njtOfficial ? formatPercent(s.njtOfficial.cancellationRatePercent) : "—"} />
-            {s.fleetMdbf ? <StatTile label="Fleet MDBF (NJT)" value={`${formatInt(s.fleetMdbf.avgMiles)} mi`} hint="miles between failures" /> : null}
-          </Row>
-          {coverageNote(s.officialCoverage) ? <Muted>{coverageNote(s.officialCoverage)}</Muted> : null}
+          {/* NJT's own published monthly figures. In their own card, with the
+              period they cover in the subtitle: these are the only numbers on
+              this screen that are not current, and an unheaded row of tiles
+              followed by a floating caption made that read as if the live
+              measurements above were stale too. */}
+          <Card
+            title="NJ Transit's own published figures"
+            subtitle={officialPeriodLabel(s.officialCoverage) ?? "Not yet published for any month"}
+          >
+            <Row>
+              <StatTile label="Trips operated (NJT)" value={s.njtOfficial ? formatInt(s.njtOfficial.tripsOperated) : "—"} accent={theme.colors.accent} hint={s.njtOfficial ? `${s.njtOfficial.monthsCovered} mo published` : "no NJT data this period"} />
+              <StatTile label="Cancellations (NJT)" value={s.njtOfficial ? formatInt(s.njtOfficial.cancellations) : "—"} color={theme.colors.bad} />
+              <StatTile label="Cancellation rate (NJT)" value={s.njtOfficial ? formatPercent(s.njtOfficial.cancellationRatePercent) : "—"} />
+              {s.fleetMdbf ? <StatTile label="Fleet MDBF (NJT)" value={`${formatInt(s.fleetMdbf.avgMiles)} mi`} hint="miles between failures" /> : null}
+            </Row>
+          </Card>
 
           <Card
             title="What's changed"

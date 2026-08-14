@@ -2,7 +2,7 @@ import { useLocalSearchParams } from "expo-router";
 import { useMemo, useState } from "react";
 import { StyleSheet, Text, View } from "react-native";
 import { api } from "../../lib/api";
-import { coverageNote, formatDelayShort, formatDelaySeconds, formatInt, formatMonth, formatPercent } from "../../lib/format";
+import { officialPeriodLabel, formatDelayShort, formatDelaySeconds, formatInt, formatMonth, formatPercent } from "../../lib/format";
 import { hasMeasuredOtp } from "../../lib/measurement";
 import { theme, otpColor, otpColorAt } from "../../lib/theme";
 import { useChartColors } from "../../lib/useChartColors";
@@ -97,12 +97,16 @@ export default function LineDetail() {
             measured={measured}
           />
 
-          <Row>
-            <StatTile label="Trips operated (NJT)" value={summary.data.njtOfficial ? formatInt(summary.data.njtOfficial.tripsOperated) : "—"} accent={theme.colors.accent} hint={summary.data.njtOfficial ? `${summary.data.njtOfficial.monthsCovered} mo published` : "no NJT data this period"} />
-            <StatTile label="Cancellations (NJT)" value={summary.data.njtOfficial ? formatInt(summary.data.njtOfficial.cancellations) : "—"} color={theme.colors.bad} />
-            <StatTile label="Cancellation rate (NJT)" value={summary.data.njtOfficial ? formatPercent(summary.data.njtOfficial.cancellationRatePercent) : "—"} />
-          </Row>
-          {coverageNote(summary.data.officialCoverage) ? <Muted>{coverageNote(summary.data.officialCoverage)}</Muted> : null}
+          <Card
+            title="NJ Transit's own published figures"
+            subtitle={officialPeriodLabel(summary.data.officialCoverage) ?? "Not yet published for this line"}
+          >
+            <Row>
+              <StatTile label="Trips operated (NJT)" value={summary.data.njtOfficial ? formatInt(summary.data.njtOfficial.tripsOperated) : "—"} accent={theme.colors.accent} hint={summary.data.njtOfficial ? `${summary.data.njtOfficial.monthsCovered} mo published` : "no NJT data this period"} />
+              <StatTile label="Cancellations (NJT)" value={summary.data.njtOfficial ? formatInt(summary.data.njtOfficial.cancellations) : "—"} color={theme.colors.bad} />
+              <StatTile label="Cancellation rate (NJT)" value={summary.data.njtOfficial ? formatPercent(summary.data.njtOfficial.cancellationRatePercent) : "—"} />
+            </Row>
+          </Card>
 
           <Card title="On-time performance vs. NJT" right={<LiveBadge collectionStartDate={collectionStartDate} />}>
             <OtpComparison thresholds={summary.data.overall.thresholds} njtOfficial={summary.data.njtOfficial} measured={measured} />

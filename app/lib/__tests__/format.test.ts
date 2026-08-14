@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
-  coverageNote,
+  officialPeriodLabel,
   formatDelaySeconds,
   formatDelayShort,
   formatInt,
@@ -70,24 +70,35 @@ describe("date + misc formatters", () => {
   });
 });
 
-describe("coverageNote", () => {
-  it("is silent when the figures really cover the requested range", () => {
-    expect(coverageNote({ fromMonth: "2026-04", toMonth: "2026-05", outsideRequestedRange: false })).toBeNull();
-    expect(coverageNote(null)).toBeNull();
-    expect(coverageNote(undefined)).toBeNull();
-  });
-
-  // Without this the substituted month reads as if it described the selected
-  // window — a May figure silently labelled as July.
-  it("names the substituted month when NJT hasn't published the period", () => {
-    expect(coverageNote({ fromMonth: "2026-05", toMonth: "2026-05", outsideRequestedRange: true })).toBe(
-      "NJT hasn't published this period yet — showing 2026-05, its most recent.",
+describe("officialPeriodLabel", () => {
+  it("states the period even when the figures do cover the requested range", () => {
+    // The old caption stayed silent here, which left an unlabelled row of
+    // NJT tiles sitting beside live measurements with nothing to tell them
+    // apart — and said nothing at all when the overlap was only partial.
+    expect(officialPeriodLabel({ fromMonth: "2026-04", toMonth: "2026-05", outsideRequestedRange: false })).toBe(
+      "Apr 2026 – May 2026",
+    );
+    expect(officialPeriodLabel({ fromMonth: "2026-05", toMonth: "2026-05", outsideRequestedRange: false })).toBe(
+      "May 2026",
     );
   });
 
-  it("renders a multi-month fallback as a span", () => {
-    expect(coverageNote({ fromMonth: "2026-03", toMonth: "2026-05", outsideRequestedRange: true })).toContain(
-      "2026-03–2026-05",
+  it("says a substituted month predates the window, without disowning the rest of the page", () => {
+    const label = officialPeriodLabel({ fromMonth: "2026-05", toMonth: "2026-05", outsideRequestedRange: true });
+    expect(label).toBe("May 2026 — NJT's most recent published month, before your selected window");
+    // It describes NJT's figures only. "this period" previously read as a
+    // verdict on everything on screen, including the live measurements.
+    expect(label).not.toMatch(/this period/i);
+  });
+
+  it("renders a multi-month span", () => {
+    expect(officialPeriodLabel({ fromMonth: "2026-03", toMonth: "2026-05", outsideRequestedRange: true })).toContain(
+      "Mar 2026 – May 2026",
     );
+  });
+
+  it("has nothing to say when nothing has ever been published", () => {
+    expect(officialPeriodLabel(null)).toBeNull();
+    expect(officialPeriodLabel(undefined)).toBeNull();
   });
 });
