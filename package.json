@@ -32,6 +32,7 @@
     "replay": "tsx pipeline/src/replay/cli.ts",
     "snapshot": "tsx pipeline/src/maintenance/snapshot-cli.ts",
     "export:events": "tsx pipeline/src/archive/export-cli.ts",
+    "sweep:archive": "tsx pipeline/src/archive/sweep-cli.ts",
     "export:predictions": "tsx pipeline/src/replay/export-predictions.ts",
     "dev:fixture": "tsx pipeline/src/maintenance/dev-fixture-cli.ts",
     "bootstrap": "npm run import:gtfs && npm run import:official",

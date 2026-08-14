@@ -121,7 +121,7 @@ export function partitionKey(prefix: string, serviceDate: string): string {
  * `ATTACH` is DDL and takes no placeholders. Credentials never go through here —
  * see {@link configureStore}.
  */
-function literal(value: string): string {
+export function literal(value: string): string {
   return `'${value.replace(/'/g, "''")}'`;
 }
 
@@ -132,7 +132,7 @@ function literal(value: string): string {
  * rather than interpolated into a `CREATE SECRET` statement. The keys then never
  * appear in a SQL string that could be logged or surfaced in an error.
  */
-async function configureStore(
+export async function configureStore(
   connection: Awaited<ReturnType<DuckDBInstance["connect"]>>,
   store: ObjectStore,
 ): Promise<void> {

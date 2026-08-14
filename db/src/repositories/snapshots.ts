@@ -117,6 +117,90 @@ export class RawSnapshotRepository {
     return row?.firstMs && row.lastMs ? { firstMs: row.firstMs, lastMs: row.lastMs } : null;
   }
 
+  /** Earliest and latest snapshot instants across all feeds, or null if empty. */
+  timeRange(): { firstMs: number; lastMs: number } | null {
+    const row = this.db.get<{ firstMs: number | null; lastMs: number | null }>(
+      "SELECT MIN(fetched_at_ms) AS firstMs, MAX(fetched_at_ms) AS lastMs FROM raw_snapshots",
+    );
+    return row?.firstMs != null && row.lastMs != null
+      ? { firstMs: row.firstMs, lastMs: row.lastMs }
+      : null;
+  }
+
+  /**
+   * Flush the WAL into the main database file.
+   *
+   * Anything read by a tool that opens the file directly — DuckDB's SQLite
+   * scanner, for one — may not see rows still living in `-wal`. The archive
+   * sweep exports through DuckDB and then deletes through this repository, so
+   * without a checkpoint first it could write a partial day and delete a whole
+   * one. That is unrecoverable: NJT serves no history.
+   */
+  checkpointWal(): void {
+    this.db.exec("PRAGMA wal_checkpoint(FULL)");
+  }
+
+  /**
+   * Snapshot instants bounding a UTC day, and how many rows it holds.
+   *
+   * The archive sweep works a whole UTC day at a time: a partial day could be
+   * written to object storage, then gain more rows from the still-running
+   * pipeline, and the second write would not cover what the first deleted.
+   */
+  dayExtent(dayStartMs: number, dayEndMs: number): { rows: number } {
+    return {
+      rows:
+        this.db.get<{ c: number }>(
+          "SELECT COUNT(*) AS c FROM raw_snapshots WHERE fetched_at_ms >= :from AND fetched_at_ms < :to",
+          { from: dayStartMs, to: dayEndMs },
+        )?.c ?? 0,
+    };
+  }
+
+  /**
+   * Delete a UTC day's snapshots, in batches, returning how many went.
+   *
+   * Batched because this runs against a live database the pipeline is writing
+   * to: one statement removing a day's 5,700 blobs holds the write lock long
+   * enough to stall a poll, and a stalled poll loses data that cannot be
+   * refetched. `betweenBatches` lets the caller yield between them.
+   *
+   * Note this frees pages *inside* the file for reuse rather than shrinking it.
+   * That is the intent — it stops the file growing, which is what the volume
+   * ceiling actually requires, without the full rewrite a VACUUM would cost.
+   */
+  deleteDay(
+    dayStartMs: number,
+    dayEndMs: number,
+    options: { batchSize?: number; betweenBatches?: () => void } = {},
+  ): number {
+    const batchSize = options.batchSize ?? 500;
+    let deleted = 0;
+
+    // A subquery with LIMIT rather than an assembled `IN (?, ?, …)` list: all
+    // parameters stay named, matching the driver, and the statement is constant
+    // so SQLite can reuse its plan across batches.
+    for (;;) {
+      const before = this.dayExtent(dayStartMs, dayEndMs).rows;
+      if (before === 0) break;
+
+      this.db.run(
+        `DELETE FROM raw_snapshots WHERE id IN (
+           SELECT id FROM raw_snapshots
+           WHERE fetched_at_ms >= :from AND fetched_at_ms < :to
+           LIMIT :limit
+         )`,
+        { from: dayStartMs, to: dayEndMs, limit: batchSize },
+      );
+
+      const after = this.dayExtent(dayStartMs, dayEndMs).rows;
+      deleted += before - after;
+      if (after === before) break; // nothing removed: stop rather than spin
+      options.betweenBatches?.();
+    }
+    return deleted;
+  }
+
   count(feedType?: FeedType): number {
     const sql = feedType
       ? "SELECT COUNT(*) AS c FROM raw_snapshots WHERE feed_type = :t"

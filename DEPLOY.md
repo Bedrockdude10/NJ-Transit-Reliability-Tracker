@@ -304,6 +304,45 @@ Verified end to end against MinIO locally: 36 service dates, 20,736 rows written
 and read back by the Python repo with every row passing strict contract
 validation.
 
+## Draining the raw archive
+
+`raw_snapshots` is ~3.7 GB of the 3.76 GB database and grows **130 MB/day**. That
+fills the volume, makes every backup expensive, and made Litestream's first
+snapshot heavy enough to starve the API. `npm run sweep:archive` moves it to
+object storage:
+
+```bash
+fly ssh console -C "npm run sweep:archive -- --older-than 2"
+```
+
+Whole closed UTC days only, written hourly (a day of blobs will not fit in memory
+on a 512 MB box), every hour read back and compared by content digest, and the
+day deleted only once **all** of it is verifiably stored. Reruns are free.
+
+**It does not shrink the file, on purpose.** Deleting frees pages inside the
+database for reuse, so the file stops growing at its current size — which is what
+the volume ceiling actually requires. A `VACUUM` would reclaim the disk but
+rewrites the whole database, the same class of load that already caused an
+outage. Measured on a production-shaped 1.23 GB database: 7 days swept in 61s,
+205,959 pages freed, then three further days of production-rate data added with
+**zero** file growth where a fresh file would have grown ~390 MB.
+
+Read it back with any Parquet reader; the layout is hive-partitioned:
+
+```sql
+SELECT * FROM read_parquet('s3://njt-archive/archive/date=2026-08-05/**/*.parquet');
+```
+
+Uses the same `NJT_R2_*` secrets as replication.
+
+### Order of operations
+
+Replication and the sweep interact. Enable them in this order, or the first
+Litestream snapshot has 3.7 GB to copy on a box that cannot afford it:
+
+1. **Sweep first**, until the database is small and no longer growing.
+2. **Then** set `NJT_R2_BUCKET` to enable replication.
+
 ## VPS alternative (cheapest, most metered-friendly)
 
 On any small box (Hetzner, a free Oracle ARM VM, etc.) with Docker:
