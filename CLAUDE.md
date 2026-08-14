@@ -43,6 +43,9 @@ Pipeline tick: `fetch (FeedClient) → parse → repos.events.record → aggrega
 ## Where to add things
 
 - **New screen:** `app/app/<route>/index.tsx` + a link in `app/components/NavBar.tsx`. Fetch via `app/lib/api.ts` (`useApi` / `useApis` / `useLiveApi`, thin wrappers over TanStack Query). Client methods return an `ApiQuery` — a cache key plus how to run it — not a promise, so the key is always the URL and can never disagree with the request.
+- **Screens are panels under `<QueryBoundary>`.** `data` from the hooks is non-nullable; a screen never writes a `loading ? … : error ? …` ladder. Put each panel's query in its own child component under its own boundary: siblings fetch in parallel, whereas stacking several `useSuspenseQuery` calls in one component suspends on the first and serialises them. **Anything that fetches inside `app/_layout.tsx` needs its own boundary** — without one it suspends or crashes the whole app shell, not just itself.
+- **A query that can't run yet is not a disabled query** — don't render the component that needs it (`/commute` does this). Suspense queries have no `enabled`.
+- **Screen state that a user would share or return to belongs in the URL**, via `useWindow()` or `useLocalSearchParams`, not `useState`.
 - **New API endpoint:** `api/src/routes/<group>.ts`, mount in `api/src/app.ts`; add the response DTO to `shared/src/api.ts` and a client method to `app/lib/api.ts`.
 - **New metric:** emit a daily row in `pipeline/src/aggregator.ts`, store it via `db/src/repositories/aggregates.ts` (add a migration), sum it in `api/src/aggregation.ts`, surface in a DTO + screen. Don't compute it at request time.
 - **New data source:** an importer under `pipeline/src/<source>/` + a repository + a migration; keep HTTP/parse at the edges, logic pure.

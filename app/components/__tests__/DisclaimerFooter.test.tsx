@@ -1,19 +1,23 @@
+import { DISCLAIMER_TEXT } from "@njt/shared";
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react-native";
 import React from "react";
-import { DISCLAIMER_TEXT } from "@njt/shared";
 import { DisclaimerFooter } from "../DisclaimerFooter";
 import { createQueryClient } from "../../lib/query-client";
 
 /**
- * The footer sits in the root layout, so it is the one component whose failure
- * can take the whole app with it — and it did. Converting the hooks to suspense
- * without giving it a boundary meant a pending /health suspended the entire app
- * shell (every screen blank, stuck on the loading splash) and a failing one
- * escaped to the root with nothing to catch it.
+ * This footer lives in the root layout, which makes it the one component whose
+ * data fetching can take the whole app down — and it did.
  *
- * The disclaimer is also a compliance requirement, so it has to render whatever
- * the API is doing.
+ * When the hooks moved to Suspense, the footer's `/health` query started
+ * suspending the entire app shell (every screen blank, stuck on the router's
+ * loading splash) and, on failure, threw past every screen-level boundary to
+ * the root with nothing to catch it. Verified in the browser with the API
+ * stopped: no nav, no title, no disclaimer, just an empty page.
+ *
+ * So the two things below are not cosmetic. The disclaimer is a compliance
+ * requirement that has to render regardless, and anything in the root layout
+ * that fetches needs its own boundary.
  */
 
 const renderFooter = () =>
@@ -24,43 +28,43 @@ const renderFooter = () =>
   );
 
 describe("DisclaimerFooter", () => {
-  afterEach(() => {
-    (globalThis as { fetch?: unknown }).fetch = undefined;
-  });
+  const okResponse = {
+    collectionStartDate: "2026-07-09",
+    uptimePercent: 100,
+    feeds: [{ feedType: "TripUpdates", lastSuccessAtMs: 1_786_622_400_000, lastFailureAtMs: null, pollsToday: 1, failuresToday: 0 }],
+    knownGaps: [],
+    officialCoverage: [],
+    generatedAtMs: 1_786_622_400_000,
+  };
+
+  afterEach(() => jest.restoreAllMocks());
 
   it("shows the disclaimer immediately, without waiting on /health", () => {
-    globalThis.fetch = jest.fn(() => new Promise(() => {})) as never; // never resolves
+    jest.spyOn(globalThis, "fetch").mockReturnValue(new Promise(() => {}) as Promise<Response>);
+    // A never-resolving health request must not hold up the layout.
     const { getByText } = renderFooter();
-    // Rendered synchronously: the footer must not suspend its own parent.
     expect(getByText(DISCLAIMER_TEXT)).toBeTruthy();
   });
 
-  it("keeps the disclaimer when /health fails, and says so quietly", async () => {
-    globalThis.fetch = jest.fn(() => Promise.reject(new TypeError("Failed to fetch"))) as never;
+  it("keeps the disclaimer, and degrades quietly, when /health fails", async () => {
+    jest.spyOn(globalThis, "fetch").mockRejectedValue(new TypeError("Failed to fetch"));
     const { getByText, queryByText } = renderFooter();
 
-    await waitFor(() => expect(getByText("Collection status unavailable")).toBeTruthy());
+    // retry: 1 with backoff, so this needs more than waitFor's default second.
+    await waitFor(() => expect(getByText("Collection status unavailable")).toBeTruthy(), { timeout: 8000 });
     expect(getByText(DISCLAIMER_TEXT)).toBeTruthy();
-    // A full-width error card in the footer would be wrong.
+    // Not the full-width error card — a footer is the wrong place for one.
     expect(queryByText("Couldn’t load data")).toBeNull();
   });
 
   it("reports live collection once /health answers", async () => {
-    globalThis.fetch = jest.fn(() =>
-      Promise.resolve({
-        ok: true,
-        json: async () => ({
-          collectionStartDate: "2026-07-09",
-          uptimePercent: 100,
-          feeds: [{ feedType: "TripUpdates", lastSuccessAtMs: 1_786_622_400_000, lastFailureAtMs: null, pollsToday: 1, failuresToday: 0 }],
-          knownGaps: [],
-          officialCoverage: [],
-          generatedAtMs: 1_786_622_400_000,
-        }),
-      }),
-    ) as never;
+    jest.spyOn(globalThis, "fetch").mockResolvedValue({
+      ok: true,
+      json: async () => okResponse,
+    } as Response);
 
     const { getByText } = renderFooter();
     await waitFor(() => expect(getByText("Live collection")).toBeTruthy());
+    expect(getByText(DISCLAIMER_TEXT)).toBeTruthy();
   });
 });
