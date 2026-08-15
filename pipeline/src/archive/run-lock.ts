@@ -1,13 +1,19 @@
 import { openSync, closeSync, readFileSync, rmSync, writeSync } from "node:fs";
 
 /**
- * A single-holder lock for maintenance jobs that share the database.
+ * A single-holder lock, per set of rows a job mutates.
  *
  * Two archive copies running at once is not a hypothetical: a scheduled run and
  * a manual one overlapped in production, the second counted rows the first was
  * deleting underneath it, and its own safety check refused to delete an hour it
  * could only partly account for. Nothing was lost — that check exists for this —
  * but the run failed for a reason that had nothing to do with the archive.
+ *
+ * **Named for what it protects, not for "the archive".** One lock across every
+ * maintenance job was the first attempt, and it starved: the snapshot copy holds
+ * it for the length of a backlog drain, so the events export — which reads a
+ * different table entirely and cannot interfere — waited for it and failed. The
+ * jobs contend for memory, not for rows, and memory has its own check.
  *
  * A lock file rather than anything cleverer because the contenders are separate
  * processes on one machine, which is exactly what a file on that machine

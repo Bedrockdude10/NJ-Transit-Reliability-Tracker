@@ -33,9 +33,11 @@ if (serviceDates.length === 0) {
   process.exit(0);
 }
 
-// Shares the archive lock with the snapshot copy: both walk the same database on
-// a machine with little headroom, and neither gains from running beside the other.
-await withLock(`${dbPath}.archive.lock`, () =>
+// One export at a time. A separate lock from the snapshot copy's: this reads
+// `trip_stop_events` and that one deletes from `raw_snapshots`, so they cannot
+// interfere over rows. What they do share is a small machine, and each checks
+// there is memory for it before starting.
+await withLock(`${dbPath}.events.lock`, () =>
   exportEvents({ repos, store, serviceDates, log: consoleLogger }),
 );
 db.close();

@@ -28,10 +28,11 @@ const db = openDatabase(dbPath);
 // rather than failing.
 db.exec("PRAGMA busy_timeout = 60000;");
 
-// One run at a time. A scheduled run and a manual one overlapped in production:
-// the second counted rows the first was deleting and, correctly, refused to
-// delete an hour it could only partly account for.
-const copied = await withLock(`${dbPath}.archive.lock`, () =>
+// One copy at a time: a scheduled run and a manual one overlapped in production,
+// and the second counted rows the first was deleting. Named for `raw_snapshots`
+// rather than for the archive as a whole, so the events export — which reads a
+// different table — is not made to wait behind a backlog drain.
+const copied = await withLock(`${dbPath}.snapshots.lock`, () =>
   copySnapshots({
     repos: createRepositories(db),
     store,
