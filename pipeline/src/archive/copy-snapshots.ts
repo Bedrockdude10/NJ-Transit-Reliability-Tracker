@@ -39,14 +39,15 @@ const MS_PER_HOUR = 3_600_000;
 
 /**
  * What one run needs, measured on the production image against real snapshots:
- * 128 MB to move an hour, 132 MB to move three, plus ~10% margin. Most of it is
- * fixed — Node and the S3 client — so the number barely moves with the workload.
+ * ~150 MB at the concurrency below, against 128 MB when uploads ran four at a
+ * time. Most of it is fixed — Node and the S3 client — so the number moves with
+ * concurrency far more than with how much is being copied.
  *
  * Kept close to the measurement on purpose. The machine has 148–185 MB free
  * depending on what else is happening, so an over-generous figure here does not
  * make anything safer; it just refuses runs that would have succeeded.
  */
-const REQUIRED_MEMORY_MB = 145;
+const REQUIRED_MEMORY_MB = 155;
 
 /**
  * Allocatable memory in MB, from `/proc/meminfo`, or null where that is not the
@@ -108,7 +109,7 @@ const PAGE_SIZE = 25;
  * and this runs beside the API on a machine with ~150 MB to spare. Even at four,
  * an hour of snapshots moves in a few seconds.
  */
-const CONCURRENCY = 4;
+const CONCURRENCY = 8;
 
 export interface CopyOptions {
   repos: Repositories;

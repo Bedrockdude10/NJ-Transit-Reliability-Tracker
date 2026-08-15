@@ -145,10 +145,12 @@ describe("fitting on the machine", () => {
   it("counts only the memory still to be taken, not this process twice", () => {
     // By the time the check runs, the process already holds most of its
     // footprint and MemAvailable already reflects it. Asking for the full figure
-    // on top refused run after run on a machine with 168 MB free.
-    expect(insufficientMemory(60, 90)).toBeNull();
-    expect(insufficientMemory(160, 0)).toBeNull();
-    expect(insufficientMemory(20, 90)).toMatch(/needs ~55 MB more/);
+    // on top refused run after run on a machine with 168 MB free. Stated as a
+    // relation rather than against the requirement's current value, which moves
+    // whenever the upload concurrency is retuned.
+    const tight = 40;
+    expect(insufficientMemory(tight, 0)).toMatch(/not enough memory/);
+    expect(insufficientMemory(tight, 1_000)).toBeNull();
   });
 });
 

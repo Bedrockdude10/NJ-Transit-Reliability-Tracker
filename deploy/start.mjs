@@ -125,7 +125,7 @@ const COPY_RETAIN_HOURS = 2;
  * one long one. Well above the steady-state need, so a few missed runs still
  * catch up.
  */
-const COPY_MAX_HOURS = 36;
+const COPY_MAX_HOURS = 48;
 
 /**
  * Replication needs credentials *and* an explicit opt-in.
