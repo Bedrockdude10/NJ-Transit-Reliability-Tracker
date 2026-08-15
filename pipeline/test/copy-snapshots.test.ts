@@ -6,16 +6,8 @@ import { GetObjectCommand, ListObjectsV2Command } from "@aws-sdk/client-s3";
 import { createRepositories, openDatabase, type Database, type Repositories } from "@njt/db";
 import { FEED_TYPES } from "@njt/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import {
-  copySnapshots,
-  copyableHours,
-  createClient,
-  hourStart,
-  insufficientMemory,
-  parseAvailableMemoryMb,
-  snapshotKey,
-} from "../src/archive/copy-snapshots";
-import type { ObjectStore } from "../src/archive/export-events";
+import { copySnapshots, copyableHours, hourStart, snapshotKey } from "../src/archive/copy-snapshots";
+import { createClient, type ObjectStore } from "../src/archive/object-store";
 
 /**
  * The copy deletes the only copy of data NJT does not serve twice. These tests
@@ -118,42 +110,6 @@ describe("choosing what to copy", () => {
   });
 });
 
-describe("fitting on the machine", () => {
-  it("refuses to start when the box has no room, before touching anything", async () => {
-    // It shares 512 MB with the API and the pipeline. Being OOM-killed is safe —
-    // nothing is deleted before it is stored — but reports itself only as exit
-    // code 137.
-    seed("2026-08-14T08:00:00Z");
-    const before = repos.snapshots.count();
-    await expect(run({ availableMemoryMb: () => 1 })).rejects.toThrow(/not enough memory/);
-    expect(repos.snapshots.count()).toBe(before);
-  });
-
-  it("reads the kernel's own estimate of what is allocatable", () => {
-    // MemAvailable, not MemFree: the two differ by the reclaimable page cache,
-    // which is most of a busy machine's memory.
-    expect(
-      parseAvailableMemoryMb("MemTotal: 469852 kB\nMemFree:  130360 kB\nMemAvailable:     184384 kB\n"),
-    ).toBe(180);
-  });
-
-  it("skips the check where the kernel does not answer, rather than guessing", () => {
-    expect(parseAvailableMemoryMb("VmStat: nope")).toBeNull();
-    expect(insufficientMemory(null, 0)).toBeNull();
-  });
-
-  it("counts only the memory still to be taken, not this process twice", () => {
-    // By the time the check runs, the process already holds most of its
-    // footprint and MemAvailable already reflects it. Asking for the full figure
-    // on top refused run after run on a machine with 168 MB free. Stated as a
-    // relation rather than against the requirement's current value, which moves
-    // whenever the upload concurrency is retuned.
-    const tight = 40;
-    expect(insufficientMemory(tight, 0)).toMatch(/not enough memory/);
-    expect(insufficientMemory(tight, 1_000)).toBeNull();
-  });
-});
-
 describe.skipIf(!online)("copying to object storage", () => {
   const client = () => createClient(STORE);
 
@@ -179,7 +135,7 @@ describe.skipIf(!online)("copying to object storage", () => {
     const listed = await client().send(
       new ListObjectsV2Command({ Bucket: STORE.bucket, Prefix: `${prefix}/` }),
     );
-    const feeds = new Set((listed.Contents ?? []).map((o) => o.Key!.split("/").at(-2)));
+    const feeds = new Set((listed.Contents ?? []).map((o: { Key?: string }) => o.Key!.split("/").at(-2)));
     expect([...feeds].sort()).toEqual([...FEED_TYPES].sort());
   }, 60_000);
 

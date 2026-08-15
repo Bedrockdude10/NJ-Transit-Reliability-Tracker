@@ -38,34 +38,25 @@ COPY pipeline ./pipeline
 COPY api ./api
 COPY deploy ./deploy
 
-# Precompile the archive copy to plain JavaScript.
+# Precompile the archive jobs to plain JavaScript.
 #
-# It is the one job that runs *while* the API and the pipeline are running, on a
-# machine with ~173 MB to spare, so its footprint is the constraint. Under tsx the
+# These run *while* the API and the pipeline are running, on a machine with
+# ~173 MB to spare, so their footprint is the constraint. Under tsx the
 # process is ~155 MB, ~25 MB of which is the runtime TypeScript compiler, plus
 # another ~20 MB for the `npm run` wrapper — overhead that buys nothing here
 # because the source never changes after the image is built.
 RUN node_modules/.bin/esbuild pipeline/src/archive/copy-cli.ts \
   --bundle --platform=node --format=esm --external:@aws-sdk/* \
-  --outfile=dist/archive-copy.mjs
+  --outfile=dist/archive-copy.mjs \
+  && node_modules/.bin/esbuild pipeline/src/archive/export-cli.ts \
+  --bundle --platform=node --format=esm --external:@aws-sdk/* \
+  --outfile=dist/events-export.mjs
 
-# Bake DuckDB's extensions into the image.
-#
-# `sweep:archive` and `export:events` need httpfs (S3) and aws (credential
-# chain). DuckDB fetches extensions on first use by default, which failed on this
-# slim image with an SSL CA error — and a maintenance job that needs the network
-# to reach the network is a bad dependency regardless. ca-certificates is
-# installed for the build-time download, then the extensions are resolved once
-# here so nothing is fetched at runtime.
+# TLS roots for the S3 client. The base image is slim and ships none, and an
+# upload to R2 fails at handshake without them.
 RUN apt-get update \
   && apt-get install -y --no-install-recommends ca-certificates \
-  && rm -rf /var/lib/apt/lists/* \
-  && node -e "const {DuckDBInstance}=require('@duckdb/node-api'); \
-       DuckDBInstance.create(':memory:') \
-         .then(i => i.connect()) \
-         .then(c => c.run('INSTALL httpfs; INSTALL aws;')) \
-         .then(() => console.log('duckdb extensions installed')) \
-         .catch(e => { console.error(e); process.exit(1); });"
+  && rm -rf /var/lib/apt/lists/*
 
 ENV NODE_ENV=production
 ENV NJT_DB_PATH=/data/njt.sqlite

@@ -1,5 +1,8 @@
+import { createRepositories, openDatabase } from "@njt/db";
 import { consoleLogger } from "@njt/shared/logger";
-import { availableServiceDates, exportEvents, type ObjectStore } from "./export-events";
+import { exportEvents } from "./export-events";
+import { storeFromEnv } from "./object-store";
+import { withLock } from "./run-lock";
 
 /**
  * CLI: publish derived events to object storage for the modelling repo.
@@ -10,42 +13,19 @@ import { availableServiceDates, exportEvents, type ObjectStore } from "./export-
  * Re-running a date replaces its object, so this is safe to schedule and safe to
  * rerun after a backfill.
  */
-function required(name: string): string {
-  const value = process.env[name];
-  if (!value) {
-    console.error(`${name} is not set. See the Backups section of DEPLOY.md.`);
-    process.exit(1);
-  }
-  return value;
-}
-
 function flag(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
   return index === -1 ? undefined : process.argv[index + 1];
 }
 
-/**
- * The same four `NJT_R2_*` variables Litestream reads.
- *
- * Litestream wants an endpoint with a scheme; DuckDB's S3 client wants a bare
- * host. Rather than asking for both and documenting the difference — which is a
- * trap, not a configuration — the scheme is taken off here and its presence
- * decides TLS.
- */
-const endpoint = required("NJT_R2_ENDPOINT");
-const store: ObjectStore = {
-  bucket: required("NJT_R2_BUCKET"),
-  endpoint: endpoint.replace(/^https?:\/\//, ""),
-  accessKeyId: required("NJT_R2_ACCESS_KEY_ID"),
-  secretAccessKey: required("NJT_R2_SECRET_ACCESS_KEY"),
-  region: process.env.NJT_R2_REGION ?? "auto",
-  useSsl: !endpoint.startsWith("http://"),
-};
-
+const store = storeFromEnv();
 const dbPath = process.env.NJT_DB_PATH ?? "./data/njt.sqlite";
-const from = flag("from");
+const db = openDatabase(dbPath);
+db.exec("PRAGMA busy_timeout = 60000;");
+const repos = createRepositories(db);
 
-const all = await availableServiceDates(dbPath);
+const from = flag("from");
+const all = repos.events.serviceDates();
 const serviceDates = from ? all.filter((date) => date >= from) : all;
 
 if (serviceDates.length === 0) {
@@ -53,4 +33,9 @@ if (serviceDates.length === 0) {
   process.exit(0);
 }
 
-await exportEvents({ dbPath, store, serviceDates, log: consoleLogger });
+// Shares the archive lock with the snapshot copy: both walk the same database on
+// a machine with little headroom, and neither gains from running beside the other.
+await withLock(`${dbPath}.archive.lock`, () =>
+  exportEvents({ repos, store, serviceDates, log: consoleLogger }),
+);
+db.close();

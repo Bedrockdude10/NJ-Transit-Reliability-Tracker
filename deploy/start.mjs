@@ -109,6 +109,16 @@ const COPY_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Built by the Dockerfile; absent in a plain checkout. */
 const COPY_BUNDLE = "dist/archive-copy.mjs";
+const EXPORT_BUNDLE = "dist/events-export.mjs";
+
+/**
+ * How often to publish derived events for the modelling repo.
+ *
+ * Daily, because a service date is the unit: exporting a day still being written
+ * to would publish a partial one and then have to replace it. Re-exporting is
+ * idempotent, so the run covers recent dates rather than tracking which are new.
+ */
+const EXPORT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
 /**
  * Leave the last two hours in SQLite. Recent snapshots are the ones a replay is
@@ -247,6 +257,42 @@ function scheduleArchiveCopy() {
   });
 }
 
+/**
+ * Publish events on a timer, never beside the snapshot copy.
+ *
+ * Both walk the same database on a machine with little headroom; the archive lock
+ * they share makes an overlap a clean refusal rather than two jobs competing, and
+ * the next tick picks it up.
+ */
+function scheduleEventsExport() {
+  let running = false;
+  const run = () => {
+    if (running || shuttingDown) return;
+    running = true;
+    const [bin, args] = existsSync(EXPORT_BUNDLE)
+      ? ["node", [EXPORT_BUNDLE]]
+      : ["npm", ["run", "export:events", "--"]];
+    const child = spawn(bin, args, { stdio: "inherit", env: process.env });
+    child.on("error", (error) => {
+      running = false;
+      log("events export failed to start", { error: error.message });
+    });
+    child.on("exit", (code) => {
+      running = false;
+      if (code !== 0) log("events export exited non-zero; will retry next tick", { code });
+    });
+  };
+
+  setInterval(run, EXPORT_INTERVAL_MS).unref();
+  // Offset from the copy's first run so the two do not contend at boot.
+  setTimeout(run, 15 * 60 * 1000).unref();
+  log("events export scheduled", { everyHours: EXPORT_INTERVAL_MS / 3_600_000 });
+}
+
+if (HAS_R2 && process.env.NJT_EVENTS_EXPORT_ENABLED === "true") {
+  scheduleEventsExport();
+}
+
 if (HAS_R2 && process.env.NJT_ARCHIVE_COPY_ENABLED === "true") {
   scheduleArchiveCopy();
 } else if (HAS_R2) {
@@ -258,4 +304,5 @@ log("supervisor ready", {
   objectStorage: HAS_R2,
   replication: REPLICATION_CONFIGURED,
   archiveCopy: HAS_R2 && process.env.NJT_ARCHIVE_COPY_ENABLED === "true",
+  eventsExport: HAS_R2 && process.env.NJT_EVENTS_EXPORT_ENABLED === "true",
 });

@@ -1,10 +1,8 @@
-import { createHash } from "node:crypto";
-import { readFileSync } from "node:fs";
-import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 import type { Repositories } from "@njt/db";
 import { FEED_TYPES, type FeedType } from "@njt/shared";
 import type { Logger } from "@njt/shared/logger";
-import type { ObjectStore } from "./export-events";
+import { availableMemoryMb, insufficientMemory } from "./machine";
+import { createClient, type ObjectStore, type ObjectWriter, putVerified } from "./object-store";
 
 /**
  * Move raw snapshots out of SQLite and into object storage, one blob per object.
@@ -49,55 +47,6 @@ const MS_PER_HOUR = 3_600_000;
  */
 const REQUIRED_MEMORY_MB = 155;
 
-/**
- * Allocatable memory in MB, from `/proc/meminfo`, or null where that is not the
- * kernel's own answer.
- *
- * `MemAvailable` specifically, not `MemFree`: it is the kernel's estimate of what
- * a new process can get without swapping, which is the question being asked.
- * `os.freemem()` was tried first and is not that — on macOS it counts free pages
- * and reported 71 MB on a 64 GB machine.
- *
- * Returns null off Linux rather than guessing, and the check is then skipped: a
- * developer machine is not where this needs protecting.
- */
-export function parseAvailableMemoryMb(meminfo: string): number | null {
-  const match = /^MemAvailable:\s+(\d+) kB$/m.exec(meminfo);
-  return match ? Math.floor(Number(match[1]) / 1024) : null;
-}
-
-function availableMemoryMb(): number | null {
-  try {
-    return parseAvailableMemoryMb(readFileSync("/proc/meminfo", "utf8"));
-  } catch {
-    return null;
-  }
-}
-
-/**
- * Whether there is room to run.
- *
- * This shares a 512 MB machine with the API and the pipeline. Refusing in the
- * first second, with the numbers, beats being OOM-killed partway — which is safe
- * here (nothing is deleted before it is confirmed stored) but reports itself only
- * as exit code 137. The scheduled run simply tries again an hour later.
- *
- * What matters is the memory still to be taken, not the total: by the time this
- * runs the process already holds ~90 MB of its eventual ~130 MB, and
- * `MemAvailable` already reflects that. Asking for the full figure on top of what
- * had been taken counted this process twice, and refused run after run on a
- * machine with 168 MB free.
- */
-export function insufficientMemory(availableMb: number | null, alreadyHeldMb: number): string | null {
-  const stillNeededMb = Math.max(0, REQUIRED_MEMORY_MB - alreadyHeldMb);
-  if (availableMb === null || availableMb >= stillNeededMb) return null;
-  return (
-    `not enough memory to copy: needs ~${stillNeededMb} MB more (~${REQUIRED_MEMORY_MB} MB in total, ` +
-    `${Math.round(alreadyHeldMb)} MB already held), ${availableMb} MB available. ` +
-    `Retrying next run, or give the machine more memory.`
-  );
-}
-
 /** Rows held in memory at once: ~32 KB each, so a page is ~0.8 MB. */
 const PAGE_SIZE = 25;
 
@@ -125,7 +74,7 @@ export interface CopyOptions {
   now?: () => number;
   /** Injected for tests. Allocatable memory in MB, or null if unknown. */
   availableMemoryMb?: () => number | null;
-  client?: Pick<S3Client, "send">;
+  client?: ObjectWriter;
   log?: Logger;
 }
 
@@ -180,12 +129,6 @@ export function copyableHours(
   return hours;
 }
 
-/** Base64 MD5 for `Content-MD5`, and hex for comparing against the returned ETag. */
-function digest(bytes: Uint8Array): { base64: string; hex: string } {
-  const hash = createHash("md5").update(bytes).digest();
-  return { base64: hash.toString("base64"), hex: hash.toString("hex") };
-}
-
 /**
  * Run `work` over `items`, at most {@link CONCURRENCY} at a time.
  *
@@ -201,21 +144,6 @@ async function inParallel<T>(items: readonly T[], work: (item: T) => Promise<voi
   await Promise.all(workers);
 }
 
-export function createClient(store: ObjectStore): S3Client {
-  return new S3Client({
-    region: store.region,
-    endpoint: `${store.useSsl === false ? "http" : "https"}://${store.endpoint}`,
-    credentials: { accessKeyId: store.accessKeyId, secretAccessKey: store.secretAccessKey },
-    // R2 and MinIO both serve path-style; virtual-host style would need per-bucket DNS.
-    forcePathStyle: true,
-    // Send only the checksum this code asked for. Recent SDK versions attach a
-    // CRC32 to every upload by default, and R2 rejects the pair outright:
-    // "You can only specify one non-default checksum at a time." MinIO accepts
-    // both, so this surfaced only against the real store.
-    requestChecksumCalculation: "WHEN_REQUIRED",
-  });
-}
-
 export async function copySnapshots(options: CopyOptions): Promise<CopiedHour[]> {
   const { repos, store, olderThanHours } = options;
   const prefix = options.prefix ?? "snapshots";
@@ -225,8 +153,9 @@ export async function copySnapshots(options: CopyOptions): Promise<CopiedHour[]>
   const deleteAfterCopy = options.deleteAfterCopy ?? true;
 
   const shortfall = insufficientMemory(
+    "copy",
+    REQUIRED_MEMORY_MB,
     (options.availableMemoryMb ?? availableMemoryMb)(),
-    process.memoryUsage().rss / 1_048_576,
   );
   if (shortfall) throw new Error(shortfall);
 
@@ -264,26 +193,16 @@ export async function copySnapshots(options: CopyOptions): Promise<CopiedHour[]>
         if (page.length === 0) break;
 
         await inParallel(page, async (snapshot) => {
-          const { base64, hex } = digest(snapshot.rawBytes);
-          const response = await client.send(
-            new PutObjectCommand({
-              Bucket: store.bucket,
-              Key: snapshotKey(prefix, { ...snapshot, id: snapshot.id }),
-              Body: snapshot.rawBytes,
-              // The store rehashes the body and rejects a mismatch, so a
-              // truncated or corrupted upload cannot be stored and then deleted
-              // from the only other copy.
-              ContentMD5: base64,
-              ContentType: "application/x-protobuf",
-            }),
-          );
-          const etag = response.ETag?.replace(/"/g, "");
-          if (etag && etag !== hex) {
-            throw new Error(
-              `object storage returned a different digest for ${snapshot.id}: sent ${hex}, stored ${etag} — nothing deleted`,
-            );
-          }
-          bytes += snapshot.rawBytes.byteLength;
+          // The store rehashes the body and rejects a mismatch, so a truncated or
+          // corrupted upload cannot be stored and then deleted from the only
+          // other copy.
+          const stored = await putVerified(client, {
+            bucket: store.bucket,
+            key: snapshotKey(prefix, snapshot),
+            body: snapshot.rawBytes,
+            contentType: "application/x-protobuf",
+          });
+          bytes += stored.bytes;
           objects += 1;
         });
 
