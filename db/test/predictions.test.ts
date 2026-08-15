@@ -59,6 +59,25 @@ describe("storing predictions", () => {
     expect(stored[0]!.runId).toBe("run-b");
   });
 
+  it("replaces a whole service date, dropping legs the new run no longer predicts", () => {
+    // The modelling repo rewrites a service date on every run, and a re-run can
+    // emit *fewer* legs than before — because the model changed, or because the
+    // old ones were wrong. Upserting alone leaves those behind forever: a bad
+    // prediction was still being served after the run that produced it had been
+    // corrected and republished.
+    repo.replaceServiceDate("2026-08-14", [PREDICTION, { ...PREDICTION, toStopId: "109" }]);
+    expect(repo.forServiceDate("2026-08-14")).toHaveLength(2);
+
+    repo.replaceServiceDate("2026-08-14", [PREDICTION]);
+    expect(repo.forServiceDate("2026-08-14").map((p) => p.toStopId)).toEqual(["107"]);
+  });
+
+  it("replaces only the date it was given", () => {
+    repo.replaceServiceDate("2026-08-14", [PREDICTION]);
+    repo.replaceServiceDate("2026-08-15", [{ ...PREDICTION, serviceDate: "2026-08-15" }]);
+    expect(repo.serviceDates()).toEqual(["2026-08-14", "2026-08-15"]);
+  });
+
   it("treats a different leg of the same trip as a different prediction", () => {
     // One trip is predicted from many stops to many stops; collapsing them would
     // silently discard all but one.

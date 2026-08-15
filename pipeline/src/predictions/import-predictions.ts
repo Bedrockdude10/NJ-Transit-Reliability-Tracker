@@ -131,9 +131,11 @@ export async function importPredictions(options: ImportOptions): Promise<Importe
     if (options.serviceDates && !options.serviceDates.includes(serviceDate)) continue;
 
     const predictions = parsePredictions(serviceDate, await reader.get(key));
-    // One transaction per day, after the whole day has validated: a day is
-    // either fully present or absent, never partly applied.
-    repos.predictions.upsertMany(predictions);
+    // Replace the day rather than merge into it, in one transaction after the
+    // whole day has validated. A re-run can publish fewer legs than the run
+    // before — a corrected model drops the ones it should never have made — and
+    // merging would serve those corrections alongside what they replaced.
+    repos.predictions.replaceServiceDate(serviceDate, predictions);
     log?.info("imported predictions", { serviceDate, rows: predictions.length, key });
     imported.push({ serviceDate, rows: predictions.length });
   }

@@ -40,6 +40,11 @@ export class PredictionRepository {
    * the trips have run, and the newest write is the authoritative one.
    */
   upsertMany(predictions: readonly DelayPrediction[]): void {
+    this.db.transaction(() => this.write(predictions));
+  }
+
+  /** The write itself, without a transaction, so callers can compose one. */
+  private write(predictions: readonly DelayPrediction[]): void {
     const statement = this.db.prepare(/* sql */ `
       INSERT INTO predictions (
         trip_id, line_name, service_date, from_stop_id, to_stop_id, predicted_at,
@@ -58,22 +63,38 @@ export class PredictionRepository {
         run_id                  = excluded.run_id
     `);
 
+    for (const prediction of predictions) {
+      statement.run({
+        trip_id: prediction.tripId,
+        line_name: prediction.lineName,
+        service_date: prediction.serviceDate,
+        from_stop_id: prediction.fromStopId,
+        to_stop_id: prediction.toStopId,
+        predicted_at: prediction.predictedAtEpochSeconds,
+        horizon_seconds: prediction.horizonSeconds,
+        predicted_delay_seconds: prediction.predictedDelaySeconds,
+        actual_delay_seconds: prediction.actualDelaySeconds,
+        model_version: prediction.modelVersion,
+        run_id: prediction.runId,
+      });
+    }
+  }
+
+  /**
+   * Replace a whole service date.
+   *
+   * The unit the modelling repo publishes is a day, and a re-run can emit
+   * *fewer* legs than the one before — because the model changed, or because the
+   * previous rows were wrong. Upserting alone leaves those orphans in place: a
+   * prediction for a leg that no longer exists was still being served after the
+   * run that produced it had been corrected and republished.
+   *
+   * One transaction, so a day is never half-replaced.
+   */
+  replaceServiceDate(serviceDate: string, predictions: readonly DelayPrediction[]): void {
     this.db.transaction(() => {
-      for (const prediction of predictions) {
-        statement.run({
-          trip_id: prediction.tripId,
-          line_name: prediction.lineName,
-          service_date: prediction.serviceDate,
-          from_stop_id: prediction.fromStopId,
-          to_stop_id: prediction.toStopId,
-          predicted_at: prediction.predictedAtEpochSeconds,
-          horizon_seconds: prediction.horizonSeconds,
-          predicted_delay_seconds: prediction.predictedDelaySeconds,
-          actual_delay_seconds: prediction.actualDelaySeconds,
-          model_version: prediction.modelVersion,
-          run_id: prediction.runId,
-        });
-      }
+      this.db.run("DELETE FROM predictions WHERE service_date = :d", { d: serviceDate });
+      this.write(predictions);
     });
   }
 
