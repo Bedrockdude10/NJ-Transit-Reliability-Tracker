@@ -1,7 +1,7 @@
 import { readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import type { Repositories } from "@njt/db";
-import type { TripStopEvent } from "@njt/shared";
+import { CONTRACT_VERSION, datasetKey, type TripStopEvent } from "@njt/shared";
 import type { Logger } from "@njt/shared/logger";
 import { availableMemoryMb, insufficientMemory } from "./machine";
 import { createClient, type ObjectStore, type ObjectWriter, putVerified } from "./object-store";
@@ -41,7 +41,9 @@ interface ContractSchema {
   properties: Record<string, { type?: string; anyOf?: { type?: string }[] }>;
 }
 
-const SCHEMA_PATH = new URL("../../../contract/v1/trip-stop-event.schema.json", import.meta.url);
+const CONTRACT_DIR = new URL(`../../../contract/${CONTRACT_VERSION}/`, import.meta.url);
+const SCHEMA_PATH = new URL("trip-stop-event.schema.json", CONTRACT_DIR);
+const MANIFEST_PATH = new URL("manifest.json", CONTRACT_DIR);
 
 export function exportedFields(): string[] {
   const schema = JSON.parse(readFileSync(SCHEMA_PATH, "utf8")) as ContractSchema;
@@ -54,14 +56,14 @@ export function sqliteColumn(field: string): string {
 }
 
 /**
- * Object key for a service date.
+ * Object key for a service date, from the shared dataset descriptor.
  *
- * Hive-partitioned (`service_date=…`) so polars, DuckDB and pyarrow can all skip
- * whole days from the path without opening a file, and so re-exporting a day
- * replaces it rather than appending a duplicate.
+ * Not spelled out here: the modelling repo builds the same key from the same
+ * `contract/v1/datasets.json`, and a layout written out twice is drift that fails
+ * silently — the reader finds no objects and reports success.
  */
-export function partitionKey(prefix: string, serviceDate: string): string {
-  return `${prefix.replace(/\/+$/, "")}/service_date=${serviceDate}/events.jsonl.gz`;
+export function partitionKey(serviceDate: string): string {
+  return datasetKey("events", serviceDate);
 }
 
 /**
@@ -77,12 +79,45 @@ export function serialize(events: readonly TripStopEvent[]): string {
   return events.map((event) => JSON.stringify(event)).join("\n") + "\n";
 }
 
+/** Where the contract this producer was built against is published in the bucket. */
+export function manifestKey(): string {
+  return `contract/${CONTRACT_VERSION}/manifest.json`;
+}
+
+/**
+ * Publish the contract manifest next to the data it describes.
+ *
+ * Both repos already fail CI when their generated models are stale, but that
+ * compares two checkouts. It cannot see the case that actually bites: a producer
+ * deployed weeks ago writing an older contract than the consumer was generated
+ * from. Writing the manifest the producer was *built* with, on every run, lets
+ * the consumer check the deployment it is actually reading from — and turns that
+ * disagreement into a sentence naming both digests instead of rows quietly
+ * failing validation.
+ */
+export async function publishManifest(
+  store: ObjectStore,
+  client: ObjectWriter,
+  log?: Logger,
+): Promise<string> {
+  const body = readFileSync(MANIFEST_PATH);
+  const key = manifestKey();
+  await putVerified(client, {
+    bucket: store.bucket,
+    key,
+    body,
+    contentType: "application/json",
+  });
+  const { digest } = JSON.parse(body.toString()) as { digest: string };
+  log?.info("published contract manifest", { key, digest });
+  return digest;
+}
+
 export interface ExportOptions {
   repos: Repositories;
   store: ObjectStore;
   /** Service dates to publish. Each becomes exactly one object. */
   serviceDates: readonly string[];
-  prefix?: string;
   client?: ObjectWriter;
   /** Injected for tests. Allocatable memory in MB, or null if unknown. */
   availableMemoryMb?: () => number | null;
@@ -105,7 +140,6 @@ export interface ExportedPartition {
  */
 export async function exportEvents(options: ExportOptions): Promise<ExportedPartition[]> {
   const { repos, store, serviceDates } = options;
-  const prefix = options.prefix ?? "events";
   const log = options.log;
   const client = options.client ?? createClient(store);
 
@@ -116,6 +150,10 @@ export async function exportEvents(options: ExportOptions): Promise<ExportedPart
     (options.availableMemoryMb ?? availableMemoryMb)(),
   );
   if (shortfall) throw new Error(shortfall);
+
+  // Before the data, so a consumer never sees rows described by a manifest that
+  // is not there yet.
+  await publishManifest(store, client, log);
 
   const written: ExportedPartition[] = [];
   for (const serviceDate of serviceDates) {
@@ -128,7 +166,7 @@ export async function exportEvents(options: ExportOptions): Promise<ExportedPart
       continue;
     }
 
-    const key = partitionKey(prefix, serviceDate);
+    const key = partitionKey(serviceDate);
     const body = gzipSync(serialize(events));
     const { bytes } = await putVerified(client, {
       bucket: store.bucket,

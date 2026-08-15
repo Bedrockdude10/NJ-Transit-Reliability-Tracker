@@ -1,0 +1,41 @@
+{
+  "version": "v1",
+  "datasets": {
+    "events": {
+      "prefix": "events",
+      "format": "jsonl.gz",
+      "partitionBy": "service_date",
+      "objectName": "events",
+      "schema": "trip-stop-event.schema.json",
+      "producer": "njt-reliability-tracker",
+      "description": "One observed reading per (trip, stop, service date). Gzipped JSON Lines because the producer runs on a 512 MB machine that also serves the API, where a columnar writer cost more resident memory than the machine had spare."
+    },
+    "predictions": {
+      "prefix": "predictions",
+      "format": "parquet",
+      "partitionBy": "service_date",
+      "objectName": "predictions",
+      "schema": "delay-prediction.schema.json",
+      "producer": "njt-delay-modeling",
+      "description": "A predicted terminal delay. Read back by the API."
+    },
+    "scorecards": {
+      "prefix": "scorecards",
+      "format": "parquet",
+      "partitionBy": "service_date",
+      "objectName": "scorecards",
+      "schema": "model-scorecard.schema.json",
+      "producer": "njt-delay-modeling",
+      "description": "Per-model, per-day accuracy summary."
+    },
+    "snapshots": {
+      "prefix": "snapshots",
+      "format": "protobuf",
+      "partitionBy": "date",
+      "objectName": "snapshots",
+      "schema": null,
+      "producer": "njt-reliability-tracker",
+      "description": "The raw GTFS-RT archive, one object per fetched payload, kept so parsing can be re-run over history. Opaque bytes: no record schema, and not an analytical dataset."
+    }
+  }
+}

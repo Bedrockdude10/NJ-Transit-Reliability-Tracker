@@ -2,6 +2,7 @@
 
 export * from "./constants";
 export * from "./domain";
+export * from "./datasets";
 export * from "./aggregates";
 export * from "./api";
 // Runtime validators for the DTOs above. Exported from the index deliberately:

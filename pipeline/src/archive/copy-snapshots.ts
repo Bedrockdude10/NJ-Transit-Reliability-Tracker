@@ -1,5 +1,5 @@
 import type { Repositories } from "@njt/db";
-import { FEED_TYPES, type FeedType } from "@njt/shared";
+import { DATASETS, FEED_TYPES, type FeedType } from "@njt/shared";
 import type { Logger } from "@njt/shared/logger";
 import { availableMemoryMb, insufficientMemory } from "./machine";
 import { createClient, type ObjectStore, type ObjectWriter, putVerified } from "./object-store";
@@ -92,15 +92,15 @@ export interface CopiedHour {
  * — so a rebuild needs no side table, and `date=`/`hour=` are hive-style so the
  * usual tools can list a day without walking the bucket.
  */
-export function snapshotKey(prefix: string, snapshot: {
-  feedType: string;
-  fetchedAtMs: number;
-  id?: number;
-}): string {
+export function snapshotKey(
+  prefix: string,
+  snapshot: { feedType: string; fetchedAtMs: number; id?: number },
+): string {
   const iso = new Date(snapshot.fetchedAtMs).toISOString();
   const date = iso.slice(0, 10);
   const hour = iso.slice(11, 13);
-  return `${prefix.replace(/\/+$/, "")}/date=${date}/hour=${hour}/${snapshot.feedType}/${snapshot.fetchedAtMs}-${snapshot.id}.pb`;
+  const { partitionBy } = DATASETS.snapshots;
+  return `${prefix.replace(/\/+$/, "")}/${partitionBy}=${date}/hour=${hour}/${snapshot.feedType}/${snapshot.fetchedAtMs}-${snapshot.id}.pb`;
 }
 
 /** The UTC hour an instant falls in, as epoch ms. */
@@ -146,7 +146,7 @@ async function inParallel<T>(items: readonly T[], work: (item: T) => Promise<voi
 
 export async function copySnapshots(options: CopyOptions): Promise<CopiedHour[]> {
   const { repos, store, olderThanHours } = options;
-  const prefix = options.prefix ?? "snapshots";
+  const prefix = options.prefix ?? DATASETS.snapshots.prefix;
   const now = options.now ?? Date.now;
   const log = options.log;
   const client = options.client ?? createClient(store);

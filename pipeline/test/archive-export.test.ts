@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 import {
   exportEvents,
   exportedFields,
+  manifestKey,
   partitionKey,
   serialize,
   sqliteColumn,
@@ -92,7 +93,7 @@ describe("the records match the contract", () => {
     const client = recordingClient();
     await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
 
-    const [line] = gunzipSync(client.objects.get(partitionKey("events", "2026-08-11"))!)
+    const [line] = gunzipSync(client.objects.get(partitionKey("2026-08-11"))!)
       .toString()
       .trim()
       .split("\n");
@@ -107,7 +108,7 @@ describe("the records match the contract", () => {
     await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
 
     const record = JSON.parse(
-      gunzipSync(client.objects.get(partitionKey("events", "2026-08-11"))!).toString().trim(),
+      gunzipSync(client.objects.get(partitionKey("2026-08-11"))!).toString().trim(),
     );
     expect(record.stopSkipped).toBe(true);
     expect(record.tripCancelled).toBe(false);
@@ -139,16 +140,35 @@ describe("the records match the contract", () => {
 
 describe("the objects", () => {
   it("partitions by service date so a day can be skipped without being opened", () => {
-    expect(partitionKey("events", "2026-08-11")).toBe(
-      "events/service_date=2026-08-11/events.jsonl.gz",
-    );
-    expect(partitionKey("events/", "2026-08-11")).toBe(partitionKey("events", "2026-08-11"));
+    expect(partitionKey("2026-08-11")).toBe("events/service_date=2026-08-11/events.jsonl.gz");
   });
 
   it("terminates every line, so concatenating two files stays valid", () => {
     const text = serialize([EVENT, { ...EVENT, tripId: "T2" }]);
     expect(text.endsWith("\n")).toBe(true);
     expect(text.trim().split("\n")).toHaveLength(2);
+  });
+
+  it("publishes the contract it was built against, alongside the data", async () => {
+    // CI compares two checkouts; it cannot see a producer deployed weeks ago
+    // writing an older contract than the consumer was generated from. This is
+    // what lets the consumer check the deployment it actually reads from.
+    repos.events.record(EVENT);
+    const client = recordingClient();
+    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
+
+    const manifest = JSON.parse(Buffer.from(client.objects.get(manifestKey())!).toString());
+    expect(manifest.digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(Object.keys(manifest.files)).toContain("datasets.json");
+  });
+
+  it("publishes the manifest before any rows it describes", async () => {
+    // A consumer that read data first could check it against a manifest that was
+    // not there yet, and conclude the producer was stale.
+    repos.events.record(EVENT);
+    const client = recordingClient();
+    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
+    expect([...client.objects.keys()][0]).toBe(manifestKey());
   });
 
   it("skips a day with no events rather than writing an empty one", async () => {
@@ -162,7 +182,8 @@ describe("the objects", () => {
       client,
     });
     expect(written).toEqual([]);
-    expect(client.objects.size).toBe(0);
+    // The manifest still goes out; only the day is skipped.
+    expect([...client.objects.keys()]).toEqual([manifestKey()]);
   });
 
   it("re-exporting a day replaces it rather than adding a second copy", async () => {
@@ -171,7 +192,8 @@ describe("the objects", () => {
     const options = { repos, store: STORE, serviceDates: ["2026-08-11"], client };
     await exportEvents(options);
     await exportEvents(options);
-    expect(client.objects.size).toBe(1);
+    expect(client.objects.size).toBe(2); // the day, plus the manifest
+    expect(client.objects.has(partitionKey("2026-08-11"))).toBe(true);
   });
 
   it("refuses to report success when the store did not keep what was sent", async () => {

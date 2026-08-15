@@ -15,15 +15,17 @@
  * directory, not an edit — readers of already-written Parquet must keep working.
  */
 
-import { mkdirSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import * as z from "zod";
+import { CONTRACT_VERSION, DATASETS } from "../shared/src/datasets";
 import { tripStopEventSchema } from "../shared/src/domain.zod";
 import { delayPredictionSchema, modelScorecardSchema } from "../shared/src/predictions.zod";
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
-const VERSION = "v1";
+const VERSION = CONTRACT_VERSION;
 const OUT_DIR = resolve(ROOT, "contract", VERSION);
 
 /**
@@ -94,3 +96,61 @@ for (const entry of CONTRACT) {
   writeFileSync(path, `${JSON.stringify(document, null, 2)}\n`);
   console.log(`Wrote contract/${VERSION}/${entry.id}.schema.json`);
 }
+
+/**
+ * The bucket layout, emitted alongside the record schemas.
+ *
+ * Both repos build their object keys from this rather than from a copy of the
+ * rule. A prefix or suffix written out twice is the drift that fails silently:
+ * the reader finds no objects and reports success.
+ */
+const datasetsPath = resolve(OUT_DIR, "datasets.json");
+writeFileSync(
+  datasetsPath,
+  `${JSON.stringify({ version: VERSION, datasets: DATASETS }, null, 2)}\n`,
+);
+console.log(`Wrote contract/${VERSION}/datasets.json`);
+
+/** The manifest describes the contract; it cannot describe itself. */
+const MANIFEST = "manifest.json";
+
+/**
+ * A digest of the whole contract, for detecting drift between *deployments*.
+ *
+ * The repositories already fail CI when the generated models are stale, but that
+ * only compares two checkouts. It cannot see the case that actually bites: a
+ * producer deployed weeks ago writing an older contract than the consumer was
+ * generated from. The producer publishes this manifest into the bucket and the
+ * consumer checks it before reading, so that disagreement surfaces as a sentence
+ * naming both digests rather than as rows quietly failing validation.
+ *
+ * Content-addressed rather than a version number someone has to remember to
+ * bump, and stable: sorted by filename, hashing bytes.
+ */
+/**
+ * Every contract file except the manifest itself.
+ *
+ * Excluding it is not tidiness: a manifest left over from the previous run is a
+ * file in this directory, so hashing the directory wholesale made each digest
+ * depend on the last one and change on every emit. That went unnoticed because
+ * the CI check compared with `git diff`, which says nothing about files git is
+ * not yet tracking.
+ */
+const files = readdirSync(OUT_DIR)
+  .filter((name) => name.endsWith(".json") && name !== MANIFEST)
+  .sort();
+const digests = Object.fromEntries(
+  files.map((name) => [
+    name,
+    createHash("sha256").update(readFileSync(resolve(OUT_DIR, name))).digest("hex"),
+  ]),
+);
+const contractDigest = createHash("sha256")
+  .update(files.map((name) => `${name}:${digests[name]}`).join("\n"))
+  .digest("hex");
+
+writeFileSync(
+  resolve(OUT_DIR, MANIFEST),
+  `${JSON.stringify({ version: VERSION, digest: contractDigest, files: digests }, null, 2)}\n`,
+);
+console.log(`Wrote contract/${VERSION}/manifest.json (${contractDigest.slice(0, 12)}…)`);

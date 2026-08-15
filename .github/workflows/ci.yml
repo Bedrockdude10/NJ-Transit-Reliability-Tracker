@@ -34,6 +34,22 @@ jobs:
       - name: Typecheck (app)
         run: npm run typecheck --workspace app
 
+      # The contract is the seam with njt-delay-modeling, which generates its
+      # pydantic models from these files and vendors them. A change to a domain
+      # type or to the dataset layout that was not re-emitted leaves that repo
+      # generating from a stale copy — so emitting must be a no-op on a clean
+      # tree. The mirror of this repo's own check runs over there.
+      - name: Contract is current
+        # `git status --porcelain` rather than `git diff`, which is blind to files
+        # git is not yet tracking — a newly emitted contract file would slip past.
+        run: |
+          npm run emit:data-contract
+          test -z "$(git status --porcelain contract/)" || {
+            echo "contract/ is stale — run 'npm run emit:data-contract' and commit:"
+            git status --porcelain contract/
+            exit 1
+          }
+
       - name: Test (node packages)
         run: npm test
 
