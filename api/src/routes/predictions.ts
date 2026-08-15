@@ -21,6 +21,17 @@ import { CACHE_CONTROL_DAILY } from "../util";
  */
 const SERVICE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
+/**
+ * How many legs a response carries.
+ *
+ * A day holds ~50,000, nearly all of them small and most of them repetitive —
+ * the Princeton shuttle predicted on time, forty times over. Returning them all
+ * is ~5 MB of JSON for a phone to parse in order to show a table nobody reads
+ * past the top of. The interesting ones are the trains in trouble.
+ */
+const DEFAULT_LIMIT = 100;
+const MAX_LIMIT = 1000;
+
 /** Signed error, positive when the model was optimistic — it under-predicted. */
 function errorSeconds(prediction: DelayPrediction): number | null {
   if (prediction.actualDelaySeconds === null) return null;
@@ -41,12 +52,25 @@ export function predictionRoutes(repos: Repositories): Hono {
     // today is usually empty, since predictions are published per service date.
     const serviceDate = requested ?? availableDates.at(-1) ?? new Date().toISOString().slice(0, 10);
 
-    const stored = repos.predictions.forServiceDate(serviceDate);
+    const line = c.req.query("line");
+    const requestedLimit = Number(c.req.query("limit") ?? DEFAULT_LIMIT);
+    if (!Number.isFinite(requestedLimit) || requestedLimit < 1) {
+      return c.json({ error: "limit must be a positive number" }, 400);
+    }
+    const limit = Math.min(requestedLimit, MAX_LIMIT);
+
+    const all = repos.predictions.forServiceDate(serviceDate);
+    const stored = line ? all.filter((p) => p.lineName === line) : all;
     const version = repos.gtfs.currentVersion();
     const stopName = (stopId: string) =>
       (version && repos.gtfs.stopName(version.versionId, stopId)) ?? stopId;
 
-    const predictions: PredictedDelay[] = stored.map((prediction) => ({
+    // Largest predicted delay first, then truncate: the top of this list is the
+    // reason anyone opened the page.
+    const ranked = [...stored].sort(
+      (a, b) => Math.abs(b.predictedDelaySeconds) - Math.abs(a.predictedDelaySeconds),
+    );
+    const predictions: PredictedDelay[] = ranked.slice(0, limit).map((prediction) => ({
       tripId: prediction.tripId,
       lineName: prediction.lineName,
       fromStopName: stopName(prediction.fromStopId),
@@ -57,20 +81,25 @@ export function predictionRoutes(repos: Repositories): Hono {
       errorSeconds: errorSeconds(prediction),
     }));
 
-    // Only legs whose actual is known. Predictions are written before a trip
-    // runs, so most of a day has none — counting those as zero error would
-    // flatter the model by exactly the share of the day still ahead.
-    const scored = predictions.filter((p) => p.errorSeconds !== null);
+    // Scored over the *whole* day, not the truncated list: the headline is how
+    // the model did, and ranking by delay first would score it only on the
+    // hardest cases it faces.
+    const scored = stored.filter((p) => p.actualDelaySeconds !== null);
     const meanAbsoluteErrorSeconds = scored.length
-      ? scored.reduce((total, p) => total + Math.abs(p.errorSeconds!), 0) / scored.length
+      ? scored.reduce(
+          (total, p) => total + Math.abs(p.actualDelaySeconds! - p.predictedDelaySeconds),
+          0,
+        ) / scored.length
       : null;
 
     const response: PredictionsResponse = {
       serviceDate,
       available: stored.length > 0,
       availableDates,
+      lines: [...new Set(all.map((p) => p.lineName))].sort(),
       provenance: repos.predictions.latestRun(),
       predictions,
+      totalPredictions: stored.length,
       meanAbsoluteErrorSeconds,
       scoredCount: scored.length,
     };

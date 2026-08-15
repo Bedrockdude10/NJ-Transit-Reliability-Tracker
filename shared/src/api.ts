@@ -673,8 +673,20 @@ export interface PredictionsResponse {
   available: boolean;
   /** Service dates that do hold predictions, so a screen can offer them. */
   availableDates: string[];
+  /** Lines with predictions on this date, for filtering. */
+  lines: string[];
   provenance: PredictionProvenance | null;
+  /**
+   * The most delayed legs, largest first — not everything.
+   *
+   * A service date holds ~50,000 legs, which is ~5 MB of JSON and 300 KB of DOM,
+   * and most of them are a shuttle predicted to be on time. The rider's question
+   * is about the trains in trouble, so the response carries those and
+   * `totalPredictions` says how many there were.
+   */
   predictions: PredictedDelay[];
+  /** How many legs were predicted for this date, before the cap. */
+  totalPredictions: number;
   /**
    * Mean absolute error over the legs whose actual is known, or null when none
    * are. The honest headline: how wrong the model has been, not how confident.

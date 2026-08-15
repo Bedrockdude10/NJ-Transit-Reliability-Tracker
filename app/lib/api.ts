@@ -148,7 +148,8 @@ export const api = {
    * are none. Omit `date` to get the most recently predicted day, which is the
    * useful default — today is usually still unpredicted.
    */
-  predictions: (date?: string) => get(predictionsResponseSchema, "/predictions", { date }),
+  predictions: (date?: string, line?: string) =>
+    get(predictionsResponseSchema, "/predictions", { date, line }),
   exportUrl: (entity: "system" | "line" | "station", r: DateRange, id?: string) =>
     buildUrl("/export", { entity, id, ...r }),
 };

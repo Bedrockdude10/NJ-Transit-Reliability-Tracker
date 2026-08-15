@@ -161,3 +161,62 @@ describe("with predictions imported", () => {
     expect((await get("/predictions?date=not-a-date")).status).toBe(400);
   });
 });
+
+describe("keeping the response a size a phone can use", () => {
+  beforeEach(() => {
+    // A real service date holds ~50,000 legs. Returning them all is ~5 MB of
+    // JSON and 300 KB of DOM, nearly all of it a shuttle predicted to be on
+    // time — measured in the browser before this cap existed.
+    repos.predictions.upsertMany(
+      Array.from({ length: 250 }, (_, i) => ({
+        ...PREDICTION,
+        tripId: `T${i}`,
+        predictedDelaySeconds: i,
+      })),
+    );
+  });
+
+  it("returns the most delayed legs first, since that is why the page was opened", async () => {
+    const { body } = await get("/predictions?date=2026-08-14&limit=3");
+    expect(body.predictions.map((p: { predictedDelaySeconds: number }) => p.predictedDelaySeconds))
+      .toEqual([249, 248, 247]);
+  });
+
+  it("caps the list but still says how many there were", async () => {
+    const { body } = await get("/predictions?date=2026-08-14&limit=10");
+    expect(body.predictions).toHaveLength(10);
+    expect(body.totalPredictions).toBe(250);
+  });
+
+  it("defaults to a hundred rather than everything", async () => {
+    const { body } = await get("/predictions?date=2026-08-14");
+    expect(body.predictions).toHaveLength(100);
+  });
+
+  it("scores the whole day, not just the legs it returned", async () => {
+    // Ranking by delay and then scoring would measure the model only on the
+    // hardest cases it faces, which is not how it performed.
+    repos.predictions.upsertMany([
+      { ...PREDICTION, tripId: "A", predictedDelaySeconds: 0, actualDelaySeconds: 10 },
+      { ...PREDICTION, tripId: "B", predictedDelaySeconds: 1000, actualDelaySeconds: 1200 },
+    ]);
+    const { body } = await get("/predictions?date=2026-08-14&limit=1");
+    expect(body.scoredCount).toBe(2);
+    expect(body.meanAbsoluteErrorSeconds).toBe(105); // (10 + 200) / 2
+  });
+
+  it("filters to one line, and lists the lines available", async () => {
+    repos.predictions.upsertMany([
+      { ...PREDICTION, tripId: "NJC", lineName: "North Jersey Coast", predictedDelaySeconds: 999 },
+    ]);
+    const { body } = await get("/predictions?date=2026-08-14&line=North Jersey Coast");
+    expect(body.totalPredictions).toBe(1);
+    expect(body.predictions[0].tripId).toBe("NJC");
+    expect(body.lines).toEqual(["North Jersey Coast", "Northeast Corridor"]);
+  });
+
+  it("rejects a nonsense limit rather than returning everything", async () => {
+    expect((await get("/predictions?date=2026-08-14&limit=0")).status).toBe(400);
+    expect((await get("/predictions?date=2026-08-14&limit=abc")).status).toBe(400);
+  });
+});

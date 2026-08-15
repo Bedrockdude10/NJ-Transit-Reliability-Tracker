@@ -38,6 +38,8 @@ const EMPTY = {
   predictions: [],
   meanAbsoluteErrorSeconds: null,
   scoredCount: 0,
+  lines: [],
+  totalPredictions: 0,
 };
 
 const POPULATED = {
@@ -60,6 +62,8 @@ const POPULATED = {
   ],
   meanAbsoluteErrorSeconds: 60,
   scoredCount: 1,
+  lines: ["Northeast Corridor"],
+  totalPredictions: 1,
 };
 
 afterEach(() => jest.restoreAllMocks());

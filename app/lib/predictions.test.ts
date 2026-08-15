@@ -33,6 +33,8 @@ const RESPONSE: PredictionsResponse = {
   predictions: [LEG],
   meanAbsoluteErrorSeconds: 95.4,
   scoredCount: 12,
+  lines: ["Northeast Corridor"],
+  totalPredictions: 1,
 };
 
 describe("signedSeconds", () => {

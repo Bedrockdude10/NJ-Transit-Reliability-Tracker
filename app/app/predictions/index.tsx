@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from "expo-router";
 import { api } from "../../lib/api";
-import { formatDay } from "../../lib/format";
+import { formatDay, formatInt } from "../../lib/format";
 import { accuracyNote, byLine, provenanceNote, signedSeconds } from "../../lib/predictions";
 import { formatDelayShort } from "../../lib/format";
 import { useApi } from "../../hooks/useApi";
@@ -17,8 +17,8 @@ import { Card, Muted, PageTitle, Row, Screen, SectionTitle, StatTile } from "../
  * predictions says so plainly instead of rendering an empty table.
  */
 export default function Predictions() {
-  // In the URL so a specific day can be linked and returned to.
-  const { date } = useLocalSearchParams<{ date?: string }>();
+  // In the URL so a specific day, or one line, can be linked and returned to.
+  const { date, line } = useLocalSearchParams<{ date?: string; line?: string }>();
 
   return (
     <Screen>
@@ -27,14 +27,14 @@ export default function Predictions() {
         subtitle="Model output — how late a train is expected to be by the time it reaches a station"
       />
       <QueryBoundary>
-        <PredictionPanel date={date} />
+        <PredictionPanel date={date} line={line} />
       </QueryBoundary>
     </Screen>
   );
 }
 
-function PredictionPanel({ date }: { date?: string }) {
-  const { data } = useApi(api.predictions(date));
+function PredictionPanel({ date, line }: { date?: string; line?: string }) {
+  const { data } = useApi(api.predictions(date, line));
 
   if (!data.available) {
     return (
@@ -65,9 +65,19 @@ function PredictionPanel({ date }: { date?: string }) {
             }
             hint={`${data.scoredCount} trips scored`}
           />
-          <StatTile label="Legs predicted" value={String(data.predictions.length)} hint="this date" />
+          <StatTile
+            label="Legs predicted"
+            value={formatInt(data.totalPredictions)}
+            hint={line ?? "all lines"}
+          />
         </Row>
         <Muted>{accuracyNote(data)}</Muted>
+        {data.totalPredictions > data.predictions.length ? (
+          <Muted>
+            Showing the {data.predictions.length} most delayed legs of{" "}
+            {formatInt(data.totalPredictions)}.
+          </Muted>
+        ) : null}
       </Card>
 
       {byLine(data.predictions).map((group) => (
