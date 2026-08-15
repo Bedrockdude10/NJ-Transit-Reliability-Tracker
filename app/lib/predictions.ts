@@ -1,5 +1,5 @@
 import type { PredictedDelay, PredictionProvenance, PredictionsResponse } from "@njt/shared";
-import { formatDurationShort } from "./format";
+import { formatDurationShort, formatInt } from "./format";
 
 /**
  * Wording for model output.
@@ -37,7 +37,8 @@ export function accuracyNote(response: PredictionsResponse): string {
   if (meanAbsoluteErrorSeconds === null || scoredCount === 0) {
     return "Not yet checked against what happened — no trips on this date have finished.";
   }
-  const trips = scoredCount === 1 ? "1 trip that has run" : `${scoredCount} trips that have run`;
+  const trips =
+    scoredCount === 1 ? "1 trip that has run" : `${formatInt(scoredCount)} trips that have run`;
   return `Off by ${formatDurationShort(meanAbsoluteErrorSeconds)} on average, across ${trips}.`;
 }
 

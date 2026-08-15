@@ -59,6 +59,8 @@ describe("signedSeconds", () => {
 describe("accuracyNote", () => {
   it("leads with how wrong the model has been", () => {
     expect(accuracyNote(RESPONSE)).toBe("Off by 1m 35s on average, across 12 trips that have run.");
+    // Thousands separated, as everywhere else on the site.
+    expect(accuracyNote({ ...RESPONSE, scoredCount: 49312 })).toContain("49,312 trips");
   });
 
   it("says the model is unscored when no trip has finished", () => {
