@@ -37,6 +37,9 @@ COPY db ./db
 COPY pipeline ./pipeline
 COPY api ./api
 COPY deploy ./deploy
+# The data contract. Needed at build time — the events export embeds the manifest
+# it was built against — and it describes every object this container writes.
+COPY contract ./contract
 
 # Precompile the archive jobs to plain JavaScript.
 #
