@@ -33,6 +33,7 @@
     "snapshot": "tsx pipeline/src/maintenance/snapshot-cli.ts",
     "export:events": "tsx pipeline/src/archive/export-cli.ts",
     "archive:copy": "tsx pipeline/src/archive/copy-cli.ts",
+    "import:predictions": "tsx pipeline/src/predictions/import-cli.ts",
     "export:predictions": "tsx pipeline/src/replay/export-predictions.ts",
     "dev:fixture": "tsx pipeline/src/maintenance/dev-fixture-cli.ts",
     "bootstrap": "npm run import:gtfs && npm run import:official",

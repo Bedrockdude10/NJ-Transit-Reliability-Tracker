@@ -6,6 +6,7 @@ import { GtfsRepository } from "./gtfs";
 import { HealthRepository } from "./health";
 import { LightRailRepository } from "./lightrail";
 import { OfficialMetricRepository } from "./official";
+import { PredictionRepository } from "./predictions";
 import { RawSnapshotRepository } from "./snapshots";
 import { VehiclePositionRepository } from "./vehicles";
 
@@ -16,6 +17,7 @@ export * from "./gtfs";
 export * from "./health";
 export * from "./lightrail";
 export * from "./official";
+export * from "./predictions";
 export * from "./snapshots";
 export * from "./vehicles";
 
@@ -31,11 +33,13 @@ export interface Repositories {
   aggregates: AggregateRepository;
   health: HealthRepository;
   vehicles: VehiclePositionRepository;
+  predictions: PredictionRepository;
 }
 
 export function createRepositories(db: Database): Repositories {
   return {
     events: new TripStopEventRepository(db),
+    predictions: new PredictionRepository(db),
     snapshots: new RawSnapshotRepository(db),
     alerts: new ServiceAlertRepository(db),
     gtfs: new GtfsRepository(db),

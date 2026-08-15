@@ -4,14 +4,24 @@ import { NJT_TIMEZONE, type PublishedCoverage } from "@njt/shared";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
+/**
+ * A bare duration: "2m 30s", "1m", "45s". Absolute — no sign, no words.
+ *
+ * The shared core of every duration on the site, so "1m 30s" is spelled one way
+ * whether it is a delay, an error against a prediction, or a horizon.
+ */
+export function formatDurationShort(seconds: number): string {
+  const total = Math.round(Math.abs(seconds));
+  const minutes = Math.floor(total / 60);
+  const rem = total % 60;
+  return minutes > 0 ? (rem > 0 ? `${minutes}m ${rem}s` : `${minutes}m`) : `${rem}s`;
+}
+
 /** Human delay: "on time", "2m 30s late", "1m early", or "—" for unknown. */
 export function formatDelaySeconds(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return "—";
   if (Math.abs(seconds) <= 30) return "on time";
-  const total = Math.round(Math.abs(seconds));
-  const minutes = Math.floor(total / 60);
-  const rem = total % 60;
-  const core = minutes > 0 ? (rem > 0 ? `${minutes}m ${rem}s` : `${minutes}m`) : `${rem}s`;
+  const core = formatDurationShort(seconds);
   return seconds < 0 ? `${core} early` : `${core} late`;
 }
 
@@ -22,10 +32,7 @@ export function formatDelaySeconds(seconds: number | null | undefined): string {
 export function formatDelayShort(seconds: number | null | undefined): string {
   if (seconds === null || seconds === undefined) return "—";
   if (Math.abs(seconds) <= 30) return "0";
-  const total = Math.round(Math.abs(seconds));
-  const minutes = Math.floor(total / 60);
-  const rem = total % 60;
-  const core = minutes > 0 ? (rem > 0 ? `${minutes}m ${rem}s` : `${minutes}m`) : `${rem}s`;
+  const core = formatDurationShort(seconds);
   return seconds < 0 ? `−${core}` : core;
 }
 

@@ -637,3 +637,62 @@ export const alertFrequencyResponseSchema = z.object({
     to: z.string(),
     byLine: z.array(alertFrequencyLineSchema)
 });
+
+/**
+ * One predicted leg, as the app shows it.
+ *
+ * Station *names* rather than the ids the model works in: the modelling repo
+ * deals in GTFS ids and the app renders places people recognise, and resolving
+ * that here keeps a screen from having to join two payloads.
+ */
+export const predictedDelaySchema = z.object({
+    tripId: z.string(),
+    lineName: z.string(),
+    fromStopName: z.string(),
+    toStopName: z.string(),
+    /** How far ahead the prediction reaches, in seconds. */
+    horizonSeconds: z.number(),
+    /** Predicted delay at the destination, seconds; positive = late. */
+    predictedDelaySeconds: z.number(),
+    /** Observed delay once the trip has run, or null while it is still ahead. */
+    actualDelaySeconds: z.number().nullable(),
+    /** Signed error once both are known: positive = the model was optimistic. */
+    errorSeconds: z.number().nullable()
+});
+
+/**
+ * What produced a set of predictions.
+ *
+ * Shown with the numbers rather than alongside them optionally. A forecast with
+ * no provenance invites more confidence than it has earned, and this is the
+ * difference between "a model said this" and "the data says this".
+ */
+export const predictionProvenanceSchema = z.object({
+    modelVersion: z.string(),
+    runId: z.string(),
+    /** When the most recent prediction was made, epoch seconds UTC. */
+    predictedAtEpochSeconds: z.number()
+});
+
+/**
+ * `GET /predictions?date=` — model output for one service date.
+ *
+ * `available: false` is the normal state until the modelling repo has run, not
+ * an error: this project publishes no synthetic data, so an unpredicted day says
+ * so rather than showing a plausible number.
+ */
+export const predictionsResponseSchema = z.object({
+    serviceDate: z.string(),
+    available: z.boolean(),
+    /** Service dates that do hold predictions, so a screen can offer them. */
+    availableDates: z.array(z.string()),
+    provenance: predictionProvenanceSchema.nullable(),
+    predictions: z.array(predictedDelaySchema),
+    /**
+     * Mean absolute error over the legs whose actual is known, or null when none
+     * are. The honest headline: how wrong the model has been, not how confident.
+     */
+    meanAbsoluteErrorSeconds: z.number().nullable(),
+    /** How many legs have an actual to compare against. */
+    scoredCount: z.number()
+});

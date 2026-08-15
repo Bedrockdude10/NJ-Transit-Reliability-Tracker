@@ -110,6 +110,7 @@ const COPY_INTERVAL_MS = 60 * 60 * 1000;
 /** Built by the Dockerfile; absent in a plain checkout. */
 const COPY_BUNDLE = "dist/archive-copy.mjs";
 const EXPORT_BUNDLE = "dist/events-export.mjs";
+const PREDICTIONS_BUNDLE = "dist/predictions-import.mjs";
 
 /**
  * How often to publish derived events for the modelling repo.
@@ -289,8 +290,44 @@ function scheduleEventsExport() {
   log("events export scheduled", { everyHours: EXPORT_INTERVAL_MS / 3_600_000 });
 }
 
+/**
+ * Land model predictions on a timer.
+ *
+ * Hourly rather than daily: the modelling repo republishes a service date as
+ * actuals arrive and as models improve, and a stale prediction on screen is
+ * worse than a slightly late one. Reading a prefix that has not changed costs one
+ * list request.
+ */
+function schedulePredictionImport() {
+  let running = false;
+  const run = () => {
+    if (running || shuttingDown) return;
+    running = true;
+    const [bin, args] = existsSync(PREDICTIONS_BUNDLE)
+      ? ["node", [PREDICTIONS_BUNDLE]]
+      : ["npm", ["run", "import:predictions", "--"]];
+    const child = spawn(bin, args, { stdio: "inherit", env: process.env });
+    child.on("error", (error) => {
+      running = false;
+      log("prediction import failed to start", { error: error.message });
+    });
+    child.on("exit", (code) => {
+      running = false;
+      if (code !== 0) log("prediction import exited non-zero; will retry next tick", { code });
+    });
+  };
+
+  setInterval(run, 60 * 60 * 1000).unref();
+  setTimeout(run, 10 * 60 * 1000).unref();
+  log("prediction import scheduled", { everyMinutes: 60 });
+}
+
 if (HAS_R2 && process.env.NJT_EVENTS_EXPORT_ENABLED === "true") {
   scheduleEventsExport();
+}
+
+if (HAS_R2 && process.env.NJT_PREDICTION_IMPORT_ENABLED === "true") {
+  schedulePredictionImport();
 }
 
 if (HAS_R2 && process.env.NJT_ARCHIVE_COPY_ENABLED === "true") {
@@ -305,4 +342,5 @@ log("supervisor ready", {
   replication: REPLICATION_CONFIGURED,
   archiveCopy: HAS_R2 && process.env.NJT_ARCHIVE_COPY_ENABLED === "true",
   eventsExport: HAS_R2 && process.env.NJT_EVENTS_EXPORT_ENABLED === "true",
+  predictionImport: HAS_R2 && process.env.NJT_PREDICTION_IMPORT_ENABLED === "true",
 });

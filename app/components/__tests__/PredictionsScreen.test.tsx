@@ -1,0 +1,103 @@
+import { QueryClientProvider } from "@tanstack/react-query";
+import { render, waitFor } from "@testing-library/react-native";
+import React from "react";
+import Predictions from "../../app/predictions/index";
+import { createQueryClient } from "../../lib/query-client";
+
+/**
+ * The predictions screen shows the only numbers on this site that were not
+ * observed, and for now it shows none at all: no model has run.
+ *
+ * Both states are worth holding. The empty one has to read as a deliberate
+ * absence rather than a broken panel — this project publishes no invented data,
+ * so "nothing here yet" is the honest answer and has to look like one. The
+ * populated one has to lead with the model's error, not its forecast.
+ */
+
+jest.mock("expo-router", () => ({ useLocalSearchParams: () => ({}) }));
+
+const respondWith = (body: unknown) =>
+  jest.spyOn(globalThis, "fetch").mockResolvedValue({
+    ok: true,
+    status: 200,
+    json: async () => body,
+  } as Response);
+
+const renderScreen = () =>
+  render(
+    <QueryClientProvider client={createQueryClient()}>
+      <Predictions />
+    </QueryClientProvider>,
+  );
+
+const EMPTY = {
+  serviceDate: "2026-08-15",
+  available: false,
+  availableDates: [],
+  provenance: null,
+  predictions: [],
+  meanAbsoluteErrorSeconds: null,
+  scoredCount: 0,
+};
+
+const POPULATED = {
+  ...EMPTY,
+  available: true,
+  availableDates: ["2026-08-14"],
+  serviceDate: "2026-08-14",
+  provenance: { modelVersion: "lgbm-0.1.0", runId: "abc123def", predictedAtEpochSeconds: 1_786_500_000 },
+  predictions: [
+    {
+      tripId: "T1",
+      lineName: "Northeast Corridor",
+      fromStopName: "Newark Penn Station",
+      toStopName: "New York Penn Station",
+      horizonSeconds: 1800,
+      predictedDelaySeconds: 240,
+      actualDelaySeconds: 300,
+      errorSeconds: 60,
+    },
+  ],
+  meanAbsoluteErrorSeconds: 60,
+  scoredCount: 1,
+};
+
+afterEach(() => jest.restoreAllMocks());
+
+describe("Predictions screen", () => {
+  it("says nothing has been predicted, and why, rather than showing an empty table", async () => {
+    respondWith(EMPTY);
+    const { getByText } = renderScreen();
+
+    await waitFor(() => expect(getByText("No predictions yet")).toBeTruthy());
+    expect(getByText(/no invented\s+numbers/)).toBeTruthy();
+  });
+
+  it("names the model and run alongside the numbers", async () => {
+    // A forecast with no provenance invites more confidence than it has earned.
+    respondWith(POPULATED);
+    const { getByText } = renderScreen();
+
+    await waitFor(() => expect(getByText("Model lgbm-0.1.0, run abc123de")).toBeTruthy());
+  });
+
+  it("leads with how wrong the model has been", async () => {
+    respondWith(POPULATED);
+    const { getByText } = renderScreen();
+
+    await waitFor(() =>
+      expect(getByText("Off by 1m on average, across 1 trip that has run.")).toBeTruthy(),
+    );
+    expect(getByText("Average miss")).toBeTruthy();
+  });
+
+  it("shows the leg, and the miss with its sign", async () => {
+    respondWith(POPULATED);
+    const { getByText } = renderScreen();
+
+    await waitFor(() =>
+      expect(getByText("Newark Penn Station → New York Penn Station")).toBeTruthy(),
+    );
+    expect(getByText("+1m")).toBeTruthy();
+  });
+});

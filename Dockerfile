@@ -53,7 +53,10 @@ RUN node_modules/.bin/esbuild pipeline/src/archive/copy-cli.ts \
   --outfile=dist/archive-copy.mjs \
   && node_modules/.bin/esbuild pipeline/src/archive/export-cli.ts \
   --bundle --platform=node --format=esm --external:@aws-sdk/* \
-  --outfile=dist/events-export.mjs
+  --outfile=dist/events-export.mjs \
+  && node_modules/.bin/esbuild pipeline/src/predictions/import-cli.ts \
+  --bundle --platform=node --format=esm --external:@aws-sdk/* \
+  --outfile=dist/predictions-import.mjs
 
 # TLS roots for the S3 client. The base image is slim and ships none, and an
 # upload to R2 fails at handshake without them.

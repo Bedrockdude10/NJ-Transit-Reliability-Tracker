@@ -624,3 +624,62 @@ export interface AlertFrequencyResponse {
   to: string;
   byLine: AlertFrequencyLine[];
 }
+
+/**
+ * One predicted leg, as the app shows it.
+ *
+ * Station *names* rather than the ids the model works in: the modelling repo
+ * deals in GTFS ids and the app renders places people recognise, and resolving
+ * that here keeps a screen from having to join two payloads.
+ */
+export interface PredictedDelay {
+  tripId: string;
+  lineName: string;
+  fromStopName: string;
+  toStopName: string;
+  /** How far ahead the prediction reaches, in seconds. */
+  horizonSeconds: number;
+  /** Predicted delay at the destination, seconds; positive = late. */
+  predictedDelaySeconds: number;
+  /** Observed delay once the trip has run, or null while it is still ahead. */
+  actualDelaySeconds: number | null;
+  /** Signed error once both are known: positive = the model was optimistic. */
+  errorSeconds: number | null;
+}
+
+/**
+ * What produced a set of predictions.
+ *
+ * Shown with the numbers rather than alongside them optionally. A forecast with
+ * no provenance invites more confidence than it has earned, and this is the
+ * difference between "a model said this" and "the data says this".
+ */
+export interface PredictionProvenance {
+  modelVersion: string;
+  runId: string;
+  /** When the most recent prediction was made, epoch seconds UTC. */
+  predictedAtEpochSeconds: number;
+}
+
+/**
+ * `GET /predictions?date=` — model output for one service date.
+ *
+ * `available: false` is the normal state until the modelling repo has run, not
+ * an error: this project publishes no synthetic data, so an unpredicted day says
+ * so rather than showing a plausible number.
+ */
+export interface PredictionsResponse {
+  serviceDate: string;
+  available: boolean;
+  /** Service dates that do hold predictions, so a screen can offer them. */
+  availableDates: string[];
+  provenance: PredictionProvenance | null;
+  predictions: PredictedDelay[];
+  /**
+   * Mean absolute error over the legs whose actual is known, or null when none
+   * are. The honest headline: how wrong the model has been, not how confident.
+   */
+  meanAbsoluteErrorSeconds: number | null;
+  /** How many legs have an actual to compare against. */
+  scoredCount: number;
+}

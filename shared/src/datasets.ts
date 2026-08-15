@@ -15,7 +15,15 @@
  * their keys from it. Neither repo may hardcode a prefix or a suffix.
  */
 
-/** How a dataset is encoded. */
+/**
+ * How a dataset is encoded.
+ *
+ * The rule, where there is a choice: **the constrained end decides**. Both
+ * tabular datasets cross between a 512 MB machine that also serves the site and a
+ * workstation, and whichever side is short of memory should not be the one paying
+ * for a columnar reader or writer. `parquet` remains available for a dataset that
+ * never touches the small machine.
+ */
 export type DatasetFormat = "jsonl.gz" | "parquet" | "protobuf";
 
 /** Which repo is allowed to write a dataset. The other only reads it. */
@@ -58,16 +66,19 @@ export const DATASETS = {
   },
   predictions: {
     prefix: "predictions",
-    format: "parquet",
+    format: "jsonl.gz",
     partitionBy: "service_date",
     objectName: "predictions",
     schema: "delay-prediction.schema.json",
     producer: "njt-delay-modeling",
-    description: "A predicted terminal delay. Read back by the API.",
+    description:
+      "A predicted terminal delay. Gzipped JSON Lines for the same reason events are, " +
+      "with the ends reversed: the consumer is the 512 KB-per-request API on a 512 MB " +
+      "machine, and the encoding follows whichever end is constrained.",
   },
   scorecards: {
     prefix: "scorecards",
-    format: "parquet",
+    format: "jsonl.gz",
     partitionBy: "service_date",
     objectName: "scorecards",
     schema: "model-scorecard.schema.json",

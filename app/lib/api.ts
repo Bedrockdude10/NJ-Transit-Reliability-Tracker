@@ -14,6 +14,7 @@ import {
   lineTrendResponseSchema,
   mapResponseSchema,
   mapVehiclesResponseSchema,
+  predictionsResponseSchema,
   propagationResponseSchema,
   stationDeparturesResponseSchema,
   stationListResponseSchema,
@@ -142,6 +143,12 @@ export const api = {
   alerts: (q: { line?: string; effect_type?: string; page?: number; pageSize?: number } & DateRange) =>
     get(alertListResponseSchema, "/alerts", { ...q }),
   alertFrequency: (r: DateRange) => get(alertFrequencyResponseSchema, "/alerts/frequency", { ...r }),
+  /**
+   * Model predictions for a service date, or an explicit statement that there
+   * are none. Omit `date` to get the most recently predicted day, which is the
+   * useful default — today is usually still unpredicted.
+   */
+  predictions: (date?: string) => get(predictionsResponseSchema, "/predictions", { date }),
   exportUrl: (entity: "system" | "line" | "station", r: DateRange, id?: string) =>
     buildUrl("/export", { entity, id, ...r }),
 };

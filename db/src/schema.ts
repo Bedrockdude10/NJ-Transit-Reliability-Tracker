@@ -360,4 +360,32 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_snapshots_feed_id ON raw_snapshots(feed_type, id);
     `,
   },
+  {
+    id: "010_predictions",
+    up: /* sql */ `
+      -- Model output, landed from object storage so the API can serve it from a
+      -- local read. Produced by njt-delay-modeling; nothing here derives from it.
+      --
+      -- Keyed on the leg rather than the trip: one trip carries a prediction
+      -- from each stop to each later stop, and keying on the trip alone would
+      -- keep only whichever was imported last. The modelling repo rewrites a
+      -- whole service date when it re-runs, so writes replace.
+      CREATE TABLE predictions (
+        trip_id                 TEXT    NOT NULL,
+        line_name               TEXT    NOT NULL,
+        service_date            TEXT    NOT NULL,
+        from_stop_id            TEXT    NOT NULL,
+        to_stop_id              TEXT    NOT NULL,
+        predicted_at            INTEGER NOT NULL,
+        horizon_seconds         INTEGER NOT NULL,
+        predicted_delay_seconds REAL    NOT NULL,
+        -- Null until the trip has run. Distinct from 0, which means "on time".
+        actual_delay_seconds    REAL,
+        model_version           TEXT    NOT NULL,
+        run_id                  TEXT    NOT NULL,
+        PRIMARY KEY (trip_id, from_stop_id, to_stop_id, service_date)
+      );
+      CREATE INDEX idx_predictions_date_line ON predictions(service_date, line_name);
+    `,
+  },
 ];

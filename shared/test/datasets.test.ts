@@ -45,7 +45,7 @@ describe("the emitted layout matches the code that writes it", () => {
       "events/service_date=2026-08-14/events.jsonl.gz",
     );
     expect(datasetKey("predictions", "2026-08-14")).toBe(
-      "predictions/service_date=2026-08-14/predictions.parquet",
+      "predictions/service_date=2026-08-14/predictions.jsonl.gz",
     );
   });
 
