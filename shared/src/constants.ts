@@ -139,3 +139,14 @@ export const FEED_TYPES = ["TripUpdates", "VehiclePositions", "ServiceAlerts"] a
 type UnlistedFeedType = Exclude<FeedType, (typeof FEED_TYPES)[number]>;
 const _everyFeedTypeIsListed: UnlistedFeedType extends never ? true : never = true;
 void _everyFeedTypeIsListed;
+
+/**
+ * How long TripUpdates may go without a successful fetch before ingest counts
+ * as stalled.
+ *
+ * Shared because two processes have to agree on it: the pipeline alerts on it,
+ * and the API reports it at `/health/live` for an external monitor to watch. An
+ * hour is several times the 30-second poll interval, so a transient NJT outage
+ * or a restart does not trip it, while a genuinely stopped feed does.
+ */
+export const NO_TRIP_UPDATES_ALERT_MS = 3_600_000;

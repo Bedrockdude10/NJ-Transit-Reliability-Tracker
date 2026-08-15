@@ -21,7 +21,8 @@
       "type": "string"
     },
     "stopSequence": {
-      "type": "integer"
+      "type": "integer",
+      "unit": "stop_index"
     },
     "direction": {
       "anyOf": [
@@ -46,7 +47,8 @@
         {
           "type": "null"
         }
-      ]
+      ],
+      "unit": "epoch_seconds"
     },
     "scheduledDeparture": {
       "anyOf": [
@@ -56,7 +58,8 @@
         {
           "type": "null"
         }
-      ]
+      ],
+      "unit": "epoch_seconds"
     },
     "observedArrival": {
       "anyOf": [
@@ -66,7 +69,8 @@
         {
           "type": "null"
         }
-      ]
+      ],
+      "unit": "epoch_seconds"
     },
     "delaySeconds": {
       "anyOf": [
@@ -76,7 +80,8 @@
         {
           "type": "null"
         }
-      ]
+      ],
+      "unit": "seconds"
     },
     "stopSkipped": {
       "type": "boolean"
@@ -88,7 +93,8 @@
       "type": "string"
     },
     "ingestedAtMs": {
-      "type": "integer"
+      "type": "integer",
+      "unit": "epoch_milliseconds"
     }
   },
   "required": [

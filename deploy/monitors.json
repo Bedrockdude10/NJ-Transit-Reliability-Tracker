@@ -1,0 +1,36 @@
+{
+  "$comment": [
+    "Uptime monitors, kept in git rather than clicked into a dashboard, and applied by",
+    "`npm run monitors:sync`. A monitor that exists only in a vendor's UI is a monitor",
+    "nobody can review, nobody notices the deletion of, and nobody can recreate after an",
+    "account is lost — which is the same class of single-copy problem as the database.",
+    "",
+    "Two checks, because they fail independently. `/health/live` is the one that matters:",
+    "the supervisor keeps the API up through a pipeline crash, so the site can serve a",
+    "dashboard that has quietly stopped advancing while every ordinary check stays green.",
+    "An ingest gap is permanent — NJT serves no history to backfill from.",
+    "",
+    "`url` is overridden by NJT_PUBLIC_API_URL when set, so a staging deploy does not need",
+    "an edited copy of this file."
+  ],
+  "monitors": [
+    {
+      "name": "NJT API",
+      "path": "/health",
+      "checkFrequencySeconds": 60,
+      "requestTimeoutSeconds": 10,
+      "confirmationPeriodSeconds": 60,
+      "recoveryPeriodSeconds": 60,
+      "comment": "The site is reachable at all. Two minutes of confirmation before alerting, so a deploy or a machine restart does not page anyone."
+    },
+    {
+      "name": "NJT ingest",
+      "path": "/health/live",
+      "checkFrequencySeconds": 300,
+      "requestTimeoutSeconds": 10,
+      "confirmationPeriodSeconds": 300,
+      "recoveryPeriodSeconds": 300,
+      "comment": "503 once TripUpdates has been silent for an hour. Checked every five minutes rather than every thirty seconds: the condition it reports changes on the scale of an hour, and polling it faster only adds requests."
+    }
+  ]
+}

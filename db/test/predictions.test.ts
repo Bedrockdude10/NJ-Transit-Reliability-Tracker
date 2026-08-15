@@ -133,3 +133,48 @@ describe("reporting what is held", () => {
     });
   });
 });
+
+/**
+ * The interval is optional at every layer, so both shapes have to survive a
+ * round trip — and the absent one has to come back *absent*, not null. The
+ * contract types these as numbers and forbids unknown properties, so a row
+ * re-published carrying `"predictedDelayLowerSeconds": null` would fail
+ * validation on the modelling repo's side of the seam.
+ */
+describe("prediction intervals", () => {
+  const WITH_INTERVAL: DelayPrediction = {
+    ...PREDICTION,
+    tripId: "T-interval",
+    predictedDelayLowerSeconds: 120,
+    predictedDelayUpperSeconds: 400,
+    predictionIntervalPercent: 80,
+  };
+
+  it("round-trips an interval unchanged", () => {
+    repo.upsertMany([WITH_INTERVAL]);
+    expect(repo.forServiceDate("2026-08-14")).toEqual([WITH_INTERVAL]);
+  });
+
+  it("omits the keys entirely for a prediction published without one", () => {
+    repo.upsertMany([PREDICTION]);
+    const [stored] = repo.forServiceDate("2026-08-14");
+    expect(stored).toEqual(PREDICTION);
+    expect(Object.hasOwn(stored!, "predictedDelayLowerSeconds")).toBe(false);
+    expect(Object.hasOwn(stored!, "predictionIntervalPercent")).toBe(false);
+  });
+
+  it("drops the interval when a re-run stops publishing one", () => {
+    // Not coalesced: a stale range attached to a fresh point estimate would
+    // claim a confidence the new run never stated.
+    repo.upsertMany([WITH_INTERVAL]);
+    repo.upsertMany([{ ...PREDICTION, tripId: "T-interval" }]);
+    const [stored] = repo.forServiceDate("2026-08-14");
+    expect(Object.hasOwn(stored!, "predictedDelayLowerSeconds")).toBe(false);
+  });
+
+  it("replaces a service date carrying intervals", () => {
+    repo.upsertMany([WITH_INTERVAL]);
+    repo.replaceServiceDate("2026-08-14", [{ ...WITH_INTERVAL, predictedDelayUpperSeconds: 900 }]);
+    expect(repo.forServiceDate("2026-08-14")[0]?.predictedDelayUpperSeconds).toBe(900);
+  });
+});

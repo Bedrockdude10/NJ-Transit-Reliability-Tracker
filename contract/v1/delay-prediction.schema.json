@@ -21,13 +21,16 @@
       "type": "string"
     },
     "predictedAtEpochSeconds": {
-      "type": "integer"
+      "type": "integer",
+      "unit": "epoch_seconds"
     },
     "horizonSeconds": {
-      "type": "integer"
+      "type": "integer",
+      "unit": "seconds"
     },
     "predictedDelaySeconds": {
-      "type": "number"
+      "type": "number",
+      "unit": "seconds"
     },
     "actualDelaySeconds": {
       "anyOf": [
@@ -37,7 +40,20 @@
         {
           "type": "null"
         }
-      ]
+      ],
+      "unit": "seconds"
+    },
+    "predictedDelayLowerSeconds": {
+      "type": "number",
+      "unit": "seconds"
+    },
+    "predictedDelayUpperSeconds": {
+      "type": "number",
+      "unit": "seconds"
+    },
+    "predictionIntervalPercent": {
+      "type": "number",
+      "unit": "percent"
     },
     "modelVersion": {
       "type": "string"

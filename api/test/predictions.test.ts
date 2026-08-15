@@ -93,10 +93,45 @@ describe("with predictions imported", () => {
         toStopName: "New York Penn Station",
         horizonSeconds: 1800,
         predictedDelaySeconds: 240,
+        interval: null,
         actualDelaySeconds: null,
         errorSeconds: null,
       },
     ]);
+  });
+
+  /**
+   * Intervals are optional in the contract, so the endpoint has to serve both
+   * kinds of day — and a point-only day is still the normal one.
+   */
+  it("serves the interval when the model published one", async () => {
+    repos.predictions.upsertMany([
+      {
+        ...PREDICTION,
+        tripId: "T4",
+        predictedDelaySeconds: 500,
+        predictedDelayLowerSeconds: 300,
+        predictedDelayUpperSeconds: 720,
+        predictionIntervalPercent: 80,
+      },
+    ]);
+    const { body } = await get("/predictions?date=2026-08-14");
+    const withRange = body.predictions.find((p: { tripId: string }) => p.tripId === "T4");
+    expect(withRange.interval).toEqual({ lowerSeconds: 300, upperSeconds: 720, percent: 80 });
+  });
+
+  it("still validates against the contract the app checks every response with", async () => {
+    repos.predictions.upsertMany([
+      {
+        ...PREDICTION,
+        tripId: "T5",
+        predictedDelayLowerSeconds: 120,
+        predictedDelayUpperSeconds: 400,
+        predictionIntervalPercent: 90,
+      },
+    ]);
+    const { body } = await get("/predictions?date=2026-08-14");
+    expect(predictionsResponseSchema.safeParse(body).success).toBe(true);
   });
 
   it("names the model and run that produced them", async () => {

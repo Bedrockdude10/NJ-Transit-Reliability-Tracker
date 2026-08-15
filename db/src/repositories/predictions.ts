@@ -11,6 +11,9 @@ interface PredictionRow {
   horizon_seconds: number;
   predicted_delay_seconds: number;
   actual_delay_seconds: number | null;
+  predicted_delay_lower_seconds: number | null;
+  predicted_delay_upper_seconds: number | null;
+  prediction_interval_percent: number | null;
   model_version: string;
   run_id: string;
 }
@@ -48,19 +51,29 @@ export class PredictionRepository {
     const statement = this.db.prepare(/* sql */ `
       INSERT INTO predictions (
         trip_id, line_name, service_date, from_stop_id, to_stop_id, predicted_at,
-        horizon_seconds, predicted_delay_seconds, actual_delay_seconds, model_version, run_id
+        horizon_seconds, predicted_delay_seconds, actual_delay_seconds,
+        predicted_delay_lower_seconds, predicted_delay_upper_seconds, prediction_interval_percent,
+        model_version, run_id
       ) VALUES (
         :trip_id, :line_name, :service_date, :from_stop_id, :to_stop_id, :predicted_at,
-        :horizon_seconds, :predicted_delay_seconds, :actual_delay_seconds, :model_version, :run_id
+        :horizon_seconds, :predicted_delay_seconds, :actual_delay_seconds,
+        :predicted_delay_lower_seconds, :predicted_delay_upper_seconds, :prediction_interval_percent,
+        :model_version, :run_id
       )
       ON CONFLICT(trip_id, from_stop_id, to_stop_id, service_date) DO UPDATE SET
-        line_name               = excluded.line_name,
-        predicted_at            = excluded.predicted_at,
-        horizon_seconds         = excluded.horizon_seconds,
-        predicted_delay_seconds = excluded.predicted_delay_seconds,
-        actual_delay_seconds    = excluded.actual_delay_seconds,
-        model_version           = excluded.model_version,
-        run_id                  = excluded.run_id
+        line_name                     = excluded.line_name,
+        predicted_at                  = excluded.predicted_at,
+        horizon_seconds               = excluded.horizon_seconds,
+        predicted_delay_seconds       = excluded.predicted_delay_seconds,
+        actual_delay_seconds          = excluded.actual_delay_seconds,
+        -- Replaced, not coalesced: a re-run that drops its interval is a model
+        -- that stopped publishing one, and keeping the old range would attach a
+        -- stale confidence to a fresh estimate.
+        predicted_delay_lower_seconds = excluded.predicted_delay_lower_seconds,
+        predicted_delay_upper_seconds = excluded.predicted_delay_upper_seconds,
+        prediction_interval_percent   = excluded.prediction_interval_percent,
+        model_version                 = excluded.model_version,
+        run_id                        = excluded.run_id
     `);
 
     for (const prediction of predictions) {
@@ -74,6 +87,11 @@ export class PredictionRepository {
         horizon_seconds: prediction.horizonSeconds,
         predicted_delay_seconds: prediction.predictedDelaySeconds,
         actual_delay_seconds: prediction.actualDelaySeconds,
+        // Absent in the contract, NULL in the column: SQLite has no notion of
+        // an unset parameter, and `undefined` would fail to bind.
+        predicted_delay_lower_seconds: prediction.predictedDelayLowerSeconds ?? null,
+        predicted_delay_upper_seconds: prediction.predictedDelayUpperSeconds ?? null,
+        prediction_interval_percent: prediction.predictionIntervalPercent ?? null,
         model_version: prediction.modelVersion,
         run_id: prediction.runId,
       });
@@ -150,7 +168,26 @@ function toPrediction(row: PredictionRow): DelayPrediction {
     horizonSeconds: row.horizon_seconds,
     predictedDelaySeconds: row.predicted_delay_seconds,
     actualDelaySeconds: row.actual_delay_seconds,
+    ...intervalOf(row),
     modelVersion: row.model_version,
     runId: row.run_id,
+  };
+}
+
+/**
+ * The interval fields, or no fields at all.
+ *
+ * Spread rather than assigned so a row without an interval yields a prediction
+ * with the keys *absent*, which is what the contract says: the schema types
+ * them as numbers and forbids unknown properties, so re-publishing a row that
+ * carried `"predictedDelayLowerSeconds": null` would fail validation on the
+ * other side of the seam.
+ */
+function intervalOf(row: PredictionRow): Partial<DelayPrediction> {
+  if (row.predicted_delay_lower_seconds === null) return {};
+  return {
+    predictedDelayLowerSeconds: row.predicted_delay_lower_seconds,
+    predictedDelayUpperSeconds: row.predicted_delay_upper_seconds ?? undefined,
+    predictionIntervalPercent: row.prediction_interval_percent ?? undefined,
   };
 }

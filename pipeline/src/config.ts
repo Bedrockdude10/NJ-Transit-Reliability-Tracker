@@ -3,6 +3,8 @@
  * defaults. Credentials are read from the environment only — never committed
  * (PRD compliance). See `.env.example`.
  */
+import { NO_TRIP_UPDATES_ALERT_MS } from "@njt/shared";
+
 export interface PipelineConfig {
   dbPath: string;
   /**
@@ -61,7 +63,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PipelineConfig
       hourlyRecomputeMs: num(env.NJT_HOURLY_RECOMPUTE_MS, 3_600_000),
       stalenessCheckMs: num(env.NJT_STALENESS_CHECK_MS, 300_000),
     },
-    noTripUpdatesAlertMs: num(env.NJT_NO_TRIP_UPDATES_ALERT_MS, 3_600_000),
+    noTripUpdatesAlertMs: num(env.NJT_NO_TRIP_UPDATES_ALERT_MS, NO_TRIP_UPDATES_ALERT_MS),
     alertWebhookUrl: env.NJT_ALERT_WEBHOOK_URL,
   };
 }

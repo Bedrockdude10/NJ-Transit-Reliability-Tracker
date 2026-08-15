@@ -1,5 +1,5 @@
 import type { PredictedDelay, PredictionProvenance, PredictionsResponse } from "@njt/shared";
-import { formatDurationShort, formatInt } from "./format";
+import { formatDelayShort, formatDurationShort, formatInt } from "./format";
 
 /**
  * Wording for model output.
@@ -64,4 +64,36 @@ export function byLine(
     else groups.set(leg.lineName, [leg]);
   }
   return [...groups].map(([lineName, legs]) => ({ lineName, legs }));
+}
+
+/**
+ * A predicted delay as a range where the model gave one, a point where it did not.
+ *
+ * The range is the more honest answer. "8m" reads as though the model knows the
+ * arrival to the minute; "5m–12m" says what it actually claims, which is a band
+ * it expects to be right about most of the time. So the range replaces the point
+ * rather than sitting beside it — showing both invites reading the point as the
+ * real answer and the range as decoration.
+ */
+export function formatPredictedDelay(leg: PredictedDelay): string {
+  if (leg.interval === null) return formatDelayShort(leg.predictedDelaySeconds);
+  // An en dash, not a hyphen: these are numbers that can be negative, and
+  // "−2m-3m" is unreadable.
+  return `${formatDelayShort(leg.interval.lowerSeconds)}–${formatDelayShort(leg.interval.upperSeconds)}`;
+}
+
+/**
+ * What the ranges on screen mean, stated once under the table rather than on
+ * every row.
+ *
+ * A range without its confidence is not a claim — "5 to 12 minutes late" is a
+ * different statement at 50% than at 95% — but repeating "(80%)" on forty rows
+ * is noise that stops being read. Returns null when no leg shown carries an
+ * interval, and names each coverage when a run somehow mixes them.
+ */
+export function intervalNote(predictions: readonly PredictedDelay[]): string | null {
+  const percents = [...new Set(predictions.map((p) => p.interval?.percent).filter((p) => p !== undefined))];
+  if (percents.length === 0) return null;
+  const coverage = percents.sort((a, b) => a - b).join("% / ");
+  return `Ranges are ${coverage}% prediction intervals: the model expects the actual delay to fall inside them that often.`;
 }

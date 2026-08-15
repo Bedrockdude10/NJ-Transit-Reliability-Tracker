@@ -2,7 +2,7 @@ import { gunzipSync } from "node:zlib";
 import { GetObjectCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
 import type { Repositories } from "@njt/db";
 import { DATASETS, type DelayPrediction } from "@njt/shared";
-import { delayPredictionSchema } from "@njt/shared";
+import { delayPredictionSchema, intervalProblem } from "@njt/shared";
 import type { Logger } from "@njt/shared/logger";
 import { createClient, type ObjectStore } from "../archive/object-store";
 
@@ -79,6 +79,13 @@ export function parsePredictions(serviceDate: string, body: Uint8Array): DelayPr
           .join("; ")}`,
       );
     }
+    // Coherence the generated schema cannot state: the three interval fields
+    // are optional one at a time but meaningless one at a time. Same
+    // all-or-nothing rule as the rest of the day — a range that contradicts its
+    // own point estimate is the shape a unit mixup takes, and it would render
+    // as a confident wrong answer rather than as an error.
+    const problem = intervalProblem(parsed.data);
+    if (problem !== null) throw new Error(`${serviceDate}: line ${index + 1} ${problem}`);
     return parsed.data;
   });
 }

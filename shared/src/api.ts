@@ -632,6 +632,23 @@ export interface AlertFrequencyResponse {
  * deals in GTFS ids and the app renders places people recognise, and resolving
  * that here keeps a screen from having to join two payloads.
  */
+/**
+ * The range a model puts a delay in, and how sure it is.
+ *
+ * A range is a more honest thing to show a rider than a point: "5 to 12 minutes
+ * late" says what a single "8.4" cannot, which is how much the model does not
+ * know. Null where the run produced only a point estimate — most days, until
+ * the modelling repo publishes conformal intervals.
+ */
+export interface PredictionInterval {
+  /** Lower bound, seconds; positive = late. */
+  lowerSeconds: number;
+  /** Upper bound, seconds. */
+  upperSeconds: number;
+  /** Coverage: 80 means 8 runs in 10 are expected to land inside the range. */
+  percent: number;
+}
+
 export interface PredictedDelay {
   tripId: string;
   lineName: string;
@@ -641,6 +658,8 @@ export interface PredictedDelay {
   horizonSeconds: number;
   /** Predicted delay at the destination, seconds; positive = late. */
   predictedDelaySeconds: number;
+  /** The range around that estimate, or null when the model published none. */
+  interval: PredictionInterval | null;
   /** Observed delay once the trip has run, or null while it is still ahead. */
   actualDelaySeconds: number | null;
   /** Signed error once both are known: positive = the model was optimistic. */

@@ -3,6 +3,7 @@
 export * from "./constants";
 export * from "./domain";
 export * from "./datasets";
+export * from "./units";
 export * from "./predictions";
 export * from "./aggregates";
 export * from "./api";
@@ -21,3 +22,4 @@ export * from "./time";
 export * from "./delay";
 export * from "./departures";
 export * from "./month";
+export * from "./prediction-interval";

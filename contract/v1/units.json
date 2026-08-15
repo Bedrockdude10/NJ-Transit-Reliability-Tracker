@@ -1,0 +1,41 @@
+{
+  "version": "v1",
+  "units": {
+    "seconds": {
+      "symbol": "s",
+      "suffix": "Seconds",
+      "description": "A duration in seconds. Signed where the field says so — a delay is positive when late, negative when early. Distinct from epoch_seconds: this is an interval, not an instant."
+    },
+    "epoch_seconds": {
+      "symbol": "s",
+      "suffix": "EpochSeconds",
+      "description": "An instant: seconds since the Unix epoch, UTC. Deliberately not the same unit as seconds — adding two of these, or reading one as a duration, is the mistake this vocabulary exists to name.",
+      "minimum": 0
+    },
+    "epoch_milliseconds": {
+      "symbol": "ms",
+      "suffix": "Ms",
+      "description": "An instant: milliseconds since the Unix epoch, UTC. The `Ms` field-name suffix is the repo-wide marker for it, and reserving it here makes that convention checkable.",
+      "minimum": 0
+    },
+    "percent": {
+      "symbol": "%",
+      "suffix": "Percent",
+      "description": "A share out of 100 — 87.4 means 87.4%, not 8740%. Never a fraction of 1.",
+      "minimum": 0,
+      "maximum": 100
+    },
+    "count": {
+      "symbol": "",
+      "suffix": null,
+      "description": "A whole number of things, where the field name says what is counted. No reserved suffix: counts are named for the thing (`tripsOperated`, `cancellations`), not for the unit.",
+      "minimum": 0
+    },
+    "stop_index": {
+      "symbol": "",
+      "suffix": null,
+      "description": "A position within a trip's stop sequence (GTFS `stop_sequence`). An ordinal — not a count of stops travelled, and not a distance.",
+      "minimum": 0
+    }
+  }
+}
