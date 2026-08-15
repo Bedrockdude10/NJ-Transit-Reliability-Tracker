@@ -5,7 +5,7 @@ import type {
   PredictionsResponse,
 } from "@njt/shared";
 import { Hono } from "hono";
-import { CACHE_CONTROL_DAILY } from "../util";
+import { CACHE_CONTROL_MINUTE } from "../util";
 
 /**
  * `GET /predictions?date=` — model output for one service date.
@@ -104,7 +104,7 @@ export function predictionRoutes(repos: Repositories): Hono {
       scoredCount: scored.length,
     };
 
-    c.header("Cache-Control", CACHE_CONTROL_DAILY);
+    c.header("Cache-Control", CACHE_CONTROL_MINUTE);
     return c.json(response);
   });
 

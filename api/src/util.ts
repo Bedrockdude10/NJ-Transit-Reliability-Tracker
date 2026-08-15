@@ -10,6 +10,19 @@ import { HEATMAP_TYPES, type HeatmapType } from "@njt/shared";
  */
 export const CACHE_CONTROL_DAILY = "public, max-age=3600, stale-while-revalidate=86400";
 
+/**
+ * Cache-Control for data that is refreshed during the day.
+ *
+ * Predictions are re-imported hourly and re-published whenever a model runs, so
+ * an hour-long cache would routinely serve a superseded forecast. It also
+ * interacts badly with the app's response validation: after a deploy that adds a
+ * field, a client holding a cached body fails the contract check and renders an
+ * error until the cache expires — which is exactly what happened while testing
+ * this endpoint. A minute keeps the browser from hammering it without either
+ * effect.
+ */
+export const CACHE_CONTROL_MINUTE = "public, max-age=60, stale-while-revalidate=300";
+
 /** An error carrying an HTTP status, thrown by handlers and mapped to JSON. */
 export class ApiError extends Error {
   constructor(

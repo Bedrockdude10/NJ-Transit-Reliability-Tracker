@@ -215,6 +215,14 @@ describe("keeping the response a size a phone can use", () => {
     expect(body.lines).toEqual(["North Jersey Coast", "Northeast Corridor"]);
   });
 
+  it("is cached briefly, since predictions are re-imported through the day", async () => {
+    // An hour-long cache serves superseded forecasts, and makes a deploy that
+    // adds a field render as an error in the app until the cache expires — the
+    // response validator rejecting a body that predates the change.
+    const response = await app.request("/predictions?date=2026-08-14");
+    expect(response.headers.get("Cache-Control")).toContain("max-age=60");
+  });
+
   it("rejects a nonsense limit rather than returning everything", async () => {
     expect((await get("/predictions?date=2026-08-14&limit=0")).status).toBe(400);
     expect((await get("/predictions?date=2026-08-14&limit=abc")).status).toBe(400);
