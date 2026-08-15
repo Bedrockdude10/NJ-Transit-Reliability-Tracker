@@ -2,6 +2,11 @@ import { readFileSync } from "node:fs";
 import { gzipSync } from "node:zlib";
 import type { Repositories } from "@njt/db";
 import { CONTRACT_VERSION, datasetKey, type TripStopEvent } from "@njt/shared";
+// Imported rather than read from disk: this is *the contract this build was made
+// against*, which is precisely what the consumer needs to compare itself with.
+// Reading it at runtime also broke once bundled — the path is relative to the
+// module, and the bundle does not live where the source did.
+import manifest from "../../../contract/v1/manifest.json" with { type: "json" };
 import type { Logger } from "@njt/shared/logger";
 import { availableMemoryMb, insufficientMemory } from "./machine";
 import { createClient, type ObjectStore, type ObjectWriter, putVerified } from "./object-store";
@@ -41,9 +46,10 @@ interface ContractSchema {
   properties: Record<string, { type?: string; anyOf?: { type?: string }[] }>;
 }
 
-const CONTRACT_DIR = new URL(`../../../contract/${CONTRACT_VERSION}/`, import.meta.url);
-const SCHEMA_PATH = new URL("trip-stop-event.schema.json", CONTRACT_DIR);
-const MANIFEST_PATH = new URL("manifest.json", CONTRACT_DIR);
+const SCHEMA_PATH = new URL(
+  `../../../contract/${CONTRACT_VERSION}/trip-stop-event.schema.json`,
+  import.meta.url,
+);
 
 export function exportedFields(): string[] {
   const schema = JSON.parse(readFileSync(SCHEMA_PATH, "utf8")) as ContractSchema;
@@ -100,17 +106,15 @@ export async function publishManifest(
   client: ObjectWriter,
   log?: Logger,
 ): Promise<string> {
-  const body = readFileSync(MANIFEST_PATH);
   const key = manifestKey();
   await putVerified(client, {
     bucket: store.bucket,
     key,
-    body,
+    body: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`),
     contentType: "application/json",
   });
-  const { digest } = JSON.parse(body.toString()) as { digest: string };
-  log?.info("published contract manifest", { key, digest });
-  return digest;
+  log?.info("published contract manifest", { key, digest: manifest.digest });
+  return manifest.digest;
 }
 
 export interface ExportOptions {

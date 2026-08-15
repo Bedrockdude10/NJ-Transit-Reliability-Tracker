@@ -2,7 +2,7 @@ import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { gunzipSync } from "node:zlib";
 import { createRepositories, openDatabase, type Database, type Repositories } from "@njt/db";
-import type { TripStopEvent } from "@njt/shared";
+import { CONTRACT_VERSION, type TripStopEvent } from "@njt/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   exportEvents,
@@ -160,6 +160,20 @@ describe("the objects", () => {
     const manifest = JSON.parse(Buffer.from(client.objects.get(manifestKey())!).toString());
     expect(manifest.digest).toMatch(/^[0-9a-f]{64}$/);
     expect(Object.keys(manifest.files)).toContain("datasets.json");
+  });
+
+  it("publishes the version it claims to, since the embedded path is fixed", async () => {
+    // The manifest is imported at a literal `contract/v1/` path — an import
+    // attribute cannot take a variable — while the key it is published under
+    // follows CONTRACT_VERSION. A v2 would otherwise publish v1's manifest under
+    // the v2 key, and every consumer would compare against the wrong contract.
+    repos.events.record(EVENT);
+    const client = recordingClient();
+    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
+
+    const manifest = JSON.parse(Buffer.from(client.objects.get(manifestKey())!).toString());
+    expect(manifest.version).toBe(CONTRACT_VERSION);
+    expect(manifestKey()).toContain(`/${CONTRACT_VERSION}/`);
   });
 
   it("publishes the manifest before any rows it describes", async () => {
