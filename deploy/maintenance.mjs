@@ -44,3 +44,40 @@ export function decidePipeline({ flagPresent, running }) {
   if (!flagPresent && !running) return "start";
   return "leave";
 }
+
+/**
+ * Signal a child *and everything it spawned*.
+ *
+ * `child.kill()` reaches only the direct child, which is `npm` — and npm does not
+ * forward SIGTERM to the `sh -c tsx …` beneath it. In production that left the
+ * real pipeline reparented to init, still polling NJT and still writing to
+ * SQLite, while the supervisor — having watched npm exit — reported ingest
+ * stopped and started a second one. Two pipelines then ingested concurrently on
+ * a 470 MB box, and `compact` refused to swap because it could still see writes.
+ * Its `PRAGMA data_version` check is the only reason that did not silently
+ * discard the ingest between the copy and the swap.
+ *
+ * So the pause has to reach the process that actually holds the database, not
+ * the one that happens to be the supervisor's child. Children are spawned
+ * `detached`, which makes each the leader of its own process group, and a
+ * negative pid signals that whole group. `pipeline/src/main.ts` has always
+ * handled SIGTERM — it simply never received one.
+ *
+ * @param {number | undefined} pid the group leader, i.e. the spawned child
+ * @param {{kill?: (pid: number, signal: string) => void, log?: (message: string, meta?: object) => void}} [io]
+ * @returns {boolean} whether a signal was delivered
+ */
+export function stopProcessTree(pid, io = {}) {
+  if (!pid) return false;
+  const kill = io.kill ?? ((target, signal) => process.kill(target, signal));
+  try {
+    kill(-pid, "SIGTERM");
+    return true;
+  } catch (error) {
+    // ESRCH means it exited between the check and the signal, which is the
+    // outcome wanted anyway. Anything else is worth seeing, because a pause that
+    // did not take is the exact failure this path exists to prevent.
+    if (error.code !== "ESRCH") io.log?.("could not signal child process group", { pid, error: error.message });
+    return false;
+  }
+}

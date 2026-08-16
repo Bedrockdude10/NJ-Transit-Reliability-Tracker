@@ -17,7 +17,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { RESTART_WINDOW_MS, decideRestart } from "./restart-policy.mjs";
-import { decidePipeline, maintenanceFlagPath } from "./maintenance.mjs";
+import { decidePipeline, maintenanceFlagPath, stopProcessTree } from "./maintenance.mjs";
 
 const dbPath = process.env.NJT_DB_PATH ?? "/data/njt.sqlite";
 mkdirSync(dirname(dbPath), { recursive: true });
@@ -30,10 +30,17 @@ function log(message, meta) {
   console.log(JSON.stringify({ level: "info", time: new Date().toISOString(), source: "supervisor", message, ...meta }));
 }
 
+/** Stop a child and everything it spawned. See `stopProcessTree` for why. */
+function stopTree(name, entry) {
+  stopProcessTree(entry?.child?.pid, {
+    log: (message, meta) => log(message, { script: name, ...meta }),
+  });
+}
+
 function shutdown(code) {
   if (shuttingDown) return;
   shuttingDown = true;
-  for (const entry of supervised.values()) entry.child?.kill("SIGTERM");
+  for (const [name, entry] of supervised) stopTree(name, entry);
   setTimeout(() => process.exit(code), 3000).unref();
 }
 
@@ -46,7 +53,10 @@ function start(name, command) {
   supervised.set(name, entry);
 
   const [bin, args] = command ?? ["npm", ["run", name]];
-  const child = spawn(bin, args, { stdio: "inherit", env: process.env });
+  // `detached` so the child leads its own process group and `stopTree` can
+  // signal the whole tree. Not unref'd — the supervisor still owns its lifetime;
+  // detaching here is about which processes a signal reaches, not ownership.
+  const child = spawn(bin, args, { stdio: "inherit", env: process.env, detached: true });
   entry.child = child;
 
   // A spawn that fails outright — a missing binary, typically — emits "error"
@@ -134,7 +144,7 @@ function reconcileMaintenance() {
 
   if (action === "stop") {
     log("maintenance flag present; pausing ingest", { flag: MAINTENANCE_FLAG });
-    entry?.child?.kill("SIGTERM");
+    stopTree("pipeline", entry);
   } else if (action === "start") {
     log("maintenance flag cleared; resuming ingest");
     // Failures are cleared with the pause: a deliberate stop is not evidence
