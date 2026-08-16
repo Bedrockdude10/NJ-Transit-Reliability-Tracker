@@ -1,6 +1,13 @@
 import type { PredictedDelay, PredictionsResponse } from "@njt/shared";
 import { describe, expect, it } from "vitest";
-import { accuracyNote, byLine, provenanceNote, signedSeconds } from "./predictions";
+import {
+  accuracyNote,
+  byLine,
+  formatPredictedDelay,
+  intervalNote,
+  provenanceNote,
+  signedSeconds,
+} from "./predictions";
 
 /**
  * How model output is described to a rider.
@@ -17,6 +24,7 @@ const LEG: PredictedDelay = {
   toStopName: "New York Penn Station",
   horizonSeconds: 1800,
   predictedDelaySeconds: 240,
+  interval: null,
   actualDelaySeconds: null,
   errorSeconds: null,
 };
@@ -100,5 +108,60 @@ describe("byLine", () => {
 
   it("returns nothing for nothing, rather than an empty group", () => {
     expect(byLine([])).toEqual([]);
+  });
+});
+
+/**
+ * The range, once the modelling repo publishes conformal intervals.
+ *
+ * The wording argument again, and the strongest instance of it: "8m 24s" reads
+ * as a measurement of a train that has not run. A range is what the model can
+ * actually support, so where there is one it replaces the point rather than
+ * decorating it.
+ */
+const withInterval = (lowerSeconds: number, upperSeconds: number, percent = 80): PredictedDelay => ({
+  ...LEG,
+  interval: { lowerSeconds, upperSeconds, percent },
+});
+
+describe("formatPredictedDelay", () => {
+  it("shows the point estimate when the model published no range", () => {
+    expect(formatPredictedDelay(LEG)).toBe("4m");
+  });
+
+  it("shows a range instead of the point when the model published one", () => {
+    expect(formatPredictedDelay(withInterval(300, 720))).toBe("5m–12m");
+  });
+
+  it("reads clearly when a bound is early", () => {
+    // An en dash between two values that can carry a minus sign; "−2m-5m" is
+    // not readable.
+    expect(formatPredictedDelay(withInterval(-120, 300))).toBe("−2m–5m");
+  });
+
+  it("collapses a bound within the on-time threshold to zero, as elsewhere", () => {
+    expect(formatPredictedDelay(withInterval(10, 300))).toBe("0–5m");
+  });
+});
+
+describe("intervalNote", () => {
+  it("says nothing when no leg carries a range", () => {
+    expect(intervalNote([LEG, LEG])).toBeNull();
+  });
+
+  it("states the coverage once, rather than on every row", () => {
+    expect(intervalNote([withInterval(300, 720), withInterval(60, 200)])).toMatch(
+      /80% prediction intervals/,
+    );
+  });
+
+  it("names every coverage if a run mixes them, rather than picking one", () => {
+    expect(intervalNote([withInterval(300, 720, 90), withInterval(60, 200, 50)])).toMatch(
+      /50% \/ 90%/,
+    );
+  });
+
+  it("ignores legs without a range when some have one", () => {
+    expect(intervalNote([LEG, withInterval(300, 720)])).toMatch(/80%/);
   });
 });

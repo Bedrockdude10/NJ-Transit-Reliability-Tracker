@@ -388,4 +388,19 @@ export const MIGRATIONS: readonly Migration[] = [
       CREATE INDEX idx_predictions_date_line ON predictions(service_date, line_name);
     `,
   },
+  {
+    id: "011_prediction_intervals",
+    up: /* sql */ `
+      -- The range around a prediction, and how sure the model is of it.
+      --
+      -- All three nullable together: a run that publishes only a point estimate
+      -- is a valid producer, and every row imported before intervals existed
+      -- keeps its NULLs rather than acquiring an invented range. The importer
+      -- refuses a row carrying some but not all of them, so "partly present"
+      -- never reaches this table.
+      ALTER TABLE predictions ADD COLUMN predicted_delay_lower_seconds REAL;
+      ALTER TABLE predictions ADD COLUMN predicted_delay_upper_seconds REAL;
+      ALTER TABLE predictions ADD COLUMN prediction_interval_percent   REAL;
+    `,
+  },
 ];

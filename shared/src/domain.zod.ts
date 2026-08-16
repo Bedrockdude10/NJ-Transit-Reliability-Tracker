@@ -28,7 +28,10 @@ export const tripStopEventSchema = z.object({
     lineName: z.string(),
     stopId: z.string(),
     stopName: z.string(),
-    /** @format int */
+    /**
+     * @format int
+     * @unit stop_index
+     */
     stopSequence: z.int(),
     direction: directionSchema,
     /** GTFS service date, `YYYY-MM-DD`. */
@@ -36,18 +39,24 @@ export const tripStopEventSchema = z.object({
     /**
      * Scheduled arrival, epoch seconds UTC (null if the stop has no arrival time).
      * @format int
+     * @unit epoch_seconds
      */
     scheduledArrival: z.int().nullable(),
-    /** @format int */
+    /**
+     * @format int
+     * @unit epoch_seconds
+     */
     scheduledDeparture: z.int().nullable(),
     /**
      * Predicted/observed arrival at the time of the final reading, epoch seconds UTC.
      * @format int
+     * @unit epoch_seconds
      */
     observedArrival: z.int().nullable(),
     /**
      * Positive = late, negative = early. Null when not yet observed.
      * @format int
+     * @unit seconds
      */
     delaySeconds: z.int().nullable(),
     stopSkipped: z.boolean(),
@@ -57,6 +66,7 @@ export const tripStopEventSchema = z.object({
     /**
      * When this reading was ingested, epoch milliseconds.
      * @format int
+     * @unit epoch_milliseconds
      */
     ingestedAtMs: z.int()
 });

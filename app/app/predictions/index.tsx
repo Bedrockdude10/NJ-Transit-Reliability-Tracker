@@ -1,7 +1,15 @@
+import type { PredictedDelay } from "@njt/shared";
 import { useLocalSearchParams } from "expo-router";
 import { api } from "../../lib/api";
 import { formatDay, formatInt } from "../../lib/format";
-import { accuracyNote, byLine, provenanceNote, signedSeconds } from "../../lib/predictions";
+import {
+  accuracyNote,
+  byLine,
+  formatPredictedDelay,
+  intervalNote,
+  provenanceNote,
+  signedSeconds,
+} from "../../lib/predictions";
 import { formatDelayShort } from "../../lib/format";
 import { useApi } from "../../hooks/useApi";
 import { QueryBoundary } from "../../components/QueryBoundary";
@@ -81,29 +89,39 @@ function PredictionPanel({ date, line }: { date?: string; line?: string }) {
       </Card>
 
       {byLine(data.predictions).map((group) => (
-        <Card key={group.lineName}>
-          <SectionTitle>{group.lineName}</SectionTitle>
-          <Table
-            columns={[
-              { key: "leg", label: "Leg", flex: 3 },
-              { key: "predicted", label: "Predicted", flex: 1.2 },
-              { key: "actual", label: "Actual", flex: 1.2 },
-              { key: "error", label: "Miss", flex: 1.2 },
-            ]}
-            rows={group.legs.map((leg) => ({
-              key: `${leg.tripId}-${leg.toStopName}`,
-              leg: `${leg.fromStopName} → ${leg.toStopName}`,
-              predicted: formatDelayShort(leg.predictedDelaySeconds),
-              actual: leg.actualDelaySeconds === null ? "—" : formatDelayShort(leg.actualDelaySeconds),
-              error: signedSeconds(leg.errorSeconds),
-            }))}
-          />
-          <Muted>
-            A positive miss means the train was later than predicted. Blank actuals are trips that
-            have not run yet.
-          </Muted>
-        </Card>
+        <LineGroup key={group.lineName} lineName={group.lineName} legs={group.legs} />
       ))}
     </>
+  );
+}
+
+function LineGroup({ lineName, legs }: { lineName: string; legs: PredictedDelay[] }) {
+  // Null until the model publishes intervals, which is most days.
+  const ranges = intervalNote(legs);
+
+  return (
+    <Card>
+      <SectionTitle>{lineName}</SectionTitle>
+      <Table
+        columns={[
+          { key: "leg", label: "Leg", flex: 3 },
+          { key: "predicted", label: ranges === null ? "Predicted" : "Predicted range", flex: 1.2 },
+          { key: "actual", label: "Actual", flex: 1.2 },
+          { key: "error", label: "Miss", flex: 1.2 },
+        ]}
+        rows={legs.map((leg) => ({
+          key: `${leg.tripId}-${leg.toStopName}`,
+          leg: `${leg.fromStopName} → ${leg.toStopName}`,
+          predicted: formatPredictedDelay(leg),
+          actual: leg.actualDelaySeconds === null ? "—" : formatDelayShort(leg.actualDelaySeconds),
+          error: signedSeconds(leg.errorSeconds),
+        }))}
+      />
+      {ranges === null ? null : <Muted>{ranges}</Muted>}
+      <Muted>
+        A positive miss means the train was later than predicted. Blank actuals are trips that have
+        not run yet.
+      </Muted>
+    </Card>
   );
 }

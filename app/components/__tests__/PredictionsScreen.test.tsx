@@ -56,6 +56,7 @@ const POPULATED = {
       toStopName: "New York Penn Station",
       horizonSeconds: 1800,
       predictedDelaySeconds: 240,
+      interval: null,
       actualDelaySeconds: 300,
       errorSeconds: 60,
     },
@@ -103,5 +104,34 @@ describe("Predictions screen", () => {
       expect(getByText("Newark Penn Station → New York Penn Station")).toBeTruthy(),
     );
     expect(getByText("+1m")).toBeTruthy();
+  });
+
+  it("shows the point estimate on a day the model published no range", async () => {
+    // The normal case, and it stays normal: intervals are optional, so a
+    // point-only run must render exactly as it did before they existed.
+    respondWith(POPULATED);
+    const { getByText, queryByText } = renderScreen();
+
+    await waitFor(() => expect(getByText("4m")).toBeTruthy());
+    expect(getByText("Predicted")).toBeTruthy();
+    expect(queryByText(/prediction intervals/)).toBeNull();
+  });
+
+  it("shows the range, and what its confidence means, when the model published one", async () => {
+    // "5m–12m" is the claim the model can support; "8m 24s" is not.
+    respondWith({
+      ...POPULATED,
+      predictions: [
+        {
+          ...POPULATED.predictions[0],
+          interval: { lowerSeconds: 300, upperSeconds: 720, percent: 80 },
+        },
+      ],
+    });
+    const { getByText } = renderScreen();
+
+    await waitFor(() => expect(getByText("5m–12m")).toBeTruthy());
+    expect(getByText("Predicted range")).toBeTruthy();
+    expect(getByText(/80% prediction intervals/)).toBeTruthy();
   });
 });

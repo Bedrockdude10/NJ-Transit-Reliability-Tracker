@@ -4,6 +4,7 @@ import type {
   PredictedDelay,
   PredictionsResponse,
 } from "@njt/shared";
+import { predictionInterval } from "@njt/shared";
 import { Hono } from "hono";
 import { CACHE_CONTROL_MINUTE } from "../util";
 
@@ -77,6 +78,7 @@ export function predictionRoutes(repos: Repositories): Hono {
       toStopName: stopName(prediction.toStopId),
       horizonSeconds: prediction.horizonSeconds,
       predictedDelaySeconds: prediction.predictedDelaySeconds,
+      interval: predictionInterval(prediction),
       actualDelaySeconds: prediction.actualDelaySeconds,
       errorSeconds: errorSeconds(prediction),
     }));

@@ -283,15 +283,19 @@ this container too. It is more work than the above, not less.
 
 ## Publishing events for the modelling repo
 
-`npm run export:events` writes derived events to object storage as Parquet, one
-hive-partitioned object per service date, for
+`npm run export:events` writes derived events to object storage as **gzipped JSON
+Lines**, one hive-partitioned object per service date, for
 [njt-delay-modeling](https://github.com/Bedrockdude10/njt-delay-modeling) to read.
 Re-running a date replaces its object, so it is safe to schedule and safe to
 rerun after a backfill.
 
-DuckDB does the work in SQL (attach the SQLite file, `COPY … TO 's3://…'`), and
-the column list is asserted against `contract/v1/trip-stop-event.schema.json` by
-`archive-export.test.ts` — a field added to the contract and forgotten in the
+Not Parquet: writing it needed DuckDB, which costs ~211 MB resident before reading
+a row and cannot run on this machine. The consumer converts on its own hardware;
+`contract/v1` describes records, not an encoding.
+
+The records are the `TripStopEvent` domain objects the contract is generated from,
+and `archive-export.test.ts` round-trips real rows through SQLite and asserts the
+JSON keys equal the contract's — a field added to the contract and forgotten in the
 export fails the build rather than being silently absent from every file.
 
 ```bash
@@ -306,48 +310,178 @@ validation.
 
 ## Draining the raw archive
 
-`raw_snapshots` is ~3.7 GB of the 3.76 GB database and grows **130 MB/day**. That
-fills the volume, makes every backup expensive, and made Litestream's first
-snapshot heavy enough to starve the API. `npm run sweep:archive` moves it to
-object storage:
+`raw_snapshots` is the bulk of the database and grows **130 MB/day**. That fills
+the volume, makes every backup expensive, and made Litestream's first snapshot
+heavy enough to starve the API. `npm run archive:copy` moves it to object storage,
+and the supervisor runs it hourly once `NJT_ARCHIVE_COPY_ENABLED=true`:
 
 ```bash
-fly ssh console -C "npm run sweep:archive -- --older-than 2"
+fly ssh console -C "npm run archive:copy -- --older-than-hours 2"
 ```
 
-Whole closed UTC days only, written hourly (a day of blobs will not fit in memory
-on a 512 MB box), every hour read back and compared by content digest, and the
-day deleted only once **all** of it is verifiably stored. Reruns are free.
+Whole closed UTC hours only (a day of blobs will not fit in memory on a 512 MB
+box), each read back and compared by content digest, and deleted only once it is
+verifiably stored. Reruns are free.
 
 **It does not shrink the file, on purpose.** Deleting frees pages inside the
 database for reuse, so the file stops growing at its current size — which is what
-the volume ceiling actually requires. A `VACUUM` would reclaim the disk but
-rewrites the whole database, the same class of load that already caused an
-outage. Measured on a production-shaped 1.23 GB database: 7 days swept in 61s,
-205,959 pages freed, then three further days of production-rate data added with
-**zero** file growth where a fresh file would have grown ~390 MB.
-
-Read it back with any Parquet reader; the layout is hive-partitioned:
-
-```sql
-SELECT * FROM read_parquet('s3://njt-archive/archive/date=2026-08-05/**/*.parquet');
-```
+the volume ceiling actually requires. Reclaiming the disk is a separate,
+deliberate step; see below.
 
 Uses the same `NJT_R2_*` secrets as replication.
 
+## Reclaiming the disk (`npm run compact`)
+
+The drain leaves a file that is mostly hole: 3.81 GB holding 599 MB of live data.
+That is not free — every backup copies all of it, and it is what made Litestream's
+first snapshot heavy enough to cause a twelve-minute outage. `npm run compact`
+gives the space back.
+
+`VACUUM INTO`, not `VACUUM`. Plain `VACUUM` rewrites the live database in place
+under an exclusive lock, which is the same rewrite-everything load that caused the
+outage. `VACUUM INTO` writes a fresh compact database elsewhere while readers
+carry on, and leaves the original untouched until something has checked the result.
+
+Start with the preview, which changes nothing:
+
+```bash
+fly ssh console -C "npm run compact"
+```
+
+```
+On disk         3810 MB
+Live data        599 MB
+Reclaimable     3211 MB
+Volume free     3500 MB (needs 787 MB)
+Raw snapshots         0 still to drain
+```
+
+### Why this cannot run against a live pipeline
+
+`VACUUM INTO` reads inside a transaction, so the copy is the database as of the
+instant it began. The pipeline writes continuously. Swapping in a copy taken five
+minutes ago **silently discards five minutes of ingest** — the result is a
+perfectly valid database that simply lacks them, and NJT serves no history to
+re-fetch them from.
+
+So `--apply` pauses ingest first, by creating the maintenance flag the supervisor
+watches (`deploy/maintenance.mjs`). The supervisor stops the pipeline and — unlike
+a plain `kill`, which it would treat as a crash and restart within seconds — does
+not bring it back until the flag clears. The API keeps running throughout; it only
+reads.
+
+Then it refuses to swap unless it can *prove* nothing wrote while it worked, rather
+than trusting that the pause took: `PRAGMA data_version` is sampled before the copy
+and again after, and a change means the copy is already stale.
+
+### Running it
+
+```bash
+fly ssh console -C "npm run compact -- --apply"
+```
+
+It will refuse, leaving the database untouched, if the volume lacks room, if raw
+snapshots are still draining (those pages are about to be freed anyway — pass
+`--max-raw-snapshots N` to override), if anything is still writing, if the copy
+fails `integrity_check`, or if any table's row count differs between the original
+and the copy.
+
+Then, in order:
+
+1. **Restart the API.** Its open handle still points at the file that was moved
+   aside, so until it restarts it serves the pre-compaction database.
+   `fly apps restart njt-reliability-tracker`.
+2. Check `/health`, `/health/live`, and that the site renders.
+3. Only then remove the old file: `rm /data/njt.sqlite.pre-compact*`.
+
+The previous database is kept as `/data/njt.sqlite.pre-compact` precisely so step 3
+is a decision rather than a consequence. It also means the volume holds both until
+you delete it.
+
 ### Order of operations
 
-Replication and the sweep interact. Enable them in this order, or the first
-Litestream snapshot has 3.7 GB to copy on a box that cannot afford it:
+Compaction and replication interact, and getting this order wrong is what caused
+the last outage. Enable them in this order:
 
-1. Set the four `NJT_R2_*` secrets. These give `sweep:archive` access to object
-   storage and **do not** start replication on their own.
-2. **Sweep**, until the database is small and no longer growing.
-3. **Then** `fly secrets set NJT_REPLICATION_ENABLED=true`.
+1. Set the four `NJT_R2_*` secrets. These give `archive:copy` access to object
+   storage and **do not** start replication on their own — credentials being
+   present is deliberately not consent to run the daemon.
+2. **Drain**, until `raw_snapshots` is near zero and the file is no longer growing.
+3. **Compact**, so the file is ~600 MB rather than 3.8 GB.
+4. **Then** `fly secrets set NJT_REPLICATION_ENABLED=true`.
+5. **Verify the restore** (below). This is not optional: steps 1-4 prove nothing.
 
-Credentials being present is deliberately not consent to run the replication
-daemon: enabling both at once is what starved the API into an outage, with
+Enabling replication before step 3 is what starved the API into an outage, with
 Litestream trying to snapshot 3.8 GB on a 512 MB box.
+
+## Proving the restore (`npm run verify:restore`)
+
+A backup nobody has restored is a hypothesis. `litestream replicate` logs happily
+whether or not the result can be restored, and the moment anyone finds out is the
+moment they need it — with the volume already gone.
+
+```bash
+fly ssh console -C "npm run verify:restore"
+```
+
+It restores the replica to a scratch path beside the live database, runs
+`integrity_check`, compares row counts table by table against the live database,
+and deletes the scratch copy. It never writes to the live file, and it is safe to
+run while the pipeline is polling.
+
+```
+Restored 598 MB, integrity ok.
+  trip_stop_events         1284402/1284402
+  otp_daily                     412/412
+  predictions                     0/0
+The off-site copy is restorable.
+```
+
+A small shortfall is expected — Litestream ships the WAL continuously but not
+synchronously, so a table being written to is legitimately a few rows behind. The
+default tolerance is 1%; `--tolerance 0.05` loosens it. A table that is *empty* in
+the replica and full in the original is not lag, and fails regardless.
+
+It exits non-zero on failure, so it is worth running on a schedule rather than
+once: replication that worked the day it was switched on can stop silently —
+expired credentials, a deleted bucket, a machine redeployed onto an image without
+the binary — and the log line reads the same either way.
+
+## Uptime monitoring
+
+Both of this project's outages were noticed because a human happened to be looking.
+
+Two checks, because they fail independently:
+
+| Check | What it catches |
+| --- | --- |
+| `/health` | The site is unreachable at all. |
+| `/health/live` | Ingest has stalled while the API stays up. Answers **503** once TripUpdates has been silent for `NJT_NO_TRIP_UPDATES_ALERT_MS` (1h). |
+
+The second one matters more than it looks. The supervisor deliberately keeps the
+API alive through a pipeline crash — that is what stopped two crashes from becoming
+total outages — so the site can serve a dashboard that has quietly stopped
+advancing while an ordinary uptime check stays green. An ingest gap is permanent.
+
+The monitors live in `deploy/monitors.json` rather than in a dashboard, and are
+applied with:
+
+```bash
+BETTERSTACK_API_TOKEN=… NJT_PUBLIC_API_URL=https://njt-reliability-tracker.fly.dev \
+  npm run monitors:sync -- --dry-run     # then without --dry-run to apply
+```
+
+**What you need to provide:** a [Better Stack](https://betterstack.com/uptime)
+account (the free tier covers both checks at these frequencies), then
+Settings → API tokens → create one. Add the alert channel — email, Slack — in
+their UI; the sync sets `email: true` and does not manage routing.
+
+Matching is by URL, so re-running updates rather than duplicates. Monitors the
+file does not describe are reported and **left alone** — someone else's check
+disappearing because this file did not mention it is worse than a stale one.
+
+Verify it actually alerts, rather than assuming: stop the machine
+(`fly machine stop`) and confirm the alert arrives before starting it again.
 
 ## VPS alternative (cheapest, most metered-friendly)
 

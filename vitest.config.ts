@@ -49,6 +49,17 @@ export default defineConfig({
           include: ["test/**/*.test.mjs"],
         },
       },
+      // Build-time tooling. `contract-units.ts` decides what the seam with the
+      // modelling repo is allowed to say, so it is logic, not glue, and the
+      // check that every contract number declares a unit lives here.
+      {
+        test: {
+          name: "scripts",
+          root: "./scripts",
+          environment: "node",
+          include: ["test/**/*.test.ts"],
+        },
+      },
       // The app's pure logic (no React Native imports) runs under Vitest; its
       // components use jest-expo via `npm test --workspace app`.
       {

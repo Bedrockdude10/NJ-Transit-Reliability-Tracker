@@ -17,6 +17,7 @@ import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
 import { RESTART_WINDOW_MS, decideRestart } from "./restart-policy.mjs";
+import { decidePipeline, maintenanceFlagPath } from "./maintenance.mjs";
 
 const dbPath = process.env.NJT_DB_PATH ?? "/data/njt.sqlite";
 mkdirSync(dirname(dbPath), { recursive: true });
@@ -60,6 +61,17 @@ function start(name, command) {
     entry.child = null;
     if (shuttingDown) return;
 
+    // A pipeline stopped for maintenance is not a pipeline that failed. The
+    // reconcile loop owns restarting it, once the flag is gone; restarting here
+    // would undo the pause a second after it took effect and write to a
+    // database being replaced.
+    if (name === "pipeline" && maintenancePaused()) {
+      log("pipeline stopped for maintenance; will restart when the flag clears", {
+        flag: MAINTENANCE_FLAG,
+      });
+      return;
+    }
+
     const decision = decideRestart({ code, failures: entry.failures, now: Date.now() });
     entry.failures = decision.failures;
 
@@ -96,6 +108,42 @@ function start(name, command) {
 
 process.on("SIGTERM", () => shutdown(0));
 process.on("SIGINT", () => shutdown(0));
+
+/**
+ * Maintenance: the pipeline is paused while this file exists.
+ *
+ * `npm run compact` creates it, waits for ingest to stop, replaces the database
+ * and removes it. See deploy/maintenance.mjs for why it is a file, and why the
+ * decision is reconciled on a timer rather than taken once when it appears.
+ */
+const MAINTENANCE_FLAG = maintenanceFlagPath(dbPath);
+const MAINTENANCE_POLL_MS = 5_000;
+
+function maintenancePaused() {
+  return existsSync(MAINTENANCE_FLAG);
+}
+
+function reconcileMaintenance() {
+  if (shuttingDown || !process.env.NJT_RAIL_DATA_USERNAME) return;
+
+  const entry = supervised.get("pipeline");
+  const action = decidePipeline({
+    flagPresent: maintenancePaused(),
+    running: Boolean(entry?.child),
+  });
+
+  if (action === "stop") {
+    log("maintenance flag present; pausing ingest", { flag: MAINTENANCE_FLAG });
+    entry?.child?.kill("SIGTERM");
+  } else if (action === "start") {
+    log("maintenance flag cleared; resuming ingest");
+    // Failures are cleared with the pause: a deliberate stop is not evidence
+    // that the pipeline cannot stay up, and counting it toward the crash-loop
+    // budget would let two maintenance windows escalate into a machine replace.
+    if (entry) entry.failures = [];
+    start("pipeline");
+  }
+}
 
 /**
  * How often to drain the snapshot archive to object storage.
@@ -186,11 +234,16 @@ function restoreIfMissing() {
 restoreIfMissing();
 
 start("api");
-if (process.env.NJT_RAIL_DATA_USERNAME) {
-  start("pipeline");
-} else {
+if (!process.env.NJT_RAIL_DATA_USERNAME) {
   log("pipeline disabled — set NJT_RAIL_DATA_USERNAME/PASSWORD to enable live collection");
+} else if (maintenancePaused()) {
+  // Booting into an in-progress maintenance window: the database may be
+  // half-replaced, so the API serves what is there and ingest waits.
+  log("maintenance flag present at boot; ingest paused", { flag: MAINTENANCE_FLAG });
+} else {
+  start("pipeline");
 }
+setInterval(reconcileMaintenance, MAINTENANCE_POLL_MS).unref();
 if (REPLICATION_CONFIGURED && !hasLitestream()) {
   // Replication configured but the binary is not in the image — almost always
   // secrets set before deploying. Losing off-site backup is serious, but taking

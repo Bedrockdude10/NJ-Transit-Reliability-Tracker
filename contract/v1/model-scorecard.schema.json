@@ -15,19 +15,24 @@
       "type": "string"
     },
     "horizonSeconds": {
-      "type": "number"
+      "type": "number",
+      "unit": "seconds"
     },
     "predictions": {
-      "type": "integer"
+      "type": "integer",
+      "unit": "count"
     },
     "maeSeconds": {
-      "type": "number"
+      "type": "number",
+      "unit": "seconds"
     },
     "biasSeconds": {
-      "type": "number"
+      "type": "number",
+      "unit": "seconds"
     },
     "falselyReassuringPercent": {
-      "type": "number"
+      "type": "number",
+      "unit": "percent"
     }
   },
   "required": [

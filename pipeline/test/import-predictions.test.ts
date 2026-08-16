@@ -170,3 +170,70 @@ describe("refusing what does not match the contract", () => {
     expect(repos.predictions.serviceDates()).toEqual(["2026-08-13"]);
   });
 });
+
+/**
+ * Interval fields are optional individually and meaningless individually, and
+ * the generated schema can only say the first half. The importer is where the
+ * second half is enforced — before a range that contradicts itself is stored and
+ * shown to a rider as though the model had said it.
+ */
+describe("importing prediction intervals", () => {
+  const WITH_INTERVAL = {
+    ...PREDICTION,
+    predictedDelayLowerSeconds: 120,
+    predictedDelayUpperSeconds: 400,
+    predictionIntervalPercent: 80,
+  };
+
+  const importing = (rows: unknown[]) =>
+    importPredictions({
+      repos,
+      store: STORE,
+      reader: bucket({ [KEY]: rows }),
+      log: silentLogger,
+    });
+
+  it("lands a day published with intervals", async () => {
+    await importing([WITH_INTERVAL]);
+    expect(repos.predictions.forServiceDate("2026-08-14")).toEqual([WITH_INTERVAL]);
+  });
+
+  it("still lands a day published without them", async () => {
+    // The modelling repo is expected to keep publishing point-only days.
+    await importing([PREDICTION]);
+    expect(repos.predictions.forServiceDate("2026-08-14")).toEqual([PREDICTION]);
+  });
+
+  it("refuses a day carrying bounds with no stated confidence", async () => {
+    const partial = { ...PREDICTION, predictedDelayLowerSeconds: 120, predictedDelayUpperSeconds: 400 };
+    await expect(importing([partial])).rejects.toThrow(/partial prediction interval/);
+  });
+
+  it("refuses an inverted interval", async () => {
+    await expect(
+      importing([{ ...WITH_INTERVAL, predictedDelayLowerSeconds: 900 }]),
+    ).rejects.toThrow(/inverted/);
+  });
+
+  it("refuses bounds that do not contain their own point estimate", async () => {
+    // What a minutes-vs-seconds mixup looks like: 240s predicted, bounds of 2-7.
+    await expect(
+      importing([
+        {
+          ...PREDICTION,
+          predictedDelayLowerSeconds: 2,
+          predictedDelayUpperSeconds: 7,
+          predictionIntervalPercent: 80,
+        },
+      ]),
+    ).rejects.toThrow(/outside its own 80% interval/);
+  });
+
+  it("leaves the whole day unimported when one row's interval is bad", async () => {
+    // All-or-nothing, like every other validation failure here: a partially
+    // imported day is indistinguishable from a complete one once it is stored.
+    await expect(importing([WITH_INTERVAL, { ...WITH_INTERVAL, tripId: "T2", predictionIntervalPercent: 0 }]))
+      .rejects.toThrow(/between 0 and 100/);
+    expect(repos.predictions.forServiceDate("2026-08-14")).toEqual([]);
+  });
+});
