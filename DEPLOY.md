@@ -349,12 +349,28 @@ fly ssh console -C "npm run compact"
 ```
 
 ```
-On disk         3810 MB
-Live data        599 MB
-Reclaimable     3211 MB
-Volume free     3500 MB (needs 787 MB)
-Raw snapshots         0 still to drain
+On disk         3809 MB
+Live data        285 MB
+Reclaimable     3524 MB
+Volume free     3672 MB (needs 447 MB)
+Raw snapshots     667 still to drain
 ```
+
+**"Raw snapshots still to drain" does not reach zero, and is not meant to.** The
+drain deliberately keeps the last two hours in SQLite (`COPY_RETAIN_HOURS`), so the
+steady-state floor is ~500–700 rows — about 5 MB, under 2% of live data. What the
+number is really reporting is whether there is a *backlog*: compare the oldest
+`raw_snapshots.fetched_at_ms` against that two-hour window. Inside it, the drain is
+current and `--max-raw-snapshots 1000` is the right call. Well outside it, the
+hourly copy is behind and should be caught up first:
+
+```bash
+fly ssh console -C "npm run archive:copy -- --older-than-hours 2"
+```
+
+Pass `--older-than-hours` explicitly. The CLI defaults to 48 where the supervisor
+passes 2, so a bare `npm run archive:copy` cheerfully reports `nothing eligible to
+copy` with twelve hours of backlog sitting in the file.
 
 ### Why this cannot run against a live pipeline
 
@@ -369,6 +385,18 @@ watches (`deploy/maintenance.mjs`). The supervisor stops the pipeline and — un
 a plain `kill`, which it would treat as a crash and restart within seconds — does
 not bring it back until the flag clears. The API keeps running throughout; it only
 reads.
+
+Stopping it means signalling the whole **process group**, not the supervisor's
+direct child. The first production run of this found out why: the child is `npm`,
+npm does not forward SIGTERM to the `sh -c tsx …` beneath it, and the real pipeline
+was left reparented to init — still polling NJT, still writing — while the
+supervisor watched npm exit, reported ingest stopped, and started a second one.
+Children are now spawned `detached` and stopped with a negative pid
+(`stopProcessTree`). If you ever need to check by hand, the image has no `ps`:
+
+```bash
+fly ssh console -C "node -e 'const f=require(\"fs\");console.log(f.readdirSync(\"/proc\").filter(p=>/^[0-9]+$/.test(p)).map(p=>{try{return f.readFileSync(\"/proc/\"+p+\"/cmdline\",\"utf8\").replace(/\\0/g,\" \")}catch{return \"\"}}).filter(c=>/pipeline\\/src\\/main/.test(c)).length+\" pipeline processes\")'"
+```
 
 Then it refuses to swap unless it can *prove* nothing wrote while it worked, rather
 than trusting that the pause took: `PRAGMA data_version` is sampled before the copy
