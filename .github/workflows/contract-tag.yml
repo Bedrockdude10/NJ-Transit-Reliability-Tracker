@@ -1,0 +1,62 @@
+name: Contract tag
+
+# `contract/v1` is consumed by njt-delay-modeling, which pins a tag rather than
+# following this repo's default branch. Following the branch is what coupled the
+# two repos: a merge here turned CI there red with no commit there, and there was
+# no way to land a contract change atomically on either side.
+#
+# So every change to the contract gets a tag, and that tag is the only thing the
+# consumer fetches. Taking a contract change becomes an ordinary PR over there —
+# bump the pin, regenerate, land the generated models and the work they unblock
+# together — instead of a break that arrives unannounced.
+#
+# The tag is a *fetch handle*, not a second identity for the contract. The
+# identity is already `manifest.json`'s digest, which is published to the bucket
+# and checked at runtime; minting a parallel version with its own meaning would
+# be a second source of truth free to disagree with the first. The digest goes in
+# the tag message so the two are tied together and can be compared by eye.
+
+on:
+  push:
+    branches: [main]
+    paths: ["contract/**"]
+
+permissions:
+  contents: write
+
+concurrency:
+  # Two contract merges in quick succession would otherwise race to compute the
+  # same "next" number and one push would be rejected.
+  group: contract-tag
+  cancel-in-progress: false
+
+jobs:
+  tag:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          # Tags are needed to work out which number comes next.
+          fetch-depth: 0
+
+      - name: Tag the contract
+        run: |
+          set -euo pipefail
+
+          digest=$(jq -r .digest contract/v1/manifest.json)
+
+          # Already tagged: a push that touched contract/ without changing the
+          # emitted bytes (a comment, a reordering) should not mint a version.
+          if existing=$(git tag -l 'contract-v1.*' --format='%(refname:short) %(contents)' \
+                        | grep -F " $digest" | head -1 | cut -d' ' -f1) && [ -n "$existing" ]; then
+            echo "contract/v1 @ $digest is already $existing — nothing to tag"
+            exit 0
+          fi
+
+          latest=$(git tag -l 'contract-v1.*' | sort -V | tail -1)
+          if [ -z "$latest" ]; then next=1; else next=$(( ${latest##*.} + 1 )); fi
+          tag="contract-v1.${next}"
+
+          git tag -a "$tag" -m "contract/v1 @ $digest"
+          git push origin "$tag"
+          echo "tagged $tag for contract/v1 @ $digest" >> "$GITHUB_STEP_SUMMARY"
