@@ -33,10 +33,8 @@ if (serviceDates.length === 0) {
   process.exit(0);
 }
 
-// One export at a time. A separate lock from the snapshot copy's: this reads
-// `trip_stop_events` and that one deletes from `raw_snapshots`, so they cannot
-// interfere over rows. What they do share is a small machine, and each checks
-// there is memory for it before starting.
+// A separate lock from the snapshot copy's, which touches a different table — see
+// run-lock.ts.
 await withLock(`${dbPath}.events.lock`, () =>
   exportEvents({ repos, store, serviceDates, log: consoleLogger }),
 );

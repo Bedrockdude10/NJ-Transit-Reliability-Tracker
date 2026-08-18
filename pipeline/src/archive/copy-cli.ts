@@ -11,9 +11,8 @@ import { withLock } from "./run-lock";
  *   npm run archive:copy -- --older-than-hours 168 --max-hours 24
  *   npm run archive:copy -- --keep                # upload, delete nothing
  *
- * Whole closed hours only, each object verified by the store against its
- * `Content-MD5` before anything is deleted. Safe to rerun: an hour already copied
- * has no rows left to find.
+ * Safe to rerun: an hour already copied has no rows left to find. Note the default
+ * of 48 hours where the supervisor passes 2 — pass `--older-than-hours` explicitly.
  */
 function flag(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);
@@ -24,14 +23,11 @@ const store = storeFromEnv();
 
 const dbPath = process.env.NJT_DB_PATH ?? "./data/njt.sqlite";
 const db = openDatabase(dbPath);
-// Runs against a live database the pipeline is writing to: wait for the lock
-// rather than failing.
+// Runs against a live database the pipeline is writing to: wait for the lock.
 db.exec("PRAGMA busy_timeout = 60000;");
 
 // One copy at a time: a scheduled run and a manual one overlapped in production,
-// and the second counted rows the first was deleting. Named for `raw_snapshots`
-// rather than for the archive as a whole, so the events export — which reads a
-// different table — is not made to wait behind a backlog drain.
+// and the second counted rows the first was deleting.
 const copied = await withLock(`${dbPath}.snapshots.lock`, () =>
   copySnapshots({
     repos: createRepositories(db),

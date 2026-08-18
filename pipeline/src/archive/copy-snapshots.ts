@@ -6,58 +6,25 @@ import { createClient, type ObjectStore, type ObjectWriter, putVerified } from "
 
 /**
  * Move raw snapshots out of SQLite and into object storage, one blob per object.
+ * See DEPLOY.md → Draining the raw archive.
  *
- * `raw_snapshots` is ~3.7 GB of the 3.8 GB database and grows 130 MB/day, which
- * fills the volume and makes every backup expensive. The blobs are opaque
- * protobuf payloads kept so parsing can be re-run over history; nothing queries
- * them analytically. So this copies bytes — it does not need a query engine, a
- * columnar format, or a schema.
- *
- * That distinction is the whole reason this exists. The first version exported
- * hourly Parquet through DuckDB and was OOM-killed in production: DuckDB with its
- * sqlite/httpfs/aws extensions costs ~211 MB before reading a row, and peaked at
- * 444 MiB on a machine with 470 MB total, ~280 MB of it already held by the API
- * and the pipeline. The cost was fixed overhead, not data, so no amount of
- * chunking would have helped. Streaming pages to `PutObject` runs in a few MB and
- * can therefore run *often*, which is what actually keeps the volume flat.
- *
- * Two properties matter more than speed, because this deletes the one thing in
- * the system that cannot be re-fetched — NJT serves no history.
- *
- * **Whole closed hours only.** The pipeline only ever appends at "now", so an
- * hour that has passed cannot gain rows. A partially-copied hour could.
- *
- * **The store verifies the bytes, not us.** Every upload carries `Content-MD5`,
- * so R2 rehashes the body it received and rejects a mismatch rather than storing
- * a corrupted object. The returned ETag is then checked against the same digest.
- * Nothing is deleted until every row in the hour has been confirmed this way.
+ * Whole closed hours only: the pipeline appends at "now", so a past hour cannot
+ * gain rows where a partially-copied one could.
  */
 
 const MS_PER_HOUR = 3_600_000;
 
 /**
- * What one run needs, measured on the production image against real snapshots:
- * ~150 MB at the concurrency below, against 128 MB when uploads ran four at a
- * time. Most of it is fixed — Node and the S3 client — so the number moves with
- * concurrency far more than with how much is being copied.
- *
- * Kept close to the measurement on purpose. The machine has 148–185 MB free
- * depending on what else is happening, so an over-generous figure here does not
- * make anything safer; it just refuses runs that would have succeeded.
+ * Measured on the production image at the concurrency below (128 MB at four).
+ * Kept close to the measurement: the machine has 148–185 MB free, so an
+ * over-generous figure just refuses runs that would have succeeded.
  */
 const REQUIRED_MEMORY_MB = 155;
 
 /** Rows held in memory at once: ~32 KB each, so a page is ~0.8 MB. */
 const PAGE_SIZE = 25;
 
-/**
- * Uploads in flight.
- *
- * Four rather than more because the constraint here is memory, not throughput:
- * each in-flight request holds its body plus the client's own per-request state,
- * and this runs beside the API on a machine with ~150 MB to spare. Even at four,
- * an hour of snapshots moves in a few seconds.
- */
+/** Uploads in flight. Bounded by memory, not throughput — each holds its body. */
 const CONCURRENCY = 8;
 
 export interface CopyOptions {
@@ -86,11 +53,8 @@ export interface CopiedHour {
 }
 
 /**
- * Object key for one snapshot.
- *
- * Everything needed to restore the row is in the key — feed type, instant and id
- * — so a rebuild needs no side table, and `date=`/`hour=` are hive-style so the
- * usual tools can list a day without walking the bucket.
+ * Object key for one snapshot. Everything needed to restore the row is in the key,
+ * so a rebuild needs no side table; `date=`/`hour=` are hive-style.
  */
 export function snapshotKey(
   prefix: string,
@@ -109,10 +73,8 @@ export function hourStart(ms: number): number {
 }
 
 /**
- * Which whole UTC hours are old enough to copy, oldest first.
- *
- * The current hour is never included however small the window: it is still being
- * written to.
+ * Which whole UTC hours are old enough to copy, oldest first. The current hour is
+ * never included however small the window: it is still being written to.
  */
 export function copyableHours(
   range: { firstMs: number; lastMs: number },
@@ -129,13 +91,7 @@ export function copyableHours(
   return hours;
 }
 
-/**
- * Run `work` over `items`, at most {@link CONCURRENCY} at a time.
- *
- * A plain `Promise.all` over an hour would open hundreds of sockets at once on a
- * shared-cpu machine; awaiting each in turn would take an hour of round trips to
- * move an hour of data.
- */
+/** Run `work` over `items`, at most {@link CONCURRENCY} at a time. */
 async function inParallel<T>(items: readonly T[], work: (item: T) => Promise<void>): Promise<void> {
   const queue = [...items];
   const workers = Array.from({ length: Math.min(CONCURRENCY, queue.length) }, async () => {
@@ -171,8 +127,7 @@ export async function copySnapshots(options: CopyOptions): Promise<CopiedHour[]>
   const copied: CopiedHour[] = [];
   for (const hourStartMs of hours) {
     const hourEndMs = hourStartMs + MS_PER_HOUR;
-    // The repository is authoritative — it reads through SQLite, so it sees rows
-    // still in the WAL — and its count is what the copy has to match.
+    // Reads through SQLite, so it sees rows still in the WAL.
     const expected = repos.snapshots.dayExtent(hourStartMs, hourEndMs).rows;
     if (expected === 0) continue;
 
@@ -193,9 +148,6 @@ export async function copySnapshots(options: CopyOptions): Promise<CopiedHour[]>
         if (page.length === 0) break;
 
         await inParallel(page, async (snapshot) => {
-          // The store rehashes the body and rejects a mismatch, so a truncated or
-          // corrupted upload cannot be stored and then deleted from the only
-          // other copy.
           const stored = await putVerified(client, {
             bucket: store.bucket,
             key: snapshotKey(prefix, snapshot),
@@ -210,9 +162,8 @@ export async function copySnapshots(options: CopyOptions): Promise<CopiedHour[]>
       }
     }
 
-    // Every row SQLite holds for this hour is verifiably in object storage. An
-    // hour the copy could not fully account for is an error, never something to
-    // pass over: the gap would be silent and permanent.
+    // An hour the copy cannot fully account for is an error, never something to
+    // pass over: NJT serves no history, so the gap would be permanent.
     if (objects !== expected) {
       throw new Error(
         `refusing to delete ${new Date(hourStartMs).toISOString()}: sqlite holds ${expected} rows, ` +

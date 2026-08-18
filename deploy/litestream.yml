@@ -1,32 +1,16 @@
-# Continuous replication of the SQLite database to object storage.
+# Continuous replication of the SQLite database to object storage. See DEPLOY.md.
 #
-# The raw snapshot archive is the one thing in this system that cannot be
-# rebuilt: it is a recording of a live feed, and NJT does not serve history. It
-# lives on a single Fly volume. `npm run snapshot` produces a portable copy but
-# leaves it on that same disk, so this is what actually survives losing it.
-#
-# Litestream tails the WAL, so what reaches the replica is seconds behind rather
-# than hours. It runs as a sibling process of the API and pipeline, supervised
-# by start.mjs — which is not merely convenient: a Fly volume attaches to
-# exactly one machine, so nothing outside this container can read the database,
-# and a scheduled backup machine is not an option.
-#
-# Written for Litestream 0.5.x. Note `replica:` is singular and snapshot
-# settings are global here; the 0.3.x format found in most tutorials used a
-# `replicas:` list with per-replica `snapshot-interval`, and will not load.
+# Written for Litestream 0.5.x: `replica:` is singular and snapshot settings are
+# global. The 0.3.x format in most tutorials (`replicas:` list with per-replica
+# `snapshot-interval`) will not load.
 
-# One set of NJT_R2_* variables serves both this and `npm run export:events`.
-# They previously had a set each — eight secrets for four values, with the two
-# endpoints differing only in whether they carried a scheme, which is the kind of
-# distinction that gets pasted wrong once and then debugged for an hour.
 # Litestream expands $VAR and ${VAR} itself.
 access-key-id: ${NJT_R2_ACCESS_KEY_ID}
 secret-access-key: ${NJT_R2_SECRET_ACCESS_KEY}
 
 snapshot:
-  # A full snapshot daily, keeping a week. Restores replay WAL forward from the
-  # most recent snapshot, so this bounds how much log a recovery has to chew
-  # through, and a week gives room to notice damage before it ages out.
+  # Restores replay WAL forward from the most recent snapshot, so the interval
+  # bounds how much log a recovery has to chew through.
   interval: 24h
   retention: 168h
 
@@ -36,7 +20,6 @@ dbs:
       type: s3
       bucket: ${NJT_R2_BUCKET}
       path: njt
-      # R2 is S3-compatible: the endpoint is account-specific and the region is
-      # always the literal "auto".
+      # R2 requires the literal region "auto".
       endpoint: ${NJT_R2_ENDPOINT}
       region: auto

@@ -1,32 +1,16 @@
 import { openSync, closeSync, readFileSync, rmSync, writeSync } from "node:fs";
 
 /**
- * A single-holder lock, per set of rows a job mutates.
- *
- * Two archive copies running at once is not a hypothetical: a scheduled run and
- * a manual one overlapped in production, the second counted rows the first was
- * deleting underneath it, and its own safety check refused to delete an hour it
- * could only partly account for. Nothing was lost — that check exists for this —
- * but the run failed for a reason that had nothing to do with the archive.
- *
- * **Named for what it protects, not for "the archive".** One lock across every
- * maintenance job was the first attempt, and it starved: the snapshot copy holds
- * it for the length of a backlog drain, so the events export — which reads a
- * different table entirely and cannot interfere — waited for it and failed. The
- * jobs contend for memory, not for rows, and memory has its own check.
- *
- * A lock file rather than anything cleverer because the contenders are separate
- * processes on one machine, which is exactly what a file on that machine
- * describes. The volume attaches to a single machine, so there is no second host
- * to coordinate with.
+ * A single-holder lock, named for the **set of rows** a job mutates rather than for
+ * "the archive". One lock across every maintenance job starved the events export
+ * behind a backlog drain, though the two touch different tables; they contend for
+ * memory, not rows, and memory has its own check.
  */
 
 /**
- * How long before a lock is assumed to belong to a process that is gone.
- *
- * A killed run leaves its file behind — which happened here, since a container
- * kills the process group when an SSH session ends — and a stale lock that
- * blocks every future run is worse than the collision it prevents.
+ * How long before a lock is assumed to belong to a process that is gone. A killed run
+ * leaves its file behind (a container kills the process group when an SSH session
+ * ends), and a stale lock blocking every future run is worse than a collision.
  */
 export const STALE_LOCK_MS = 2 * 60 * 60 * 1000;
 
@@ -46,8 +30,7 @@ function readHolder(path: string): LockHolder | null {
     if (typeof parsed.pid !== "number" || typeof parsed.startedAtMs !== "number") return null;
     return { pid: parsed.pid, startedAtMs: parsed.startedAtMs };
   } catch {
-    // Unreadable or truncated — a half-written file from a process that died
-    // mid-write is no evidence that anything is still running.
+    // A half-written file is no evidence that anything is still running.
     return null;
   }
 }
@@ -55,8 +38,8 @@ function readHolder(path: string): LockHolder | null {
 /**
  * Run `work` while holding the lock, releasing it however `work` ends.
  *
- * Throws rather than waiting if the lock is held: every caller here is either
- * scheduled, and will come round again, or interactive, and would rather be told.
+ * Throws rather than waiting if the lock is held: every caller is either scheduled,
+ * and will come round again, or interactive, and would rather be told.
  */
 export async function withLock<T>(
   path: string,

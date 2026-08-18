@@ -6,18 +6,10 @@ import {
   restartDelayMs,
 } from "../restart-policy.mjs";
 
-/**
- * The supervisor used to tear the machine down whenever either child exited,
- * which is what made both of this month's incidents total outages: the pipeline
- * fell over, and the API — which was fine — went with it. Nothing under
- * `deploy/` had a test, so nothing objected.
- */
-
 const NOW = Date.UTC(2026, 7, 14, 12, 0, 0);
 
 describe("a child that dies", () => {
   it("is restarted, not escalated, on its first failure", () => {
-    // The case that matters: one crash must not take the sibling down.
     const d = decideRestart({ code: 1, failures: [], now: NOW });
     expect(d.action).toBe("restart");
   });
@@ -50,8 +42,7 @@ describe("a child that exits cleanly", () => {
 
 describe("a child stuck in a crash loop", () => {
   it("escalates once the restarts are exhausted", () => {
-    // A wedged volume or an unfree port needs a fresh machine, and only the
-    // platform can provide one — so persistent failure must still give up.
+    // A wedged volume or an unfree port needs a fresh machine from the platform.
     const failures = Array.from({ length: MAX_RESTARTS }, (_, i) => NOW - (i + 1) * 1000);
     expect(decideRestart({ code: 1, failures, now: NOW }).action).toBe("escalate");
   });
@@ -71,8 +62,6 @@ describe("a child stuck in a crash loop", () => {
 
 describe("failures age out", () => {
   it("forgives failures older than the window", () => {
-    // A process up for days should not be escalated over a bad ten minutes
-    // last week — otherwise every long-lived machine eventually dies.
     const ancient = Array.from({ length: MAX_RESTARTS }, () => NOW - RESTART_WINDOW_MS - 1);
     const d = decideRestart({ code: 1, failures: ancient, now: NOW });
     expect(d.action).toBe("restart");
@@ -87,8 +76,7 @@ describe("failures age out", () => {
 
 describe("an exit with no code", () => {
   it("counts as a failure rather than a clean exit", () => {
-    // A child killed by a signal reports code null; that is a fall, not a
-    // finish, and the old code's `code ?? 1` treated it as one.
+    // A child killed by a signal reports code null; that is a fall, not a finish.
     expect(decideRestart({ code: null, failures: [], now: NOW }).action).toBe("restart");
   });
 });

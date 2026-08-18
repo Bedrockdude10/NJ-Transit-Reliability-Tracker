@@ -2,23 +2,11 @@ import { rmSync, statSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 /**
- * Restore the replica and check it is the database it claims to be.
+ * Restore the replica and check it is the database it claims to be. See DEPLOY.md.
  *
- * Replication is easy to believe in and hard to trust. `litestream replicate`
- * logs happily whether or not the result is restorable, and the moment anyone
- * finds out is the moment they need it — with the volume already gone. A backup
- * nobody has restored is a hypothesis.
- *
- * So this restores to a scratch path beside the live database, opens it, and
- * compares it against the original: integrity first, then row counts per table,
- * then how far behind the replica is. It never touches the live file, and it
- * deletes the scratch copy when it is done.
- *
- * Lag is expected and reported rather than failed on. Litestream ships the WAL
- * continuously but not synchronously, so a table being written to as this runs
- * is legitimately a few rows short in the replica; a table that is *empty* in
- * the replica and full in the original is not lag, and that is what the
- * threshold distinguishes.
+ * Litestream ships the WAL continuously but not synchronously, so a table being
+ * written to is legitimately a few rows short; a table *empty* in the replica and
+ * full in the original is not lag, and fails regardless of the threshold.
  */
 
 export interface VerifyRestoreOptions {
@@ -29,10 +17,8 @@ export interface VerifyRestoreOptions {
   /** Runs `litestream restore` into the scratch path. Injected in tests. */
   restore: (scratchPath: string) => Promise<void>;
   /**
-   * How far behind a table may be and still pass, as a share of its rows.
-   *
-   * Not zero: the pipeline commits every 30 seconds and replication is
-   * asynchronous, so an exact match would fail for reasons that are not faults.
+   * How far behind a table may be and still pass, as a share of its rows. Not zero:
+   * the pipeline commits every 30 seconds and replication is asynchronous.
    */
   tolerance?: number;
   freeBytes?: (path: string) => number;
@@ -71,12 +57,7 @@ function countRows(db: DatabaseSync, table: string): number {
   return Number((db.prepare(`SELECT count(*) AS n FROM ${quoted}`).get() as { n: number }).n);
 }
 
-/**
- * Compare the restored copy against the live database, table by table.
- *
- * Pure, so the judgement is testable without a bucket: what counts as an
- * acceptable shortfall is the part worth arguing about.
- */
+/** Compare the restored copy against the live database, table by table. */
 export function compareCounts(
   live: ReadonlyMap<string, number>,
   restored: ReadonlyMap<string, number>,
@@ -113,8 +94,7 @@ export async function verifyRestore(options: VerifyRestoreOptions): Promise<Veri
     );
   }
 
-  // A leftover from an interrupted run would otherwise be mistaken for a fresh
-  // restore, and pass.
+  // A leftover from an interrupted run would otherwise pass as a fresh restore.
   for (const suffix of ["", "-wal", "-shm"]) rmSync(`${scratchPath}${suffix}`, { force: true });
 
   try {
@@ -186,8 +166,7 @@ export async function verifyRestore(options: VerifyRestoreOptions): Promise<Veri
     });
     return result;
   } finally {
-    // The scratch copy is proof, not a backup — leaving it eats the volume that
-    // the compaction just cleared.
+    // The scratch copy is proof, not a backup.
     for (const suffix of ["", "-wal", "-shm"]) rmSync(`${scratchPath}${suffix}`, { force: true });
   }
 }

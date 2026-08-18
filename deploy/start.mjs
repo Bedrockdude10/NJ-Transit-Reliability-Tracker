@@ -1,18 +1,4 @@
-// Container supervisor: runs the read-only API always, and the ingest pipeline
-// only once GTFS-RT is configured (NJT_RAIL_DATA_USERNAME set). Both processes
-// share one SQLite file on the mounted volume (WAL = concurrent reader+writer).
-//
-// A child that dies is restarted; only a child that will not stay up takes the
-// machine down. This used to tear everything down on any exit, which is what
-// turned both of this month's incidents into full outages rather than partial
-// ones: the pipeline died on an unguarded write inside an error handler, and
-// separately lost a migration lock at boot, and each time it took the API — and
-// so the whole site — with it. Nothing about either failure involved the API.
-//
-// The two processes cannot simply be split into separate Fly machines, which
-// would be the usual answer: a Fly volume attaches to exactly one machine, and
-// they share a SQLite file on it. The coupling is a consequence of the storage
-// choice, so the supervisor has to be the thing that limits the damage.
+// Container supervisor. See DEPLOY.md.
 import { spawn, spawnSync } from "node:child_process";
 import { existsSync, mkdirSync } from "node:fs";
 import { dirname } from "node:path";
@@ -30,7 +16,7 @@ function log(message, meta) {
   console.log(JSON.stringify({ level: "info", time: new Date().toISOString(), source: "supervisor", message, ...meta }));
 }
 
-/** Stop a child and everything it spawned. See `stopProcessTree` for why. */
+/** Stop a child and everything it spawned. */
 function stopTree(name, entry) {
   stopProcessTree(entry?.child?.pid, {
     log: (message, meta) => log(message, { script: name, ...meta }),
@@ -44,24 +30,19 @@ function shutdown(code) {
   setTimeout(() => process.exit(code), 3000).unref();
 }
 
-/**
- * @param {string} name label used for logging and failure accounting
- * @param {[string, string[]]} [command] defaults to `npm run <name>`
- */
+/** @param {[string, string[]]} [command] defaults to `npm run <name>` */
 function start(name, command) {
   const entry = supervised.get(name) ?? { child: null, failures: [] };
   supervised.set(name, entry);
 
   const [bin, args] = command ?? ["npm", ["run", name]];
-  // `detached` so the child leads its own process group and `stopTree` can
-  // signal the whole tree. Not unref'd — the supervisor still owns its lifetime;
-  // detaching here is about which processes a signal reaches, not ownership.
+  // `detached` so the child leads its own process group and `stopTree` can signal
+  // the whole tree (see `stopProcessTree`). Not unref'd — still owned here.
   const child = spawn(bin, args, { stdio: "inherit", env: process.env, detached: true });
   entry.child = child;
 
-  // A spawn that fails outright — a missing binary, typically — emits "error"
-  // and never "exit". Unhandled, that throws and takes the supervisor with it,
-  // which is worse than the thing that failed: the API was serving fine.
+  // A spawn that fails outright (missing binary) emits "error" and never "exit";
+  // unhandled it throws and takes the supervisor down with it.
   child.on("error", (error) => {
     log("child failed to start", { script: name, error: error.message });
     if (!child.killed) child.emit("exit", 1, null);
@@ -71,10 +52,8 @@ function start(name, command) {
     entry.child = null;
     if (shuttingDown) return;
 
-    // A pipeline stopped for maintenance is not a pipeline that failed. The
-    // reconcile loop owns restarting it, once the flag is gone; restarting here
-    // would undo the pause a second after it took effect and write to a
-    // database being replaced.
+    // The reconcile loop owns restarting a paused pipeline; restarting here would
+    // undo the pause a second after it took effect.
     if (name === "pipeline" && maintenancePaused()) {
       log("pipeline stopped for maintenance; will restart when the flag clears", {
         flag: MAINTENANCE_FLAG,
@@ -108,8 +87,7 @@ function start(name, command) {
       delayMs: decision.delayMs,
     });
     // Deliberately *not* unref'd: while a restart is pending this timer is the
-    // only handle keeping the process alive, and an unref'd one let Node exit
-    // before it fired — the supervisor logged "restarting" and then died.
+    // only handle keeping the process alive, so unref'd Node exits before it fires.
     setTimeout(() => {
       if (!shuttingDown) start(name, command);
     }, decision.delayMs);
@@ -119,13 +97,7 @@ function start(name, command) {
 process.on("SIGTERM", () => shutdown(0));
 process.on("SIGINT", () => shutdown(0));
 
-/**
- * Maintenance: the pipeline is paused while this file exists.
- *
- * `npm run compact` creates it, waits for ingest to stop, replaces the database
- * and removes it. See deploy/maintenance.mjs for why it is a file, and why the
- * decision is reconciled on a timer rather than taken once when it appears.
- */
+/** The pipeline is paused while this file exists. See deploy/maintenance.mjs. */
 const MAINTENANCE_FLAG = maintenanceFlagPath(dbPath);
 const MAINTENANCE_POLL_MS = 5_000;
 
@@ -147,22 +119,13 @@ function reconcileMaintenance() {
     stopTree("pipeline", entry);
   } else if (action === "start") {
     log("maintenance flag cleared; resuming ingest");
-    // Failures are cleared with the pause: a deliberate stop is not evidence
-    // that the pipeline cannot stay up, and counting it toward the crash-loop
-    // budget would let two maintenance windows escalate into a machine replace.
+    // Clear failures: counting deliberate stops toward the crash-loop budget
+    // would let two maintenance windows escalate into a machine replace.
     if (entry) entry.failures = [];
     start("pipeline");
   }
 }
 
-/**
- * How often to drain the snapshot archive to object storage.
- *
- * Hourly, because the volume fills at 130 MB/day and a copy that runs often is
- * what keeps it flat — the alternative is a large periodic job on a small
- * machine, which is what caused an outage. Each run moves the hours that have
- * closed since the last one, so a missed run costs nothing but a bigger next one.
- */
 const COPY_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Built by the Dockerfile; absent in a plain checkout. */
@@ -170,60 +133,32 @@ const COPY_BUNDLE = "dist/archive-copy.mjs";
 const EXPORT_BUNDLE = "dist/events-export.mjs";
 const PREDICTIONS_BUNDLE = "dist/predictions-import.mjs";
 
-/**
- * How often to publish derived events for the modelling repo.
- *
- * Daily, because a service date is the unit: exporting a day still being written
- * to would publish a partial one and then have to replace it. Re-exporting is
- * idempotent, so the run covers recent dates rather than tracking which are new.
- */
+/** Daily: a service date still being written to would be published partial. */
 const EXPORT_INTERVAL_MS = 24 * 60 * 60 * 1000;
 
-/**
- * Leave the last two hours in SQLite. Recent snapshots are the ones a replay is
- * most likely to want, and the current hour is still being written to.
- */
+/** Leave the last two hours in SQLite — the ones a replay is most likely to want. */
 const COPY_RETAIN_HOURS = 2;
 
 /**
- * Hours moved per run.
- *
- * The steady state needs one. The cap is for the backlog: it bounds how long any
- * single run holds resources on a machine that has ~150 MB and one shared core to
- * spare, so a month of accumulated archive drains over several runs instead of
- * one long one. Well above the steady-state need, so a few missed runs still
- * catch up.
+ * Hours moved per run. The steady state needs one; the cap bounds how long a
+ * backlog drain holds resources on a machine with ~150 MB and one shared core.
  */
 const COPY_MAX_HOURS = 48;
 
 /**
- * Replication needs credentials *and* an explicit opt-in.
- *
- * These were one switch, which was wrong in a way that showed up immediately:
- * the same `NJT_R2_BUCKET` that lets `archive:copy` reach object storage also
- * started Litestream, so there was no way to follow the documented order —
- * shrink the database first, replicate second. Enabling both at once is exactly
- * what starved the API into an outage, replicating 3.8 GB on a 512 MB box.
- *
- * Credentials being present is not consent to run a daemon.
+ * Credentials being present is deliberately not consent to run the daemon: R2
+ * access is also what `archive:copy` needs, and the documented order is drain and
+ * compact first, replicate second (DEPLOY.md → Order of operations).
  */
 const HAS_R2 = Boolean(process.env.NJT_R2_BUCKET && process.env.NJT_R2_ACCESS_KEY_ID);
 const REPLICATION_CONFIGURED = HAS_R2 && process.env.NJT_REPLICATION_ENABLED === "true";
 const LITESTREAM_CONFIG = "deploy/litestream.yml";
 
 /**
- * On an empty volume, pull the database back from the replica before anything
- * opens it.
- *
- * This is the half of a backup that people discover they never had. Replicating
- * is easy to verify; restoring is what actually matters, and it has to happen
- * before the API runs a migration against a blank file and starts serving zeroes
- * over the top of recoverable history.
- *
- * Synchronous and blocking on purpose. A missing replica is not an error — a
- * genuinely first deploy has nothing to restore — so it logs and continues.
+ * Synchronous and blocking on purpose: it must finish before the API migrates a
+ * blank file and starts serving zeroes over the top of recoverable history. A
+ * missing replica is not an error — a genuinely first deploy has nothing to restore.
  */
-/** Whether the litestream binary is available to this container. */
 function hasLitestream() {
   return spawnSync("litestream", ["version"], { stdio: "ignore" }).status === 0;
 }
@@ -247,17 +182,15 @@ start("api");
 if (!process.env.NJT_RAIL_DATA_USERNAME) {
   log("pipeline disabled — set NJT_RAIL_DATA_USERNAME/PASSWORD to enable live collection");
 } else if (maintenancePaused()) {
-  // Booting into an in-progress maintenance window: the database may be
-  // half-replaced, so the API serves what is there and ingest waits.
+  // Booting into an in-progress maintenance window: the database may be half-replaced.
   log("maintenance flag present at boot; ingest paused", { flag: MAINTENANCE_FLAG });
 } else {
   start("pipeline");
 }
 setInterval(reconcileMaintenance, MAINTENANCE_POLL_MS).unref();
 if (REPLICATION_CONFIGURED && !hasLitestream()) {
-  // Replication configured but the binary is not in the image — almost always
-  // secrets set before deploying. Losing off-site backup is serious, but taking
-  // the site down does not restore it, so this degrades loudly instead.
+  // Almost always secrets set before deploying. Degrade loudly: taking the site
+  // down would not restore the backup.
   log("REPLICATION CONFIGURED BUT litestream IS NOT INSTALLED — no off-site backup", {
     hint: "deploy the current image, which installs it, then this starts on the next boot",
   });
@@ -270,26 +203,14 @@ if (REPLICATION_CONFIGURED && !hasLitestream()) {
       : "replication off — set NJT_R2_BUCKET/ENDPOINT/ACCESS_KEY_ID/SECRET_ACCESS_KEY, then NJT_REPLICATION_ENABLED=true",
   );
 }
-/**
- * Run the archive copy on a timer, never two at once.
- *
- * Deliberately not a supervised child: this is a job that finishes, and the
- * restart policy is about processes that are supposed to stay up. A run that
- * fails is logged and retried at the next tick — the copy is idempotent and
- * deletes nothing it has not confirmed, so a failed run leaves the archive
- * intact rather than half-moved.
- *
- * It has to live inside this container: a Fly volume attaches to exactly one
- * machine, so nothing else can read the database.
- */
+/** Run the archive copy on a timer, never two at once. */
 function scheduleArchiveCopy() {
   let running = false;
   const run = () => {
     if (running || shuttingDown) return;
     running = true;
     // The precompiled bundle, not `npm run archive:copy`: that would add an npm
-    // process and tsx's compiler to a machine that has ~173 MB to spare. Falls
-    // back to the source when the bundle is absent, so this works in a checkout.
+    // process and tsx's compiler to a machine with ~173 MB to spare.
     const [bin, args] = existsSync(COPY_BUNDLE)
       ? ["node", [COPY_BUNDLE]]
       : ["npm", ["run", "archive:copy", "--"]];
@@ -321,13 +242,6 @@ function scheduleArchiveCopy() {
   });
 }
 
-/**
- * Publish events on a timer, never beside the snapshot copy.
- *
- * Both walk the same database on a machine with little headroom; the archive lock
- * they share makes an overlap a clean refusal rather than two jobs competing, and
- * the next tick picks it up.
- */
 function scheduleEventsExport() {
   let running = false;
   const run = () => {
@@ -353,14 +267,7 @@ function scheduleEventsExport() {
   log("events export scheduled", { everyHours: EXPORT_INTERVAL_MS / 3_600_000 });
 }
 
-/**
- * Land model predictions on a timer.
- *
- * Hourly rather than daily: the modelling repo republishes a service date as
- * actuals arrive and as models improve, and a stale prediction on screen is
- * worse than a slightly late one. Reading a prefix that has not changed costs one
- * list request.
- */
+/** Hourly, not daily: the modelling repo republishes a service date as actuals arrive. */
 function schedulePredictionImport() {
   let running = false;
   const run = () => {

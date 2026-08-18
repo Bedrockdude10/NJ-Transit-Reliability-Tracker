@@ -10,17 +10,8 @@ import { compactDatabase, inspect } from "./compact";
  *   npm run compact -- --apply          # pause ingest, copy, verify, swap, resume
  *   npm run compact -- --apply --quiesce-seconds 30
  *
- * Preview by default, like `replay` and `purge:seed`: this replaces the live
- * database, and the first thing anyone should see is the size of the change.
- *
- * `--apply` pauses ingest for the duration by creating the maintenance flag the
- * supervisor watches, and clears it afterwards — including when the run fails,
- * because a machine left with ingest paused accrues a permanent gap in a feed
- * that serves no history. The API is left running throughout; it only reads.
- *
- * **Restart the API afterwards.** Its open handle still points at the file that
- * was moved aside, so it will happily serve the pre-compaction database until it
- * is restarted. See DEPLOY.md for the sequence.
+ * **Restart the API afterwards** — its open handle still points at the file that was
+ * moved aside. See DEPLOY.md for the sequence.
  */
 const dbPath = process.env.NJT_DB_PATH ?? "./data/njt.sqlite";
 
@@ -74,8 +65,8 @@ try {
   console.log("\nNext: restart the API so it reopens the new file, confirm /health and the site,");
   console.log(`then remove the old one:\n  rm ${result.backupPath}*`);
 } finally {
-  // Always, including on failure. Ingest left paused is a permanent gap in a
-  // feed nobody can re-fetch, which is worse than whatever went wrong above.
+  // Always, including on failure: ingest left paused is a permanent gap in a feed
+  // nobody can re-fetch.
   rmSync(flagPath, { force: true });
   consoleLogger.info("ingest resumed", { flag: flagPath });
 }

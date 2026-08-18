@@ -9,13 +9,8 @@ import { RestoreVerificationError, verifyRestore } from "./verify-restore";
  *   npm run verify:restore
  *   npm run verify:restore -- --tolerance 0.05
  *
- * Read-only with respect to the live database, and safe to run while the
- * pipeline is polling: it restores to a scratch path, compares, and deletes it.
- *
- * Worth running on a schedule rather than once. Replication that worked the day
- * it was switched on can stop silently — expired credentials, a deleted bucket,
- * a machine redeployed onto an image without the binary — and the log line says
- * the same thing either way.
+ * Read-only with respect to the live database, and safe to run while the pipeline is
+ * polling. Worth running on a schedule — see DEPLOY.md.
  */
 const dbPath = process.env.NJT_DB_PATH ?? "./data/njt.sqlite";
 const config = process.env.NJT_LITESTREAM_CONFIG ?? "deploy/litestream.yml";
@@ -31,11 +26,9 @@ if (!existsSync(dbPath)) {
 }
 
 /**
- * `litestream restore` into the scratch path.
- *
- * A non-zero exit is not thrown on directly: an empty replica exits non-zero
- * with a message, and so does a broken one, and the difference matters. The
- * verifier decides, from whether a usable database appeared.
+ * A non-zero exit is not thrown on: an empty replica and a broken one both exit
+ * non-zero, and the difference matters. The verifier decides, from whether a usable
+ * database appeared.
  */
 function litestreamRestore(scratchPath: string): Promise<void> {
   return new Promise((resolve) => {

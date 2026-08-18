@@ -1,13 +1,5 @@
-// One-off maintenance: remove synthetic (seed) measurement data from a database
-// that was bootstrapped before live collection existed. Clears the raw events,
-// every derived aggregate, and the seeded alerts/health — then resets the
-// collection-start marker so it re-anchors to the first real poll.
-//
-// KEPT (all real): gtfs_* (network), official_* / light_rail_* (NJT's published
-// metrics), and pipeline_meta.njt_rail_token (the cached API token).
-//
-// Safe to run while the API/pipeline are up (quick transaction, busy_timeout);
-// the live pipeline repopulates real aggregates from RT going forward.
+// One-off: remove synthetic (seed) measurement from a database bootstrapped before
+// live collection existed. See DEPLOY.md. Superseded by `npm run purge:seed`.
 //
 //   node deploy/purge-synthetic.mjs
 import { DatabaseSync } from "node:sqlite";
@@ -34,9 +26,8 @@ const CLEAR = [
 const db = new DatabaseSync(dbPath);
 db.exec("PRAGMA busy_timeout = 5000;");
 
-// This script clears trip_stop_events *wholesale*, which was correct when every
-// row was synthetic. Once live collection has run, that would destroy real
-// observations along with the seed. Refuse, and point at the targeted purge.
+// Clears trip_stop_events wholesale, so it would destroy real observations once
+// live collection has run. Refuse, and point at the targeted purge.
 const realEvents = db
   .prepare(
     "SELECT COUNT(*) AS c FROM trip_stop_events WHERE NOT (trip_id GLOB '*-inbound-*' OR trip_id GLOB '*-outbound-*')",

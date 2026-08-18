@@ -2,20 +2,9 @@ import type { Repositories } from "@njt/db";
 import { recomputeServiceDate } from "../aggregator";
 
 /**
- * Remove the fabricated measurement left behind by the pre-API seed.
- *
- * The seed predates the live feed: it invented trips so the dashboard had
- * something to draw before ingest existed. The seeding *code* is long gone, but
- * its output was never deleted from deployed databases, so the site kept
- * presenting fabricated trips as measurement and dated its own collection
- * history from them.
- *
- * This is deliberately narrower than `deploy/purge-synthetic.mjs`, which clears
- * `trip_stop_events` wholesale — correct when everything was synthetic, ruinous
- * now that real observations share the table. Here only rows matching the seed's
- * trip-id shape are removed, every affected day is recomputed from whatever
- * genuinely remains, and the collection window is re-anchored to the first real
- * observation so uptime stops being measured against invented history.
+ * Remove the fabricated measurement left behind by the pre-API seed: only rows
+ * matching its trip-id shape, unlike `deploy/purge-synthetic.mjs`, which clears
+ * `trip_stop_events` wholesale. See DEPLOY.md.
  */
 
 export interface SeedPurgeResult {
@@ -60,9 +49,8 @@ export function purgeSeedData(repos: Repositories, options: SeedPurgeOptions = {
   }
 
   if (dryRun) {
-    // Predict the new anchor without touching anything: the earliest date that
-    // isn't wholly seeded. Dates never mix seed and real rows in practice, but
-    // computing it this way stays correct if they ever do.
+    // The earliest date that isn't wholly seeded. Dates never mix seed and real rows
+    // in practice, but computing it this way stays correct if they ever do.
     const seeded = new Set(serviceDates);
     const remaining = repos.events
       .serviceDates()
@@ -79,8 +67,7 @@ export function purgeSeedData(repos: Repositories, options: SeedPurgeOptions = {
 
   repos.events.deleteSeedEvents();
 
-  // Rebuild each affected day from what survives. A day left with no events
-  // recomputes to an empty bundle, which clears its rollups.
+  // A day left with no events recomputes to an empty bundle, clearing its rollups.
   for (const date of serviceDates) {
     recomputeServiceDate(repos, date);
     options.betweenDates?.(date);

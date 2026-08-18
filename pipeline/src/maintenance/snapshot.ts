@@ -5,19 +5,11 @@ import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 
 /**
- * Take a consistent, compressed copy of the live database.
+ * Take a consistent, compressed copy of the live database. See DEPLOY.md → Backups.
  *
- * `VACUUM INTO` rather than copying the file: the file is being written to
- * continuously, so a plain copy captures a torn mid-transaction state. `VACUUM
- * INTO` runs inside a read transaction, which under WAL does not block the
- * pipeline's writes, and compacts as it goes. Measured on a 385 MB database:
- * 4 seconds, and the result gzips to 11% — the raw protobuf blobs compress hard.
- *
- * **This alone does not protect against losing the volume**, which is the risk
- * that matters: the snapshot lands beside the database it is protecting. It is
- * the first half of a backup, and useful on its own only as a restore point for
- * a bad migration or a botched repair. {@link snapshotDatabase} returns the path
- * so an uploader can take it from there.
+ * `VACUUM INTO` rather than a file copy: the file is written to continuously, so a
+ * plain copy captures a torn mid-transaction state. It takes only a read transaction,
+ * which under WAL does not block the pipeline.
  */
 export interface SnapshotOptions {
   /** Live database to copy. */
@@ -46,11 +38,9 @@ export function snapshotName(at: Date): string {
 }
 
 /**
- * Snapshots older than the newest `keep`, by filename order.
- *
- * Deliberately name-based rather than mtime-based: an uploader that touches
- * files, or a volume restore that resets timestamps, must not be able to
- * reorder history and delete the wrong one.
+ * Snapshots older than the newest `keep`, by filename order — not mtime, so an
+ * uploader that touches files or a restore that resets timestamps cannot reorder
+ * history and delete the wrong one.
  */
 export function prunable(names: readonly string[], keep: number): string[] {
   const snapshots = names.filter((n) => /^njt-\d{8}T\d{6}Z\.sqlite\.gz$/.test(n)).sort();
@@ -59,10 +49,8 @@ export function prunable(names: readonly string[], keep: number): string[] {
 
 /**
  * Room needed before starting: the uncompressed copy is roughly the size of the
- * source, plus the compressed result, plus a margin.
- *
- * Checked up front because the alternative is filling the volume the live
- * database sits on — a backup job that causes an outage.
+ * source, plus the compressed result, plus a margin. Checked up front because filling
+ * the volume takes the live database down with it.
  */
 export function requiredBytes(sourceBytes: number): number {
   return Math.ceil(sourceBytes * 1.2) + 64 * 1024 * 1024;
@@ -100,8 +88,8 @@ export async function snapshotDatabase(options: SnapshotOptions): Promise<Snapsh
 
     verifySnapshot(rawPath);
 
-    // Streamed, not buffered: this box has 512 MB and has been OOM-killed
-    // before. A 3 GB database must never be held in memory to be compressed.
+    // Streamed, not buffered: a 3 GB database must never be held in memory to be
+    // compressed on a 512 MB box.
     await pipeline(createReadStream(rawPath), createGzip({ level: 6 }), createWriteStream(partialPath));
   } finally {
     rmSync(rawPath, { force: true });
@@ -124,12 +112,7 @@ export async function snapshotDatabase(options: SnapshotOptions): Promise<Snapsh
   return { path: finalPath, sourceBytes, compressedBytes, durationMs, pruned };
 }
 
-/**
- * Confirm the copy is a usable database before it is trusted as a backup.
- *
- * An unverified backup is a guess. `integrity_check` on the copy is cheap
- * relative to discovering during a restore that the only copy is corrupt.
- */
+/** Confirm the copy is a usable database before it is trusted as a backup. */
 function verifySnapshot(path: string): void {
   const copy = new DatabaseSync(path, { readOnly: true });
   try {

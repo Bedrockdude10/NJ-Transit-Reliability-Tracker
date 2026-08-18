@@ -9,11 +9,8 @@ import { restoreSnapshot, snapshotDatabase } from "./snapshot";
  *   npm run snapshot -- --keep 30
  *   npm run snapshot -- --restore <file.gz> --to <out.sqlite>
  *
- * Safe to run while the pipeline is polling: `VACUUM INTO` takes a read
- * transaction, and under WAL readers do not block writers.
- *
- * The snapshot lands next to the database, so on its own this is a restore
- * point, not an off-site backup — see DEPLOY.md for shipping it somewhere else.
+ * Safe to run while the pipeline is polling. The snapshot lands next to the database,
+ * so on its own it is a restore point, not an off-site backup — see DEPLOY.md.
  */
 const dbPath = process.env.NJT_DB_PATH ?? "./data/njt.sqlite";
 const outDir = process.env.NJT_SNAPSHOT_DIR ?? "./data/snapshots";

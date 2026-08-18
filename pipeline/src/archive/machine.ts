@@ -1,25 +1,17 @@
 import { readFileSync } from "node:fs";
 
 /**
- * How much room a job has on the machine it is about to run on.
- *
- * The ingest box has 512 MB, ~280 MB of it held by the API and the pipeline, and
- * every maintenance job runs beside them. Being OOM-killed is survivable — these
- * jobs confirm before they delete — but it reports itself only as exit code 137,
- * so they check first and say what they need.
+ * How much room a job has on the machine it is about to run on. Being OOM-killed
+ * reports itself only as exit code 137, so jobs check first and say what they need.
  */
 
 /**
- * Allocatable memory in MB, from `/proc/meminfo`, or null where that is not the
- * kernel's own answer.
+ * Allocatable memory in MB, from `/proc/meminfo`, or null off Linux (the check is
+ * then skipped).
  *
- * `MemAvailable` specifically, not `MemFree`: it is the kernel's estimate of what
- * a new process can get without swapping, which is the question being asked.
- * `os.freemem()` was tried first and is not that — on macOS it counts free pages
- * and reported 71 MB on a 64 GB machine.
- *
- * Returns null off Linux rather than guessing, and the check is then skipped: a
- * developer machine is not where this needs protecting.
+ * `MemAvailable`, not `MemFree` or `os.freemem()`: only it estimates what a new
+ * process can get without swapping. `os.freemem()` counts free pages, and reported
+ * 71 MB on a 64 GB macOS machine.
  */
 export function parseAvailableMemoryMb(meminfo: string): number | null {
   const match = /^MemAvailable:\s+(\d+) kB$/m.exec(meminfo);
@@ -29,11 +21,9 @@ export function parseAvailableMemoryMb(meminfo: string): number | null {
 /**
  * Why a job cannot run now, or null.
  *
- * What matters is the memory still to be taken, not the total: by the time this
- * runs the process already holds most of its eventual footprint, and
- * `MemAvailable` already reflects that. Asking for the full figure on top of what
- * had been taken counted the process twice, and refused run after run on a
- * machine with 168 MB free.
+ * Compares the memory *still* to be taken, not the total: by the time this runs the
+ * process already holds most of its footprint and `MemAvailable` reflects that, so
+ * requiring the full figure on top counts the process twice and refuses valid runs.
  */
 export function insufficientMemory(
   job: string,

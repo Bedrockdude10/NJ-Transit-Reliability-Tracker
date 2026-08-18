@@ -1,8 +1,6 @@
 /**
- * Types for `maintenance.mjs`, which is plain JavaScript because the supervisor
- * runs under bare `node` before any TypeScript toolchain is available — while
- * `compact-cli.ts` needs the same flag path, and a path agreed by two files that
- * each define it is a path they will eventually disagree about.
+ * Types for `maintenance.mjs`, which is plain JavaScript because the supervisor runs
+ * under bare `node` before any TypeScript toolchain is available.
  */
 
 /** The flag whose presence means "do not run the pipeline". */

@@ -2,35 +2,11 @@ import { existsSync, renameSync, rmSync, statSync } from "node:fs";
 import { DatabaseSync } from "node:sqlite";
 
 /**
- * Reclaim the disk the archive drain freed inside the database.
+ * Reclaim the disk the archive drain freed inside the database. See DEPLOY.md.
  *
- * Deleting rows returns their pages to SQLite's freelist, not to the filesystem:
- * the file stops growing but does not shrink, which is what the volume ceiling
- * needed and all `archive:copy` ever promised. It leaves a file that is mostly
- * hole — 3.81 GB holding 599 MB — and that is not free. Every backup copies it,
- * and Litestream's first snapshot has to ship all of it, which is precisely what
- * starved the API into a twelve-minute outage last time.
- *
- * `VACUUM INTO`, not `VACUUM`. Plain `VACUUM` rewrites the database in place
- * through a journal, taking an exclusive lock and needing room for a second copy
- * anyway — the same rewrite-everything load that caused the outage, applied to
- * the live file. `VACUUM INTO` writes a fresh, already-compact database
- * elsewhere while readers carry on, and leaves the original untouched until
- * something has checked the result.
- *
- * ## Why this cannot run against a live writer
- *
- * `VACUUM INTO` reads inside a transaction, so the copy is the database as of
- * the instant it began. The pipeline writes continuously. Swapping in a copy
- * taken five minutes ago discards five minutes of ingest — silently, because the
- * result is a perfectly valid database that simply lacks them, and NJT serves no
- * history to re-fetch them from.
- *
- * So ingest is paused first (`deploy/maintenance.mjs`), and this refuses to swap
- * unless it can *prove* nothing wrote while it worked, rather than trusting that
- * the pause took. `PRAGMA data_version` is the proof: SQLite bumps it in this
- * connection whenever another connection commits. Sampled before the copy and
- * again after, an unchanged value means the copy is current.
+ * `VACUUM INTO` copies the database as of the instant it starts, so swapping in a
+ * copy taken minutes ago silently discards the ingest in between — hence the pause
+ * (`deploy/maintenance.mjs`) and the `data_version` proof below.
  */
 
 export interface CompactOptions {
@@ -38,10 +14,8 @@ export interface CompactOptions {
   /** Preview only unless set. Every destructive step is behind this. */
   apply: boolean;
   /**
-   * Refuse to run while more than this many raw snapshots remain.
-   *
-   * Compacting mid-drain wastes the work: the pages the drain is about to free
-   * get copied into the new file, and the file grows straight back.
+   * Refuse to run while more than this many raw snapshots remain: compacting
+   * mid-drain copies pages the drain is about to free, and the file grows back.
    */
   maxRawSnapshots?: number;
   /** How long to watch for writes before trusting the pause. */
@@ -52,11 +26,9 @@ export interface CompactOptions {
 }
 
 export interface CompactPlan {
-  /** What the file occupies on disk. */
   fileBytes: number;
-  /** What it would occupy with the free pages gone. */
+  /** What the file would occupy with the free pages gone. */
   liveBytes: number;
-  /** The difference — what compacting gives back. */
   reclaimableBytes: number;
   freeBytes: number;
   requiredBytes: number;
@@ -68,18 +40,13 @@ export interface CompactResult extends CompactPlan {
   backupPath: string;
   compactedBytes: number;
   durationMs: number;
-  /** Tables whose row counts were compared, source against copy. */
   verifiedTables: number;
 }
 
 /**
- * Room needed before starting.
- *
- * The copy is the size of the live data, and it lands on the same volume as the
- * original, which stays until the copy is proven — both exist at once, on
- * purpose. The margin covers WAL growth and the run's own overhead. Checked up
- * front because filling this volume takes the live database down with it, and a
- * maintenance job that causes an outage is worse than a large file.
+ * Room needed before starting: both databases exist at once, on purpose, plus a
+ * margin for WAL growth. Checked up front because filling this volume takes the live
+ * database down with it.
  */
 export function requiredBytes(liveBytes: number): number {
   return Math.ceil(liveBytes * 1.1) + 128 * 1024 * 1024;
@@ -101,7 +68,7 @@ function pragmaNumber(db: DatabaseSync, pragma: string): number {
   return Number(row ? Object.values(row)[0] : 0);
 }
 
-/** User tables, so the row-count comparison covers everything without a list to maintain. */
+/** User tables, so the row-count comparison needs no list to maintain. */
 function userTables(db: DatabaseSync): string[] {
   return (
     db
@@ -113,8 +80,7 @@ function userTables(db: DatabaseSync): string[] {
 function rowCounts(db: DatabaseSync, tables: readonly string[]): Map<string, number> {
   const counts = new Map<string, number>();
   for (const table of tables) {
-    // Names come from sqlite_master rather than from a caller, and are quoted
-    // anyway so a table called `order` or `group` counts like any other.
+    // Quoted so a table called `order` or `group` counts like any other.
     const quoted = `"${table.replace(/"/g, '""')}"`;
     const row = db.prepare(`SELECT count(*) AS n FROM ${quoted}`).get() as { n: number };
     counts.set(table, Number(row.n));
@@ -132,9 +98,7 @@ function integrityOf(path: string): string {
   }
 }
 
-/**
- * Inspect without changing anything. This is what `--dry-run` reports.
- */
+/** Inspect without changing anything. */
 export function inspect(options: Pick<CompactOptions, "dbPath" | "freeBytes">): CompactPlan {
   const db = new DatabaseSync(options.dbPath, { readOnly: true });
   try {
@@ -212,8 +176,7 @@ export async function compactDatabase(options: CompactOptions): Promise<CompactR
   const source = new DatabaseSync(dbPath, { readOnly: true });
   let result: CompactResult;
   try {
-    // Watch for writes before touching anything. If ingest is still running the
-    // pause did not take, and going ahead would discard whatever it writes next.
+    // If ingest is still running the pause did not take.
     const before = pragmaNumber(source, "data_version");
     await sleep(quiesceMs);
     if (pragmaNumber(source, "data_version") !== before) {
@@ -230,9 +193,8 @@ export async function compactDatabase(options: CompactOptions): Promise<CompactR
     const verdict = integrityOf(workingPath);
     if (verdict !== "ok") throw new Error(`the compacted copy failed integrity_check: ${verdict}`);
 
-    // Row counts, table by table, source against copy. `integrity_check` proves
-    // the copy is a well-formed database; it says nothing about it being a copy
-    // of *this* one.
+    // `integrity_check` proves the copy is a well-formed database; it says nothing
+    // about it being a copy of *this* one.
     const tables = userTables(source);
     const expected = rowCounts(source, tables);
     const copy = new DatabaseSync(workingPath, { readOnly: true });
@@ -249,8 +211,8 @@ export async function compactDatabase(options: CompactOptions): Promise<CompactR
       copy.close();
     }
 
-    // The whole reason this is safe: nothing committed while the copy was being
-    // taken, so the copy is the database rather than a stale version of it.
+    // SQLite bumps `data_version` in this connection whenever another commits, so an
+    // unchanged value proves the copy is current rather than a stale version.
     if (pragmaNumber(source, "data_version") !== before) {
       throw new Error(
         "the database was written to while it was being copied — the copy is already stale. " +
@@ -267,10 +229,8 @@ export async function compactDatabase(options: CompactOptions): Promise<CompactR
 
     source.close();
 
-    // Move the old database aside rather than deleting it: it stays until a
-    // human has seen the new one serving. Its WAL and shm go with it — they
-    // belong to that file, and a stale `-wal` left beside the new database is
-    // one SQLite would try to recover from.
+    // Kept, not deleted, until a human has seen the new one serving. Its WAL and shm
+    // go with it: a stale `-wal` beside the new database is one SQLite recovers from.
     for (const suffix of ["", "-wal", "-shm"]) {
       if (existsSync(`${dbPath}${suffix}`)) renameSync(`${dbPath}${suffix}`, `${backupPath}${suffix}`);
     }
@@ -291,8 +251,7 @@ export async function compactDatabase(options: CompactOptions): Promise<CompactR
       verifiedTables: tables.length,
     };
   } catch (error) {
-    // Leave the original alone and clear the partial copy. Failing here costs a
-    // maintenance window; a half-swapped database costs the data.
+    // Leave the original alone and clear the partial copy.
     rmSync(workingPath, { force: true });
     throw error;
   } finally {

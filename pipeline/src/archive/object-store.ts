@@ -1,14 +1,6 @@
 import { createHash } from "node:crypto";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
-/**
- * Writing to object storage, verified by the store itself.
- *
- * Shared by the two things that publish: the raw snapshot copy and the events
- * export. Both delete or supersede data once it is stored, so both need the same
- * guarantee that what arrived is what was sent.
- */
-
 /** Where and how to reach the bucket. */
 export interface ObjectStore {
   bucket: string;
@@ -29,10 +21,8 @@ export function createClient(store: ObjectStore): S3Client {
     credentials: { accessKeyId: store.accessKeyId, secretAccessKey: store.secretAccessKey },
     // R2 and MinIO both serve path-style; virtual-host style would need per-bucket DNS.
     forcePathStyle: true,
-    // Send only the checksum the caller asked for. Recent SDK versions attach a
-    // CRC32 to every upload by default, and R2 rejects the pair outright:
-    // "You can only specify one non-default checksum at a time." MinIO accepts
-    // both, so this surfaced only against the real store.
+    // Recent SDK versions attach a CRC32 to every upload, and R2 rejects the pair:
+    // "You can only specify one non-default checksum at a time." MinIO accepts both.
     requestChecksumCalculation: "WHEN_REQUIRED",
   });
 }
@@ -41,12 +31,9 @@ export function createClient(store: ObjectStore): S3Client {
 export type ObjectWriter = Pick<S3Client, "send">;
 
 /**
- * Store an object and confirm the bytes.
- *
- * `Content-MD5` makes the store rehash the body it received and reject a
- * mismatch, so a truncated or corrupted upload is refused rather than stored;
- * the returned ETag is then compared against the same digest. Together that is a
- * stronger guarantee than reading the object back, and it costs no extra request.
+ * Store an object and confirm the bytes. `Content-MD5` makes the store rehash the
+ * body it received and refuse a mismatch, which is a stronger guarantee than reading
+ * the object back and costs no extra request.
  */
 export async function putVerified(
   client: ObjectWriter,
@@ -75,12 +62,9 @@ export async function putVerified(
 }
 
 /**
- * The store, from the four `NJT_R2_*` variables Litestream also reads.
- *
- * Litestream wants an endpoint with a scheme and the S3 client wants a bare host.
- * Rather than asking for both and documenting the difference — which is a trap,
- * not a configuration — the scheme is taken off here and its presence decides
- * TLS. Shared by every publisher so there is one place the credentials are read.
+ * The store, from the four `NJT_R2_*` variables Litestream also reads. Litestream
+ * wants an endpoint with a scheme and the S3 client wants a bare host, so the scheme
+ * is stripped here and its presence decides TLS.
  */
 export function storeFromEnv(env: NodeJS.ProcessEnv = process.env): ObjectStore {
   const required = (name: string): string => {

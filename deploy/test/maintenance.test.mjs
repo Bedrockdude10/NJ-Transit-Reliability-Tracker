@@ -2,13 +2,6 @@ import { spawn } from "node:child_process";
 import { describe, expect, it } from "vitest";
 import { decidePipeline, maintenanceFlagPath, stopProcessTree } from "../maintenance.mjs";
 
-/**
- * The pause exists so a compaction can swap in a copy of the database without
- * losing the writes made while it was being taken. Getting this wrong in either
- * direction is expensive: not stopping loses data, and not restarting leaves
- * ingest silently off — which is a permanent gap, since NJT serves no history.
- */
-
 describe("maintenanceFlagPath", () => {
   it("sits beside the database it protects", () => {
     expect(maintenanceFlagPath("/data/njt.sqlite")).toBe("/data/njt.sqlite.maintenance");
@@ -25,8 +18,7 @@ describe("decidePipeline", () => {
   });
 
   it("leaves a stopped pipeline stopped while the flag remains", () => {
-    // The half that a one-shot handler gets wrong: the supervisor's ordinary
-    // restart-on-exit must not undo the pause a second after it took effect.
+    // The supervisor's ordinary restart-on-exit must not undo the pause.
     expect(decidePipeline({ flagPresent: true, running: false })).toBe("leave");
   });
 
@@ -35,8 +27,7 @@ describe("decidePipeline", () => {
   });
 
   it("is reconciled from state, so a supervisor restart mid-maintenance still pauses", () => {
-    // A supervisor that came back up during maintenance sees flag present and
-    // nothing running, and must not start writing to a database being replaced.
+    // Flag present, nothing running: must not write to a database being replaced.
     expect(decidePipeline({ flagPresent: true, running: false })).toBe("leave");
   });
 });
@@ -56,8 +47,7 @@ describe("stopProcessTree", () => {
     expect(gone).toBe(false);
     expect(logged).toEqual([]);
 
-    // Anything else means the pause may not have taken, which is the failure
-    // this path exists to prevent — it must not pass silently.
+    // Anything else means the pause may not have taken.
     stopProcessTree(123, {
       kill: () => {
         throw Object.assign(new Error("operation not permitted"), { code: "EPERM" });
@@ -74,13 +64,10 @@ describe("stopProcessTree", () => {
 });
 
 /**
- * The regression that cost a maintenance window and ran two pipelines at once.
- *
- * This has to use real processes: the whole defect was about which process a
- * signal reaches, and every mock of `kill` passes whether or not the fix is
- * there. The shape mirrors production — a wrapper that exits on SIGTERM without
- * forwarding it (npm) over a worker that would handle SIGTERM if it ever got one
- * (the pipeline).
+ * Real processes, not mocks: the defect is about which process a signal reaches, and
+ * every mock of `kill` passes whether or not the fix is there. The shape mirrors
+ * production — a wrapper that exits on SIGTERM without forwarding it (npm) over a
+ * worker that would handle SIGTERM if it ever got one (the pipeline).
  */
 describe("stopping a child that spawned its own children", () => {
   const worker = "process.on('SIGTERM', () => process.exit(0)); setInterval(() => {}, 1000);";
@@ -124,8 +111,7 @@ describe("stopping a child that spawned its own children", () => {
     await settle();
 
     expect(alive(leader)).toBe(false);
-    // The assertion that matters. Before the fix this was still true, still
-    // polling NJT, and still holding the SQLite file open.
+    // The assertion that matters: before the fix this was still holding the file open.
     expect(alive(grandchild)).toBe(false);
   });
 
@@ -138,8 +124,7 @@ describe("stopping a child that spawned its own children", () => {
     expect(alive(leader)).toBe(false);
     expect(alive(grandchild)).toBe(true); // reparented to init, still running
 
-    // Directly, not via stopProcessTree: the orphan is not a group leader, which
-    // is the same reason the supervisor could not clean up after itself either.
+    // Directly, not via stopProcessTree: the orphan is not a group leader.
     process.kill(grandchild, "SIGTERM");
     await settle();
     expect(alive(grandchild)).toBe(false);
