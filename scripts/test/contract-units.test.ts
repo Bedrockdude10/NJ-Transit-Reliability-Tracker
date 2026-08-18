@@ -67,11 +67,9 @@ describe("readContractFields", () => {
 });
 
 /**
- * One property, laid out the way a real contract file is.
- *
- * The line breaks are load-bearing: TypeScript does not attach a doc comment
- * that shares a line with preceding code, so a one-line fixture would read as
- * having no `@unit` tag and quietly pass tests that assert a tag is missing.
+ * One property, laid out the way a real contract file is. The line breaks are
+ * load-bearing: TypeScript does not attach a doc comment that shares a line with
+ * preceding code, so a one-line fixture would read as having no `@unit` tag.
  */
 function withOneField(doc: string | null, declaration: string): string {
   return `export interface S {\n${doc === null ? "" : `  /** ${doc} */\n`}  ${declaration}\n}`;
@@ -99,11 +97,6 @@ describe("checkUnits", () => {
     );
   });
 
-  /**
-   * The production bug, in miniature: a count of stops published under a name
-   * that says seconds. Both sides validated it, because the unit was only in
-   * the name. Here the name reserves `seconds` and the declaration disagrees.
-   */
   it("rejects a `…Seconds` field that declares it holds something else", () => {
     expect(problems(withOneField("@unit stop_index", "horizonSeconds: number;"))[0]).toMatch(
       /name and the unit must agree/,
@@ -131,11 +124,6 @@ describe("checkUnits", () => {
   });
 });
 
-/**
- * The guard that actually holds the line. Everything above proves the checker
- * works; this proves it is pointed at the real contract, so a number added to
- * `domain.ts` or `predictions.ts` without a unit fails here and in CI.
- */
 describe("the real contract", () => {
   it.each([
     ["shared/src/domain.ts", "TripStopEvent"],

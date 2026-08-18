@@ -1,11 +1,7 @@
 /**
  * Reconciling the checked-in monitor definitions against what the provider has.
- *
- * The decision is separated from the HTTP so it can be tested: which monitors
- * need creating, which need updating, and — the one worth being careful about —
- * which existing monitors are left alone. The sync deliberately does not delete
- * monitors it does not recognise; someone else's check disappearing because this
- * file did not mention it is a worse failure than a stale monitor.
+ * Unrecognised monitors are deliberately never deleted: someone else's check
+ * vanishing because this file omitted it is worse than a stale monitor.
  */
 
 export interface MonitorDefinition {
@@ -17,7 +13,6 @@ export interface MonitorDefinition {
   recoveryPeriodSeconds: number;
 }
 
-/** A monitor as the provider reports it. */
 export interface RemoteMonitor {
   id: string;
   url: string;
@@ -30,7 +25,6 @@ export interface MonitorPlan {
   unmanaged: RemoteMonitor[];
 }
 
-/** The URL a definition monitors, built from one base so staging needs no edit. */
 export function monitorUrl(baseUrl: string, definition: MonitorDefinition): string {
   return `${baseUrl.replace(/\/+$/, "")}${definition.path}`;
 }
@@ -59,13 +53,9 @@ export function planMonitors(
 }
 
 /**
- * A definition in Better Stack's vocabulary.
- *
- * Kept in one function so the mapping between what this repo cares about and
- * what the vendor calls it exists once. `monitor_type: "expected_status_code"`
- * with an explicit 200 rather than the default "status": the default treats any
- * 2xx/3xx as up, and `/health/live` says what it means with a 503 that a
- * looser check would have to be told about separately.
+ * A definition in Better Stack's vocabulary. `expected_status_code` with an
+ * explicit 200, not the default "status": that treats any 2xx/3xx as up, and
+ * `/health/live` reports a stalled pipeline with a 503.
  */
 export function toBetterStackPayload(definition: MonitorDefinition, url: string) {
   return {

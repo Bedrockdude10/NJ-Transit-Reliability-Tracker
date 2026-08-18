@@ -4,11 +4,6 @@
  *   BETTERSTACK_API_TOKEN=… NJT_PUBLIC_API_URL=https://… npm run monitors:sync
  *   … npm run monitors:sync -- --dry-run
  *
- * Provisioning a hosted monitor, not building one. The checking, the alerting
- * and the on-call routing are all the vendor's; what lives here is the answer to
- * "what are we watching, how often, and how long before it pages" — which is a
- * decision worth reviewing in a diff rather than remembering to re-click.
- *
  * Idempotent: monitors are matched by URL, created if absent and updated if not.
  * Monitors this file does not describe are reported and left alone.
  */

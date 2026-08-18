@@ -26,7 +26,6 @@ describe("monitorUrl", () => {
   });
 
   it("does not double the slash on a base that has one", () => {
-    // The difference between one monitor and two monitors for the same check.
     expect(monitorUrl("https://njt.fly.dev/", definition())).toBe("https://njt.fly.dev/health");
   });
 });
@@ -41,7 +40,6 @@ describe("planMonitors", () => {
   });
 
   it("updates rather than duplicates one that does", () => {
-    // Re-running must not leave two monitors alerting on the same URL.
     const plan = planMonitors(base, [definition()], [{ id: "7", url: "https://njt.fly.dev/health" }]);
     expect(plan.create).toHaveLength(0);
     expect(plan.update[0]).toMatchObject({ id: "7" });
@@ -54,10 +52,6 @@ describe("planMonitors", () => {
     );
   });
 
-  /**
-   * Never delete. Someone else's check vanishing because this file did not
-   * mention it is a worse outcome than a stale monitor nobody removed.
-   */
   it("reports monitors it does not manage and leaves them alone", () => {
     const plan = planMonitors(base, [definition()], [{ id: "9", url: "https://example.com/other" }]);
     expect(plan.unmanaged).toEqual([{ id: "9", url: "https://example.com/other" }]);
@@ -67,9 +61,6 @@ describe("planMonitors", () => {
 
 describe("toBetterStackPayload", () => {
   it("asks for exactly 200, not any non-error status", () => {
-    // Better Stack's default monitor type treats the whole 2xx/3xx range as up.
-    // `/health/live` distinguishes a running pipeline from a stalled one by
-    // answering 200 or 503, so the check has to name the code it wants.
     const payload = toBetterStackPayload(definition(), "https://njt.fly.dev/health/live");
     expect(payload.monitor_type).toBe("expected_status_code");
     expect(payload.expected_status_codes).toEqual([200]);
@@ -84,10 +75,6 @@ describe("toBetterStackPayload", () => {
   });
 });
 
-/**
- * The definitions are the deliverable, so they are checked rather than trusted:
- * a typo in a path is a monitor that watches nothing and reports green.
- */
 describe("deploy/monitors.json", () => {
   const { monitors } = JSON.parse(readFileSync(resolve(ROOT, "deploy/monitors.json"), "utf8")) as {
     monitors: MonitorDefinition[];

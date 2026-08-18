@@ -1,17 +1,9 @@
 /**
  * Read the `@unit` tags off the contract's interfaces, and refuse the ones that
- * do not add up.
+ * do not add up. Vocabulary: `shared/src/units.ts`.
  *
- * The unit of a number is contract, not commentary: `njt-delay-modeling`
- * generates pydantic models from what this emits, and a published value whose
- * unit lives only in its field name is a value nothing can check. See
- * `shared/src/units.ts` for the vocabulary and why bounds are not emitted as
- * JSON Schema constraints.
- *
- * Read syntactically — `ts.createSourceFile`, no type checker and no program.
- * `domain.ts` and `predictions.ts` are self-contained by design (that is why
- * ts-to-zod can read them), so every field's type is spelled out in the file,
- * and a full type-check here would be slower and no more correct.
+ * Read syntactically, with no type checker: `domain.ts` and `predictions.ts` are
+ * self-contained by design, so every field's type is spelled out in the file.
  */
 
 import { readFileSync } from "node:fs";
@@ -31,7 +23,6 @@ export interface UnitProblem {
   problem: string;
 }
 
-/** Whether a type annotation is a number, allowing `| null` and `| undefined`. */
 function isNumeric(type: ts.TypeNode | undefined): boolean {
   if (!type) return false;
   if (type.kind === ts.SyntaxKind.NumberKeyword) return true;
@@ -57,10 +48,9 @@ function unitTag(property: ts.PropertySignature): string | null {
   return null;
 }
 
-/** Every property of one interface in a TypeScript source, in declaration order. */
 export function readContractFields(source: string, interfaceName: string): ContractField[] {
-  // `setParentNodes` is required: `getJSDocTags` walks upward to find the
-  // comment attached to a node, and returns nothing without parent pointers.
+  // `setParentNodes` (the trailing `true`) is required: `getJSDocTags` walks
+  // upward, and returns nothing without parent pointers.
   const file = ts.createSourceFile(`${interfaceName}.contract.ts`, source, ts.ScriptTarget.Latest, true);
   const declaration = file.statements.find(
     (statement): statement is ts.InterfaceDeclaration =>
@@ -75,18 +65,11 @@ export function readContractFields(source: string, interfaceName: string): Contr
   }));
 }
 
-/** The same, from a file on disk. */
 export function contractFieldsOf(path: string, interfaceName: string): ContractField[] {
   return readContractFields(readFileSync(path, "utf8"), interfaceName);
 }
 
-/**
- * Everything wrong with an interface's units, or an empty list.
- *
- * One problem per field: the first thing wrong with a field is the thing to
- * fix, and reporting that a unit is both unknown and disagreeing with the name
- * is noise.
- */
+/** Everything wrong with an interface's units, at most one problem per field. */
 export function checkUnits(fields: readonly ContractField[]): UnitProblem[] {
   const problems: UnitProblem[] = [];
   const vocabulary = UNIT_NAMES.join(", ");
