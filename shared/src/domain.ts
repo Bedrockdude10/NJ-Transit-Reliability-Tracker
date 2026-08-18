@@ -1,12 +1,7 @@
 /**
- * Core domain entities. These mirror the Data Model section of the PRD.
- *
- * Conventions:
- * - Instants are stored as **epoch seconds (UTC)** unless the field name ends in
- *   `Ms`, in which case it is epoch milliseconds. SQLite stores these as INTEGER.
- * - `serviceDate` is the GTFS calendar date of the trip as `YYYY-MM-DD`, NOT a
- *   wall-clock timestamp. After-midnight trips keep the prior day's service date.
- * - `delaySeconds` is positive when late, negative when early.
+ * Core domain entities. Instants are epoch seconds (UTC) unless the field name
+ * ends in `Ms`. `serviceDate` is the GTFS calendar date, `YYYY-MM-DD` — an
+ * after-midnight trip keeps the prior day's service date.
  */
 
 export type Direction = "inbound" | "outbound";
@@ -26,10 +21,7 @@ export type EffectType =
   | "other"
   | "unknown";
 
-/**
- * TripStopEvent — the core record. One row per (trip, stop, service date),
- * holding the authoritative observed/predicted delay at that stop.
- */
+/** One row per (trip, stop, service date): the observed delay at that stop. */
 export interface TripStopEvent {
   tripId: string;
   routeId: string;
@@ -80,8 +72,7 @@ export interface TripStopEvent {
 }
 
 /**
- * VehiclePosition — where a train is right now, from the GTFS-RT
- * VehiclePositions feed. Each poll returns a complete snapshot of active
+ * Where a train is right now. Each poll returns a complete snapshot of active
  * vehicles, so the stored set is replaced wholesale rather than accumulated;
  * history stays recoverable from `raw_snapshots`.
  */
@@ -93,25 +84,22 @@ export interface VehiclePosition {
   direction: Direction | null;
   latitude: number;
   longitude: number;
-  /** Degrees clockwise from true north, when the feed reports it. */
+  /** Degrees clockwise from true north. */
   bearing: number | null;
-  /** Metres per second, when the feed reports it. */
   speedMetersPerSecond: number | null;
-  /** The stop this reading is relative to (GTFS `stop_id`). */
+  /** GTFS `stop_id` this reading is relative to. */
   stopId: string | null;
   stopName: string | null;
-  /** GTFS-RT VehicleStopStatus, normalized. */
   status: VehicleStopStatus | null;
   /** When the vehicle reported this position, epoch seconds UTC. */
   reportedAt: number | null;
-  /** When this reading was ingested, epoch milliseconds. */
   ingestedAtMs: number;
 }
 
 /** GTFS-realtime VehicleStopStatus. */
 export type VehicleStopStatus = "incoming_at" | "stopped_at" | "in_transit_to";
 
-/** RawSnapshot — one row per successful GTFS-RT poll. Retained indefinitely. */
+/** One row per successful GTFS-RT poll. */
 export interface RawSnapshot {
   id?: number;
   feedType: FeedType;
@@ -155,9 +143,8 @@ export interface OfficialNjtMetric {
   tripsOperated: number;
   cancellations: number;
   /**
-   * Cancellations broken down by NJT's cause categories (AMTRAK, Mechanical,
-   * Crew/Engineer Availability, …) → count. Null when not imported. The AMTRAK
-   * entry is the Amtrak-attributed share NJT excludes in its adjusted figures.
+   * NJT's cause category → count. Null when not imported. The AMTRAK entry is
+   * the Amtrak-attributed share NJT excludes from its adjusted figures.
    */
   cancellationCauses: Record<string, number> | null;
 }

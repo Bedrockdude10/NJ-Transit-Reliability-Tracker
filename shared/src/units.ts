@@ -1,26 +1,13 @@
 /**
- * The units every number in the data contract is measured in.
+ * The units every number in the data contract is measured in. Each numeric
+ * field in `domain.ts` / `predictions.ts` carries a `@unit <name>` naming an
+ * entry here, and the emitter refuses to write a contract where a number has no
+ * unit, names one that does not exist, or contradicts its own name.
  *
- * TypeScript has one numeric type, so `horizonSeconds: number` says nothing
- * about what the number counts. The unit lived only in the field name, which is
- * a comment that the compiler, the generated pydantic models and pandera all
- * ignore — and a value in stops was published under `horizonSeconds` and passed
- * every check on both sides of the seam.
- *
- * So the unit becomes part of the contract. Each numeric field in
- * `domain.ts` / `predictions.ts` carries a `@unit <name>` tag naming an entry
- * here; the emitter refuses to write a contract where a number has no unit, or
- * names one that does not exist, or is named `…Seconds` while declaring
- * something else. The unit then travels into the emitted JSON Schema as a
- * `unit` keyword, and this table travels beside it as `units.json`, so the
- * Python side enforces the same vocabulary rather than a copy of it.
- *
- * Bounds live here rather than as `minimum`/`maximum` in the record schemas on
- * purpose. Constraints on a scalar make `datamodel-code-generator` wrap it in a
+ * Bounds live here rather than as `minimum`/`maximum` in the record schemas:
+ * constraints on a scalar make `datamodel-code-generator` wrap it in a
  * `RootModel`, so `event.delaySeconds` would arrive in Python as an object with
- * a `.root` instead of an int — the same reason the emitter strips Zod's
- * safe-integer bounds. A vocabulary the consumer reads to build its own checks
- * costs the record schemas nothing.
+ * a `.root` instead of an int.
  *
  * Self-contained, like the contract modules it describes: no imports.
  */
@@ -30,15 +17,9 @@ export interface UnitDescriptor {
   symbol: string;
   /**
    * The field-name suffix this unit reserves, or null where it reserves none.
-   *
-   * A reservation runs one way: a field *named* `…Seconds` may declare nothing
-   * but `seconds`. Changing what such a field measures therefore has to rename
-   * it, which a reviewer and a downstream consumer both see — where editing a
-   * doc comment is invisible to everything.
-   *
-   * Not the other way. `scheduledArrival` is an instant and always has been;
-   * requiring every `epoch_seconds` field to be named `…EpochSeconds` would
-   * mean renaming fields in a published contract, which is a v2, not an edit.
+   * The reservation runs one way only — a field named `…Seconds` may declare
+   * nothing but `seconds`, but an `epoch_seconds` field need not be named
+   * `…EpochSeconds`, since renaming a published field is a v2, not an edit.
    */
   suffix: string | null;
   description: string;
@@ -108,10 +89,8 @@ export function isUnitName(name: string): name is UnitName {
 /**
  * The unit a field name's suffix reserves, or null if it reserves none.
  *
- * Longest suffix wins, which is the whole reason the resolution is a function
- * rather than a lookup: `predictedAtEpochSeconds` ends in both `Seconds` and
- * `EpochSeconds`, and it is an instant. Matching the shorter one would force
- * every epoch field to claim it holds a duration.
+ * Longest suffix wins: `predictedAtEpochSeconds` ends in both `Seconds` and
+ * `EpochSeconds` and is an instant, so a plain lookup would not do.
  */
 export function reservedUnitFor(fieldName: string): UnitName | null {
   let matched: UnitName | null = null;

@@ -1,8 +1,6 @@
 /**
- * New Jersey state boundary as `[lon, lat]` pairs (GeoJSON order), used as the
- * backdrop behind the rail network on the system map. Derived from a public
- * US-states GeoJSON (glynnbird/usstatesgeojson) and simplified to ~123
- * points — geographically faithful, light enough to bundle. Regenerate via
+ * New Jersey state boundary as `[lon, lat]` pairs (GeoJSON order). Derived from
+ * glynnbird/usstatesgeojson, simplified to ~123 points. Regenerate via
  * `npm run build:geo` after dropping an `nj.geojson` in ./data.
  */
 export const NJ_STATE_OUTLINE: readonly (readonly [number, number])[] = [

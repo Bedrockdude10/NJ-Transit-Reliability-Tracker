@@ -1,14 +1,6 @@
-/**
- * Pure delay math: computing delay, classifying on-time at a threshold, and
- * bucketing delays into the distribution used by the dashboard histograms.
- */
-
 import { DELAY_BUCKETS, OTP_THRESHOLDS_SECONDS, type DelayBucket } from "./constants";
 
-/**
- * Delay in seconds from scheduled vs observed instants (epoch seconds).
- * Positive = late, negative = early.
- */
+/** Positive = late, negative = early. Both arguments are epoch seconds. */
 export function computeDelaySeconds(
   scheduledEpochSeconds: number,
   observedEpochSeconds: number,
@@ -16,26 +8,22 @@ export function computeDelaySeconds(
   return observedEpochSeconds - scheduledEpochSeconds;
 }
 
-/**
- * On-time at a given threshold. A train is "on time" if it is no more than
- * `thresholdSeconds` late. Arriving early always counts as on time.
- */
+/** On time = no more than `thresholdSeconds` late. Early always counts. */
 export function isOnTime(delaySeconds: number, thresholdSeconds: number): boolean {
   return delaySeconds <= thresholdSeconds;
 }
 
-/** Find the distribution bucket a delay falls into. Never returns undefined. */
 export function bucketForDelay(delaySeconds: number): DelayBucket {
   for (const bucket of DELAY_BUCKETS) {
     const aboveMin = delaySeconds >= bucket.minSeconds;
     const belowMax = bucket.maxSeconds === null || delaySeconds < bucket.maxSeconds;
     if (aboveMin && belowMax) return bucket;
   }
-  // Unreachable given the buckets span (-inf, +inf), but keep types honest.
+  // Unreachable: the buckets span (-inf, +inf). Here to keep the type honest.
   return DELAY_BUCKETS[DELAY_BUCKETS.length - 1] as DelayBucket;
 }
 
-/** Tally a list of delays into `{ bucketLabel: count }`, zero-filled. */
+/** Zero-filled `{ bucketLabel: count }`. */
 export function buildDelayDistribution(
   delaysSeconds: readonly number[],
 ): Record<string, number> {
@@ -48,10 +36,7 @@ export function buildDelayDistribution(
   return counts;
 }
 
-/**
- * Count, for each configured threshold, how many of the delays are on-time-or-
- * better. Returns `{ thresholdSeconds: count }` keyed by string for JSON safety.
- */
+/** `{ thresholdSeconds: count }`, keyed by string for JSON safety. */
 export function countOnTimeByThreshold(
   delaysSeconds: readonly number[],
 ): Record<string, number> {
@@ -67,7 +52,7 @@ export function countOnTimeByThreshold(
   return counts;
 }
 
-/** On-time percentage (0-100) at a threshold; 0 when there are no trips. */
+/** 0-100; 0 when there are no trips. */
 export function otpPercent(
   delaysSeconds: readonly number[],
   thresholdSeconds: number,
@@ -77,16 +62,13 @@ export function otpPercent(
   return (onTime / delaysSeconds.length) * 100;
 }
 
-/** Arithmetic mean; 0 for an empty list. */
+/** 0 for an empty list. */
 export function mean(values: readonly number[]): number {
   if (values.length === 0) return 0;
   return values.reduce((sum, v) => sum + v, 0) / values.length;
 }
 
-/**
- * Linear-interpolated percentile (0-100). Returns 0 for an empty list. Used for
- * median/p90 delay summaries.
- */
+/** Linear-interpolated percentile (`p` is 0-100). 0 for an empty list. */
 export function percentile(values: readonly number[], p: number): number {
   if (values.length === 0) return 0;
   const sorted = [...values].sort((a, b) => a - b);

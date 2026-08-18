@@ -1,9 +1,3 @@
-/**
- * API response DTOs. These are the contract between the backend API and the
- * Expo frontend. The frontend imports these types directly; it never imports
- * the db or domain-storage types.
- */
-
 import type { Direction, VehicleStopStatus } from "./domain";
 import type { HeatmapType } from "./constants";
 
@@ -19,7 +13,6 @@ export interface OtpThresholdResult {
   onTimeTrips: number;
 }
 
-/** Shared OTP block used by system, line, and direction summaries. */
 export interface OtpSummary {
   tripsOperated: number;
   tripsCancelled: number;
@@ -32,29 +25,22 @@ export interface OtpSummary {
 }
 
 /**
- * Which months an official (NJT-published, monthly) figure actually covers.
- *
- * NJT publishes performance data months in arrears, so the default "last 30
- * days" window routinely contains no published months at all. Rather than
- * render an empty panel, the API falls back to the most recent published month
- * and reports that here — the UI must label a fallback so the figure is never
- * mistaken for the requested period.
+ * NJT publishes performance data months in arrears, so a "last 30 days" window
+ * routinely covers no published month; the API falls back to the most recent
+ * published one and reports it here so the UI can label the fallback.
  */
 export interface PublishedCoverage {
   /** `YYYY-MM`. */
   fromMonth: string;
   toMonth: string;
-  /** True when these months fall outside the requested date range. */
   outsideRequestedRange: boolean;
 }
 
-/** NJT's own reported figure for the period, for side-by-side comparison. */
 export interface NjtOfficialComparison {
   thresholdSeconds: number;
   otpPercent: number;
   otpPercentAmtrakAdjusted: number | null;
   monthsCovered: number;
-  /** Real, NJT-reported operations totals over the covered months. */
   tripsOperated: number;
   cancellations: number;
   cancellationRatePercent: number;
@@ -66,14 +52,12 @@ export interface CancellationCauseResult {
   percent: number;
 }
 
-/** NJT's reported cancellations for the period, broken down by cause. */
 export interface NjtCancellations {
   total: number;
   byCause: CancellationCauseResult[];
   monthsCovered: number;
 }
 
-/** Systemwide fleet reliability for the period. */
 export interface FleetMdbf {
   avgMiles: number;
   monthsCovered: number;
@@ -85,8 +69,6 @@ export interface HeatmapBucketResult {
   avgDelaySeconds: number;
   observations: number;
 }
-
-// --- Health -----------------------------------------------------------------
 
 export interface FeedHealth {
   feedType: string;
@@ -102,7 +84,6 @@ export interface DataGap {
   endMs: number;
 }
 
-/** Completeness of NJT's published monthly data for a line (detects gaps). */
 export interface OfficialCoverage {
   lineName: string;
   firstMonth: string | null;
@@ -121,8 +102,6 @@ export interface HealthResponse {
   generatedAtMs: number;
 }
 
-// --- Map ---------------------------------------------------------------------
-
 export interface MapStation {
   stopId: string;
   stopName: string;
@@ -131,16 +110,14 @@ export interface MapStation {
 }
 
 export interface MapLine {
-  /** Catalog route id, for deep-linking to Line Detail. */
   lineId: string;
   name: string;
   shortName: string;
   mode: "rail" | "light_rail";
   /** Official NJT route color (hex, no leading #). */
   color: string;
-  /** Real NJT OTP for the period (drives reliability coloring), null if none. */
   njtOtpPercent: number | null;
-  /** Independent (measured) OTP at the 15-min threshold, null if none. */
+  /** Independent (measured) OTP at the 15-min threshold. */
   projectOtpPercent15Min: number | null;
   /** Ordered stop ids tracing the line's path (keys into `stations`). */
   path: string[];
@@ -153,7 +130,6 @@ export interface MapResponse {
   lines: MapLine[];
 }
 
-/** One train's current position, for the live map. */
 export interface MapVehicle {
   vehicleId: string;
   tripId: string | null;
@@ -163,27 +139,21 @@ export interface MapVehicle {
   latitude: number;
   longitude: number;
   bearing: number | null;
-  /** Converted from the feed's metres/second for display. */
   speedMph: number | null;
   stopId: string | null;
   stopName: string | null;
   status: VehicleStopStatus | null;
   /** When the train reported this position, epoch seconds UTC. */
   reportedAt: number | null;
-  /** Seconds between the reading and this response — staleness, made visible. */
   ageSeconds: number | null;
 }
 
 export interface MapVehiclesResponse {
   vehicles: MapVehicle[];
-  /** When the newest reading in this set was ingested, epoch ms (null if empty). */
   lastIngestedAtMs: number | null;
   generatedAtMs: number;
 }
 
-// --- Departures --------------------------------------------------------------
-
-/** How a departure is running, for at-a-glance colouring on the board. */
 export type DepartureStatus = "on_time" | "late" | "early" | "cancelled" | "skipped" | "scheduled";
 
 export interface Departure {
@@ -191,7 +161,7 @@ export interface Departure {
   lineId: string;
   lineName: string;
   direction: Direction;
-  /** GTFS headsign — where the train is going. Null when the trip is unmatched. */
+  /** GTFS headsign; null when the trip is unmatched. */
   destination: string | null;
   /** Timetabled departure (falls back to arrival), epoch seconds UTC. */
   scheduledTime: number | null;
@@ -208,19 +178,15 @@ export interface StationDeparturesResponse {
   stopId: string;
   stopName: string;
   departures: Departure[];
-  /** Minutes ahead the board looks. */
   horizonMinutes: number;
   generatedAtMs: number;
 }
-
-// --- Trends --------------------------------------------------------------------
 
 export type TrendDirection = "improving" | "worsening" | "stable";
 
 export interface LineTrend {
   lineId: string;
   lineName: string;
-  /** On-time rate over the recent period, null when nothing ran. */
   recentOtpPercent: number | null;
   /** The equal-length period immediately before it. */
   priorOtpPercent: number | null;
@@ -228,17 +194,12 @@ export interface LineTrend {
   deltaPoints: number | null;
   recentTrips: number;
   priorTrips: number;
-  /**
-   * "stable" also covers changes too small or too noisy to call — the app
-   * never claims a trend it cannot distinguish from chance.
-   */
+  /** "stable" also covers changes too small or too noisy to call. */
   direction: TrendDirection;
-  /** False when either period is too thin to compare at all. */
   enoughData: boolean;
 }
 
 export interface TrendsResponse {
-  /** Length of each compared period, in days. */
   days: number;
   recentFrom: string;
   recentTo: string;
@@ -247,8 +208,6 @@ export interface TrendsResponse {
   thresholdSeconds: number;
   lines: LineTrend[];
 }
-
-// --- Station rankings ----------------------------------------------------------
 
 export type StationRankingSort = "delay" | "amplification";
 
@@ -272,11 +231,8 @@ export interface StationRankingsResponse {
   to: string;
   sort: StationRankingSort;
   stations: StationRanking[];
-  /** Stations excluded for having too few observations to rank fairly. */
   excludedLowSample: number;
 }
-
-// --- Delay propagation --------------------------------------------------------
 
 /** Average delay at one stop along a line's route, in running order. */
 export interface PropagationStop {
@@ -287,13 +243,12 @@ export interface PropagationStop {
   avgDelaySeconds: number | null;
   observations: number;
   /**
-   * Change in average delay since the previous stop. Positive = this segment
-   * added delay; negative = trains recovered across it. Null at the first stop.
+   * Change in average delay since the previous stop; positive = this segment
+   * added delay. Null at the first stop.
    */
   deltaSeconds: number | null;
 }
 
-/** A stop-to-stop segment ranked by how much delay it adds. */
 export interface PropagationSegment {
   fromStopName: string;
   toStopName: string;
@@ -311,29 +266,23 @@ export interface PropagationResponse {
   worstSegments: PropagationSegment[];
   /** Segments where trains most reliably make time back. */
   bestRecoveries: PropagationSegment[];
-  /** Delay at the last stop minus the first — the journey's net accumulation. */
+  /** Delay at the last stop minus the first. */
   netAccumulatedSeconds: number | null;
 }
 
-// --- Commute -----------------------------------------------------------------
-
-/** Reliability of one timetabled departure on a commute, over the period. */
 export interface CommuteDeparture {
-  /** Minutes after local midnight, so departures sort and label consistently. */
+  /** Minutes after local midnight. */
   departureMinutes: number;
   /** "7:42 AM". */
   label: string;
   lineName: string;
-  /** Scheduled journey time in minutes; null if the timetable is incomplete. */
   scheduledMinutes: number | null;
   observations: number;
   cancellations: number;
   /** Share arriving within the strict threshold. Null below the sample floor. */
   onTimePercent: number | null;
   avgArrivalDelaySeconds: number | null;
-  /** The delay you should plan around — exceeded one journey in ten. */
   p90ArrivalDelaySeconds: number | null;
-  /** True when too few observations to draw a conclusion from. */
   lowSample: boolean;
 }
 
@@ -350,18 +299,15 @@ export interface CommuteResponse {
   onTimePercent: number | null;
   avgArrivalDelaySeconds: number | null;
   p90ArrivalDelaySeconds: number | null;
-  /** Median observed journey time, minutes. Null when nothing completed. */
+  /** Median observed journey time, minutes. */
   medianJourneyMinutes: number | null;
   /** Timetabled journey time, minutes. */
   scheduledJourneyMinutes: number | null;
   /** Every timetabled departure on this pair, earliest first. */
   departures: CommuteDeparture[];
-  /** Most and least reliable departures with enough data to rank. */
   mostReliable: CommuteDeparture | null;
   leastReliable: CommuteDeparture | null;
 }
-
-// --- Light rail --------------------------------------------------------------
 
 export interface LightRailLineMdbf {
   lineName: string;
@@ -372,17 +318,14 @@ export interface LightRailLineMdbf {
 export interface LightRailSummaryResponse {
   from: string;
   to: string;
-  /** Average systemwide light-rail OTP over the period (null if none). */
+  /** Average systemwide light-rail OTP over the period. */
   otpPercent: number | null;
   monthsCovered: number;
   lines: LightRailLineMdbf[];
   /** Monthly systemwide light-rail OTP over the period, ascending. */
   otpTrend: { month: string; otpPercent: number }[];
-  /** Months these figures cover; null if light rail data was never published. */
   coverage: PublishedCoverage | null;
 }
-
-// --- System -----------------------------------------------------------------
 
 export interface SystemSummaryResponse {
   from: string;
@@ -391,7 +334,7 @@ export interface SystemSummaryResponse {
   njtOfficial: NjtOfficialComparison | null;
   njtCancellations: NjtCancellations | null;
   fleetMdbf: FleetMdbf | null;
-  /** Months `njtOfficial` / `njtCancellations` cover; null if never published. */
+  /** Months `njtOfficial` / `njtCancellations` cover. */
   officialCoverage: PublishedCoverage | null;
   /** Months `fleetMdbf` covers (published separately from per-line OTP). */
   fleetMdbfCoverage: PublishedCoverage | null;
@@ -404,8 +347,6 @@ export interface HeatmapResponse {
   buckets: HeatmapBucketResult[];
 }
 
-// --- Lines ------------------------------------------------------------------
-
 export interface LineListItem {
   /** Public identifier used in API paths and deep links (the GTFS route_id). */
   id: string;
@@ -413,12 +354,12 @@ export interface LineListItem {
   name: string;
   shortName: string;
   hasAmtrakAttribution: boolean;
-  /** Official NJT route color (hex, no leading #), null if unknown. */
+  /** Official NJT route color (hex, no leading #). */
   color: string | null;
-  /** NJT's reported OTP for the most recent published month (null if none). */
+  /** NJT's reported OTP for the most recent published month. */
   njtOtpPercent: number | null;
   njtCancellationRatePercent: number | null;
-  /** The month those NJT figures are from, `YYYY-MM` (null if none). */
+  /** The month those NJT figures are from, `YYYY-MM`. */
   njtLatestMonth: string | null;
 }
 
@@ -436,7 +377,7 @@ export interface LineSummaryResponse {
   outbound: OtpSummary;
   njtOfficial: NjtOfficialComparison | null;
   njtCancellations: NjtCancellations | null;
-  /** Months `njtOfficial` / `njtCancellations` cover; null if never published. */
+  /** Months `njtOfficial` / `njtCancellations` cover. */
   officialCoverage: PublishedCoverage | null;
 }
 
@@ -445,7 +386,7 @@ export interface TrendPoint {
   otpPercent15Min: number;
   cancellationRatePercent: number;
   tripsOperated: number;
-  /** NJT's reported 6-min OTP for the month this point falls in, if available. */
+  /** NJT's reported 6-min OTP for the month this point falls in. */
   njtOfficialOtpPercent: number | null;
 }
 
@@ -461,10 +402,10 @@ export interface LineTrendResponse {
 export interface MonthlyComparisonRow {
   /** `YYYY-MM`. */
   month: string;
-  /** NJT's reported 6-minute OTP for the month, null if not published. */
+  /** NJT's reported 6-minute OTP for the month. */
   njtOtpPercent: number | null;
   njtOtpPercentAmtrakAdjusted: number | null;
-  /** This project's OTP at the 15-minute threshold, null if no data that month. */
+  /** This project's OTP at the 15-minute threshold. */
   projectOtpPercent15Min: number | null;
   projectTripsOperated: number;
 }
@@ -475,21 +416,20 @@ export interface LineMonthlyResponse {
   rows: MonthlyComparisonRow[];
 }
 
-/** Average NJT OTP for a calendar month (1-12) across all available years. */
+/** Average NJT OTP for a calendar month across all available years. */
 export interface SeasonalityMonth {
+  /** 1-12. */
   month: number;
   avgOtpPercent: number | null;
   years: number;
 }
 
-/** Average NJT OTP for a calendar year. */
 export interface AnnualOtpYear {
   year: number;
   avgOtpPercent: number | null;
   months: number;
 }
 
-/** Long-run NJT history for a scope: seasonality (by month) + annual trend. */
 export interface HistoryResponse {
   scopeLabel: string;
   seasonality: SeasonalityMonth[];
@@ -514,8 +454,6 @@ export interface WorstTripsResponse {
   to: string;
   trips: WorstTrip[];
 }
-
-// --- Stations ---------------------------------------------------------------
 
 export interface StationListItem {
   stopId: string;
@@ -548,8 +486,6 @@ export interface StationSummaryResponse {
     amplificationRatePercent: number;
   };
 }
-
-// --- Connections ------------------------------------------------------------
 
 export interface ConnectionDayOfWeekResult {
   dayOfWeek: number;
@@ -592,8 +528,6 @@ export interface ConnectionTopResponse {
   transfers: ConnectionTopItem[];
 }
 
-// --- Alerts -----------------------------------------------------------------
-
 export interface AlertListItem {
   alertId: string;
   affectedRoutes: string[];
@@ -626,19 +560,8 @@ export interface AlertFrequencyResponse {
 }
 
 /**
- * One predicted leg, as the app shows it.
- *
- * Station *names* rather than the ids the model works in: the modelling repo
- * deals in GTFS ids and the app renders places people recognise, and resolving
- * that here keeps a screen from having to join two payloads.
- */
-/**
- * The range a model puts a delay in, and how sure it is.
- *
- * A range is a more honest thing to show a rider than a point: "5 to 12 minutes
- * late" says what a single "8.4" cannot, which is how much the model does not
- * know. Null where the run produced only a point estimate — most days, until
- * the modelling repo publishes conformal intervals.
+ * The range a model puts a delay in. Null where the run produced only a point
+ * estimate, which is most days until the modelling repo publishes intervals.
  */
 export interface PredictionInterval {
   /** Lower bound, seconds; positive = late. */
@@ -658,7 +581,6 @@ export interface PredictedDelay {
   horizonSeconds: number;
   /** Predicted delay at the destination, seconds; positive = late. */
   predictedDelaySeconds: number;
-  /** The range around that estimate, or null when the model published none. */
   interval: PredictionInterval | null;
   /** Observed delay once the trip has run, or null while it is still ahead. */
   actualDelaySeconds: number | null;
@@ -666,13 +588,6 @@ export interface PredictedDelay {
   errorSeconds: number | null;
 }
 
-/**
- * What produced a set of predictions.
- *
- * Shown with the numbers rather than alongside them optionally. A forecast with
- * no provenance invites more confidence than it has earned, and this is the
- * difference between "a model said this" and "the data says this".
- */
 export interface PredictionProvenance {
   modelVersion: string;
   runId: string;
@@ -681,35 +596,24 @@ export interface PredictionProvenance {
 }
 
 /**
- * `GET /predictions?date=` — model output for one service date.
- *
- * `available: false` is the normal state until the modelling repo has run, not
- * an error: this project publishes no synthetic data, so an unpredicted day says
- * so rather than showing a plausible number.
+ * `GET /predictions?date=` — model output for one service date. `available:
+ * false` is the normal state until the modelling repo has run, not an error.
  */
 export interface PredictionsResponse {
   serviceDate: string;
   available: boolean;
   /** Service dates that do hold predictions, so a screen can offer them. */
   availableDates: string[];
-  /** Lines with predictions on this date, for filtering. */
   lines: string[];
   provenance: PredictionProvenance | null;
   /**
-   * The most delayed legs, largest first — not everything.
-   *
-   * A service date holds ~50,000 legs, which is ~5 MB of JSON and 300 KB of DOM,
-   * and most of them are a shuttle predicted to be on time. The rider's question
-   * is about the trains in trouble, so the response carries those and
+   * The most delayed legs, largest first — not everything. A service date holds
+   * ~50,000 legs, ~5 MB of JSON, so the response is capped and
    * `totalPredictions` says how many there were.
    */
   predictions: PredictedDelay[];
-  /** How many legs were predicted for this date, before the cap. */
   totalPredictions: number;
-  /**
-   * Mean absolute error over the legs whose actual is known, or null when none
-   * are. The honest headline: how wrong the model has been, not how confident.
-   */
+  /** Mean absolute error over the legs whose actual is known. */
   meanAbsoluteErrorSeconds: number | null;
   /** How many legs have an actual to compare against. */
   scoredCount: number;

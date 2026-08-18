@@ -1,17 +1,11 @@
 /**
- * Local-wall-clock -> instant conversion, the one direction where DST is
- * genuinely ambiguous and the one place that needs Temporal.
+ * Local-wall-clock -> instant, the one direction where DST is ambiguous and the
+ * only place that needs Temporal.
  *
- * This lives apart from `time.ts`, and is deliberately **not** re-exported from
- * the package index, because `app` imports `@njt/shared` and Metro bundles
- * whole modules: a top-level Temporal import reachable from the index put the
- * entire polyfill in the web bundle (measured at +160 KB, 12% of it) to serve
- * functions the app never calls. Only `pipeline` and `api` resolve schedules,
- * so only they pay for it — `import { ... } from "@njt/shared/zoned"`.
- *
- * The other direction (instant -> parts) has no ambiguity and is the hot path
- * across millions of events during aggregation, so it stays on cached `Intl`
- * in `time.ts`.
+ * Deliberately **not** re-exported from the package index: Metro bundles whole
+ * modules, so a Temporal import reachable from the index put the whole polyfill
+ * (+160 KB, 12% of the web bundle) in the app to serve functions it never
+ * calls. Reach it as `@njt/shared/zoned`.
  */
 
 import { Temporal } from "@js-temporal/polyfill";
@@ -19,16 +13,10 @@ import { NJT_TIMEZONE } from "./constants";
 import { type LocalParts, parseDateString, parseGtfsTimeToSeconds } from "./time";
 
 /**
- * Convert local wall-clock parts in a timezone to epoch seconds (UTC).
+ * Local wall-clock parts -> epoch seconds (UTC).
  *
- * The previous hand-rolled version refined a UTC guess by one offset lookup and
- * documented itself as wrong inside the fall-back hour. Measuring it showed the
- * opposite: fall-back resolved correctly and *spring-forward* was wrong,
- * mapping the 02:00-03:00 local hour (which does not exist) an hour early, so
- * 02:30 read back as 01:30 — placing a train before the time it was asked for.
- *
- * `disambiguation: "compatible"` is the ECMAScript default and matches what
- * other GTFS consumers do: a nonexistent local time shifts forward past the
+ * `disambiguation: "compatible"` is the ECMAScript default and what other GTFS
+ * consumers do: a nonexistent local time shifts forward past the spring-forward
  * gap, and a repeated one takes the first (pre-transition) occurrence.
  */
 export function localPartsToEpochSeconds(
@@ -47,9 +35,8 @@ export function localPartsToEpochSeconds(
 }
 
 /**
- * Anchors are memoized per `serviceDate|timeZone`: every stop time on a service
- * date shares one, and each is resolved twice (arrival + departure), so caching
- * removes nearly all of this work during aggregation and schedule resolution.
+ * Memoized per `serviceDate|timeZone`: every stop time on a date shares an
+ * anchor and each is resolved twice (arrival + departure).
  */
 const MIDNIGHT_CACHE = new Map<string, number>();
 const GTFS_ANCHOR_CACHE = new Map<string, number>();
@@ -68,16 +55,10 @@ function atLocalHour(serviceDate: string, hour: number, timeZone: string): numbe
 }
 
 /**
- * The instant GTFS counts stop times from: **noon minus twelve hours**, not
- * midnight.
- *
- * The spec defines it that way precisely because of DST. On an ordinary day the
- * two are identical, but on a transition day they differ by the shift, and
- * anchoring at midnight moved *every* stop time after the transition by an
- * hour — 08:00 resolving to 09:00 each spring and 07:00 each autumn. That is
- * twice a year, every train, silently corrupting every delay measured on those
- * days. Noon is never inside a US transition, so anchoring there and
- * subtracting twelve hours lands correctly either way.
+ * The instant GTFS counts stop times from: **noon minus twelve hours**, per
+ * spec, not midnight. The two differ on a DST transition day, and anchoring at
+ * midnight shifts every stop time after the transition by an hour. Noon is
+ * never inside a US transition.
  */
 function gtfsServiceDayAnchor(serviceDate: string, timeZone: string): number {
   return cached(GTFS_ANCHOR_CACHE, `${serviceDate}|${timeZone}`, () =>
@@ -85,10 +66,7 @@ function gtfsServiceDayAnchor(serviceDate: string, timeZone: string): number {
   );
 }
 
-/**
- * Resolve a GTFS stop time (service date + "HH:MM:SS", hours may exceed 24) to
- * an absolute epoch-seconds instant in the given timezone.
- */
+/** Service date + "HH:MM:SS" (hours may exceed 24) -> epoch seconds. */
 export function gtfsStopTimeToEpochSeconds(
   serviceDate: string,
   gtfsTime: string,
@@ -98,13 +76,10 @@ export function gtfsStopTimeToEpochSeconds(
 }
 
 /**
- * Local midnight starting a service date, as epoch seconds. The anchor every
- * "what happened on this day?" question resolves against — a service date is a
- * local calendar day, not a UTC one, so this cannot be done with `Date.parse`.
- *
- * Distinct from the GTFS anchor above: this one is a real calendar boundary
- * (so transition days span 23 or 25 hours), whereas the GTFS anchor follows the
- * spec's noon-relative rule.
+ * Local midnight starting a service date, as epoch seconds. A service date is a
+ * local calendar day, not a UTC one, so `Date.parse` will not do. Distinct from
+ * the GTFS anchor above: this is a real calendar boundary, so a transition day
+ * spans 23 or 25 hours.
  */
 export function startOfLocalDayEpochSeconds(
   serviceDate: string,

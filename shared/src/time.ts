@@ -1,15 +1,8 @@
 /**
- * Timezone-aware time utilities.
- *
- * Dependency-free: everything here is `Intl` or plain `Date` arithmetic.
- * Instant -> local parts is unambiguous, so it needs nothing more. The reverse
- * direction is where DST bites and lives in `time-zoned.ts`, kept separate so
- * the app bundle does not carry a Temporal polyfill it never calls.
- *
- * GTFS encodes stop times as "HH:MM:SS" where the hour may exceed 23 (e.g.
- * "25:30:00" is 1:30am the following calendar day, still belonging to the prior
- * service date). All instants in the system are epoch seconds (UTC); these
- * helpers convert between that, GTFS service dates, and NJT local wall-clock.
+ * Timezone-aware time utilities. Dependency-free (`Intl` and `Date` only):
+ * instant -> local parts is unambiguous. The reverse direction is where DST
+ * bites and lives in `time-zoned.ts`, kept separate so the app bundle does not
+ * carry a Temporal polyfill it never calls.
  */
 
 import { NJT_TIMEZONE } from "./constants";
@@ -43,7 +36,6 @@ function partsFormatter(timeZone: string): Intl.DateTimeFormat {
   return fmt;
 }
 
-/** Break an epoch-seconds instant into local wall-clock parts for a timezone. */
 export function getLocalParts(
   epochSeconds: number,
   timeZone: string = NJT_TIMEZONE,
@@ -63,7 +55,7 @@ export function getLocalParts(
   };
 }
 
-/** Local calendar date (`YYYY-MM-DD`) of an epoch-seconds instant. */
+/** Local calendar date, `YYYY-MM-DD`. */
 export function toLocalDateString(
   epochSeconds: number,
   timeZone: string = NJT_TIMEZONE,
@@ -80,7 +72,7 @@ export function formatDateParts(year: number, month: number, day: number): strin
   return `${year}-${pad2(month)}-${pad2(day)}`;
 }
 
-/** Parse "YYYY-MM-DD" into numeric parts. Throws on malformed input. */
+/** Throws on malformed input. */
 export function parseDateString(date: string): { year: number; month: number; day: number } {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
   if (!match) throw new Error(`Invalid service date: ${date}`);
@@ -88,8 +80,8 @@ export function parseDateString(date: string): { year: number; month: number; da
 }
 
 /**
- * Parse a GTFS time string ("HH:MM:SS", hours may be >= 24) into seconds past
- * midnight of the service date.
+ * "HH:MM:SS" -> seconds past the service date's start. The hour may exceed 23:
+ * "25:30:00" is 1:30am the next calendar day, on the prior service date.
  */
 export function parseGtfsTimeToSeconds(time: string): number {
   const match = /^(\d{1,3}):([0-5]\d):([0-5]\d)$/.exec(time);
@@ -97,17 +89,16 @@ export function parseGtfsTimeToSeconds(time: string): number {
   return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
 }
 
-/** Day of week for an instant in a timezone. 0 = Sunday … 6 = Saturday. */
+/** 0 = Sunday … 6 = Saturday. */
 export function localDayOfWeek(
   epochSeconds: number,
   timeZone: string = NJT_TIMEZONE,
 ): number {
   const p = getLocalParts(epochSeconds, timeZone);
-  // Date.UTC with the local Y/M/D gives a stable weekday independent of tz.
+  // Date.UTC on the local Y/M/D gives a weekday independent of the runtime tz.
   return new Date(Date.UTC(p.year, p.month - 1, p.day)).getUTCDay();
 }
 
-/** Hour of day (0-23) for an instant in a timezone. */
 export function localHourOfDay(
   epochSeconds: number,
   timeZone: string = NJT_TIMEZONE,
@@ -115,7 +106,6 @@ export function localHourOfDay(
   return getLocalParts(epochSeconds, timeZone).hour;
 }
 
-/** True when the instant falls in a weekday AM or PM peak window. */
 export function isPeak(
   epochSeconds: number,
   peak: { amPeakStartHour: number; amPeakEndHour: number; pmPeakStartHour: number; pmPeakEndHour: number },
@@ -129,7 +119,6 @@ export function isPeak(
   return inAm || inPm;
 }
 
-/** Add `days` to a "YYYY-MM-DD" string, returning a new "YYYY-MM-DD". */
 export function addDays(date: string, days: number): string {
   const { year, month, day } = parseDateString(date);
   const d = new Date(Date.UTC(year, month - 1, day));
@@ -137,11 +126,11 @@ export function addDays(date: string, days: number): string {
   return formatDateParts(d.getUTCFullYear(), d.getUTCMonth() + 1, d.getUTCDate());
 }
 
-/** Inclusive list of "YYYY-MM-DD" strings from `start` to `end`. */
+/** Inclusive. */
 export function dateRange(start: string, end: string): string[] {
   const out: string[] = [];
   let cursor = start;
-  // Guard against inverted ranges producing an infinite loop.
+  // The iteration cap guards an inverted range against looping forever.
   for (let i = 0; cursor <= end && i < 100_000; i++) {
     out.push(cursor);
     cursor = addDays(cursor, 1);

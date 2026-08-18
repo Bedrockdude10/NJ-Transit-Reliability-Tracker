@@ -1,29 +1,12 @@
 /**
  * Every dataset exchanged through object storage: where it lives, how it is
- * encoded, and which repo writes it.
- *
- * The record *schemas* were already generated from here into `contract/v1` and
- * regenerated into pydantic on the other side, so a renamed field fails loudly.
- * Everything around the records was not: the key layout, the prefix, the
- * encoding and the partition key were each written out twice — once in this
- * repo's exporter, once in the modelling repo's reader — with nothing comparing
- * them. That is the more dangerous half. A reader looking under the wrong prefix,
- * or for `.parquet` where `.jsonl.gz` is written, finds nothing and reports
- * success; the model then trains on an empty frame rather than failing.
- *
- * So this table is emitted as `contract/v1/datasets.json` and both sides build
- * their keys from it. Neither repo may hardcode a prefix or a suffix.
+ * encoded, and which repo writes it. Emitted as `contract/v1/datasets.json`;
+ * both repos build their keys from it and neither may hardcode a prefix or
+ * suffix. A reader looking under the wrong prefix finds nothing and reports
+ * success, so the model would train on an empty frame rather than failing.
  */
 
-/**
- * How a dataset is encoded.
- *
- * The rule, where there is a choice: **the constrained end decides**. Both
- * tabular datasets cross between a 512 MB machine that also serves the site and a
- * workstation, and whichever side is short of memory should not be the one paying
- * for a columnar reader or writer. `parquet` remains available for a dataset that
- * never touches the small machine.
- */
+/** How a dataset is encoded. Where there is a choice, the constrained end decides. */
 export type DatasetFormat = "jsonl.gz" | "parquet" | "protobuf";
 
 /** Which repo is allowed to write a dataset. The other only reads it. */
@@ -33,17 +16,11 @@ export interface DatasetDescriptor {
   /** Key prefix, without leading or trailing slashes. */
   prefix: string;
   format: DatasetFormat;
-  /**
-   * Hive partition key, so a consumer can skip whole partitions from the path
-   * without opening an object.
-   */
+  /** Hive partition key, so a consumer can skip partitions from the path alone. */
   partitionBy: string;
   /** Base name of the object inside each partition, without its extension. */
   objectName: string;
-  /**
-   * The schema file in this directory describing one record, or null where the
-   * payload is opaque bytes rather than rows.
-   */
+  /** Schema file describing one record, or null where the payload is opaque bytes. */
   schema: string | null;
   producer: DatasetProducer;
   description: string;
@@ -105,12 +82,9 @@ export function datasetDescriptor(name: DatasetName): DatasetDescriptor {
 }
 
 /**
- * The object key for one partition of a dataset.
- *
- * The single definition of the layout. `partitionKey("events", "2026-08-14")` is
- * `events/service_date=2026-08-14/events.jsonl.gz`, and the modelling repo builds
- * the identical key from the same descriptor rather than from a copy of this
- * rule.
+ * The single definition of the object layout: `datasetKey("events",
+ * "2026-08-14")` is `events/service_date=2026-08-14/events.jsonl.gz`. The
+ * modelling repo builds the identical key from the same descriptor.
  */
 export function datasetKey(name: DatasetName, partition: string): string {
   const { prefix, partitionBy, objectName, format } = DATASETS[name];

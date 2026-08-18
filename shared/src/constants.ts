@@ -1,37 +1,30 @@
-/** Project-wide constants. */
-
 import type { FeedType } from "./domain";
 
-/** IANA timezone for all NJT service. Used for service-date and hour-of-day math. */
+/** IANA timezone for all NJT service. */
 export const NJT_TIMEZONE = "America/New_York";
 
-/**
- * On-time thresholds (seconds) at which we compute OTP. The whole point of the
- * project is showing OTP at these stricter thresholds next to NJT's loose one.
- */
+/** Thresholds (seconds) at which OTP is computed, all stricter than NJT's. */
 export const OTP_THRESHOLDS_SECONDS = [300, 600, 900, 1800, 3600] as const;
 export type OtpThresholdSeconds = (typeof OTP_THRESHOLDS_SECONDS)[number];
 
-/** NJT's own published threshold: "on time" means within 6 minutes. */
+/** NJT's published threshold: "on time" means within 6 minutes. */
 export const NJT_OFFICIAL_THRESHOLD_SECONDS = 360;
 
 /**
- * The strict headline threshold (5 minutes) at which the project computes its
- * primary OTP figure, and the arrival window for the connection amplification
- * test. SSOT for the pipeline's `ON_TIME_SECS` and the default late threshold.
+ * The headline threshold, and the arrival window for the amplification test.
+ * SSOT for the pipeline's `ON_TIME_SECS` and the default late threshold.
  */
 export const OTP_STRICT_THRESHOLD_SECONDS = 300;
 
 /**
- * OTP color-band thresholds (percent). At or above `good` renders green, at or
- * above `fair` renders amber, below is red. SSOT for `otpColor*` in the app.
+ * At or above `good` renders green, at or above `fair` amber, below red. SSOT
+ * for `otpColor*` in the app.
  */
 export const OTP_GOOD_THRESHOLD_PERCENT = 90;
 export const OTP_FAIR_THRESHOLD_PERCENT = 75;
 
 export const DIRECTIONS = ["inbound", "outbound"] as const;
 
-/** Rolling/daily windows the aggregator maintains and the API serves. */
 export const WINDOW_KINDS = [
   "daily",
   "rolling_7d",
@@ -40,7 +33,6 @@ export const WINDOW_KINDS = [
 ] as const;
 export type WindowKind = (typeof WINDOW_KINDS)[number];
 
-/** Number of days each rolling window spans (daily = 1). */
 export const WINDOW_DAYS: Record<WindowKind, number> = {
   daily: 1,
   rolling_7d: 7,
@@ -50,20 +42,19 @@ export const WINDOW_DAYS: Record<WindowKind, number> = {
 
 export const SCOPE_KINDS = ["system", "line"] as const;
 export type ScopeKind = (typeof SCOPE_KINDS)[number];
-/** Stable scope id used for the system-wide rollup. */
+/** Scope id for the system-wide rollup. */
 export const SYSTEM_SCOPE_ID = "system";
 
 export const HEATMAP_TYPES = ["hour_of_day", "day_of_week"] as const;
 export type HeatmapType = (typeof HEATMAP_TYPES)[number];
 
 /**
- * Delay distribution buckets, in seconds. `maxSeconds: null` means open-ended.
- * Ranges are [minSeconds, maxSeconds). The "early" bucket captures trains that
- * beat the schedule.
+ * Ranges are [minSeconds, maxSeconds), in seconds; `maxSeconds: null` is
+ * open-ended.
  */
 export interface DelayBucket {
   label: string;
-  /** Compact label for dense axes/legends (SSOT for the app's histogram). */
+  /** Compact label for dense axes/legends. */
   shortLabel: string;
   minSeconds: number;
   maxSeconds: number | null;
@@ -79,10 +70,7 @@ export const DELAY_BUCKETS: readonly DelayBucket[] = [
   { label: "60+ min", shortLabel: "60+", minSeconds: 3600, maxSeconds: null },
 ] as const;
 
-/**
- * Weekday peak service windows (local time), used to split connection
- * reliability into peak vs off-peak. Inclusive start, exclusive end, 24h.
- */
+/** Weekday peak windows, local time. Inclusive start, exclusive end, 24h. */
 export const PEAK_WINDOWS = {
   amPeakStartHour: 6,
   amPeakEndHour: 10,
@@ -90,29 +78,27 @@ export const PEAK_WINDOWS = {
   pmPeakEndHour: 20,
 } as const;
 
-/** Connection sample size below which the UI shows a "preliminary" warning. */
+/** Sample size below which the UI shows a "preliminary" warning. */
 export const LOW_SAMPLE_THRESHOLD = 30;
 
 /**
- * Connection reliability defaults: the maximum wait (seconds) between an
- * inbound arrival and an outbound departure for the pair to count as a
- * transfer, and the minimum buffer required to call the connection made.
- * SSOT for the aggregator's `maxTransferWindowSeconds` / `minTransferBufferSeconds`.
+ * Maximum wait for a pair to count as a transfer, and the buffer required to
+ * call the connection made. SSOT for the aggregator's
+ * `maxTransferWindowSeconds` / `minTransferBufferSeconds`.
  */
 export const TRANSFER_WINDOW_DEFAULT_SECONDS = 1800;
 export const TRANSFER_BUFFER_DEFAULT_SECONDS = 0;
 
 /**
- * Line name stored when a real-time trip's route maps to no catalog line.
- * Explicitly unknown beats echoing the raw GTFS `route_id`, which used to be
- * persisted as if it were a line name (a station showing a line called "10").
+ * Stored when a real-time trip's route maps to no catalog line. Never echo the
+ * raw GTFS `route_id` here — it renders as a line called "10".
  */
 export const UNKNOWN_LINE_NAME = "Unknown line";
 
 /** GTFS-RT reports speed in metres/second; the UI shows mph. */
 export const MPS_TO_MPH = 2.236936;
 
-/** GTFS-RT and XML API daily request budgets (PRD compliance). */
+/** NJT-imposed daily request budgets. */
 export const RATE_LIMITS = {
   gtfsRtPerDay: 100_000,
   xmlApiPerDay: 40_000,
@@ -125,14 +111,11 @@ export const DISCLAIMER_TEXT =
   "Not guaranteed accurate, complete, or real-time.";
 
 /**
- * Every GTFS-RT feed the pipeline records, in one place.
- *
- * Anything walking the archive has to visit each feed in turn — the snapshot
- * index is keyed `(feed_type, …)`, so per-feed paging is what keeps a walk an
- * ordered index scan rather than a sort. The assertion below fails to compile if
- * a new {@link FeedType} is added without being listed here, which is the point:
- * a forgotten feed would look like an empty one, and the archive copy would
- * conclude it had moved everything.
+ * Every GTFS-RT feed the pipeline records. Anything walking the archive visits
+ * each in turn: the snapshot index is keyed `(feed_type, …)`, so per-feed paging
+ * keeps a walk an ordered index scan rather than a sort. The assertion below
+ * fails to compile if a {@link FeedType} is missing here — a forgotten feed
+ * looks like an empty one, and the archive copy would report it fully moved.
  */
 export const FEED_TYPES = ["TripUpdates", "VehiclePositions", "ServiceAlerts"] as const;
 
@@ -141,12 +124,9 @@ const _everyFeedTypeIsListed: UnlistedFeedType extends never ? true : never = tr
 void _everyFeedTypeIsListed;
 
 /**
- * How long TripUpdates may go without a successful fetch before ingest counts
- * as stalled.
- *
- * Shared because two processes have to agree on it: the pipeline alerts on it,
- * and the API reports it at `/health/live` for an external monitor to watch. An
- * hour is several times the 30-second poll interval, so a transient NJT outage
- * or a restart does not trip it, while a genuinely stopped feed does.
+ * How long TripUpdates may be silent before ingest counts as stalled. Shared
+ * because the pipeline alerts on it and the API reports it at `/health/live`.
+ * An hour is many times the 30-second poll interval, so a transient NJT outage
+ * or a restart does not trip it.
  */
 export const NO_TRIP_UPDATES_ALERT_MS = 3_600_000;

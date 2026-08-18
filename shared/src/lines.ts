@@ -1,24 +1,17 @@
 /**
- * Reference catalog of NJ Transit commuter rail lines.
- *
- * IMPORTANT: the authoritative line list at runtime is data-driven — it comes
- * from distinct `route_id`s observed in the ingested GTFS static `routes.txt`.
- * This catalog exists for (a) friendly display names and slugs, (b) seeding
- * realistic demo data, and (c) flagging the two lines that carry Amtrak-
- * attributed delay. Real `routeId`s are resolved at ingest time, so callers
- * should treat `routeId` here as a best-effort default, not ground truth.
+ * Display names, slugs, and Amtrak attribution for the rail lines. NOT the
+ * authoritative line list: that comes from `route_id`s observed in the ingested
+ * GTFS `routes.txt`, so `defaultRouteId` here is a fallback, not ground truth.
  */
 
 export interface RailLine {
-  /** Stable URL-safe slug used in the API and deep links. */
+  /** URL-safe slug used in the API and deep links. */
   id: string;
-  /** Human-readable line name as NJT publishes it. */
+  /** As NJT publishes it. */
   name: string;
-  /** Short label for compact UI. */
   shortName: string;
-  /** Best-effort GTFS route_id default (verified/overridden from routes.txt at ingest). */
   defaultRouteId: string;
-  /** Whether NJT attributes some of this line's delay to Amtrak (NEC / NJCL). */
+  /** NJT attributes some of this line's delay to Amtrak (NEC / NJCL only). */
   hasAmtrakAttribution: boolean;
 }
 
@@ -48,7 +41,6 @@ export function findLineByName(name: string): RailLine | undefined {
   return BY_NAME.get(name);
 }
 
-/** Whether a line (by display name) carries NJT-attributed Amtrak delay. */
 export function lineHasAmtrakAttribution(name: string): boolean {
   return BY_NAME.get(name)?.hasAmtrakAttribution ?? false;
 }

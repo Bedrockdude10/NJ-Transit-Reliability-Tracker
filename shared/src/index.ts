@@ -1,5 +1,3 @@
-/** Public surface of the shared package. */
-
 export * from "./constants";
 export * from "./domain";
 export * from "./datasets";
@@ -7,14 +5,10 @@ export * from "./units";
 export * from "./predictions";
 export * from "./aggregates";
 export * from "./api";
-// Runtime validators for the DTOs above. Exported from the index deliberately:
-// the app is the consumer that needs them, since it is the side that receives
-// a response from a separately-deployed API.
+// Runtime validators for the DTOs above, exported from the index because the app
+// needs them: it receives responses from a separately-deployed API.
 export * from "./api.zod";
 export * from "./predictions.zod";
-// Runtime validators for the DTOs above. Exported from the index deliberately:
-// the app is the consumer that needs them, since it is the side that receives
-// a response from a separately-deployed API.
 
 export * from "./lines";
 export * from "./geo";
