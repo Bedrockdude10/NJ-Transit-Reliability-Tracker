@@ -8,7 +8,6 @@ import {
 } from "@njt/shared";
 import { notFound, round1, slugify } from "./util";
 
-/** Build a line list item, enriched with NJT's most recent published month. */
 export function toLineItem(
   routeId: string,
   lineName: string,
@@ -30,12 +29,10 @@ export function toLineItem(
   };
 }
 
-/** All lines in the current GTFS version (empty before any GTFS is ingested). */
 export function listLines(repos: Repositories): LineListItem[] {
   const version = repos.gtfs.currentVersion();
   if (!version) return [];
-  // One query for every line's latest published month, rather than one
-  // full-history query per line (N+1).
+  // One query for every line's latest month, not one per line (N+1).
   const latestByLine = repos.official.latestPerLine();
   return repos.gtfs
     .routes(version.versionId)
@@ -48,28 +45,23 @@ export interface ResolvedLine {
   name: string;
 }
 
-/** The public slug for a line name — the same value `toLineItem` publishes. */
+/** Must stay identical to the slug `toLineItem` publishes. */
 function slugFor(lineName: string): string {
   return findLineByName(lineName)?.id ?? slugify(lineName);
 }
 
 /**
- * Resolve a public line identifier to its GTFS route_id + display name.
- *
- * Accepts either form `/lines` publishes: the GTFS `route_id` (`id`, e.g. "NE")
- * or the catalog slug (`slug`, e.g. "northeast-corridor"). Returns null when
- * neither matches — callers must 404 rather than serve a zero-filled summary
- * for a line that does not exist.
+ * Accepts either form `/lines` publishes: the GTFS `route_id` or the catalog slug.
+ * Null when neither matches — callers must 404, not serve a zero-filled summary.
  */
 export function resolveLine(repos: Repositories, lineId: string): ResolvedLine | null {
   const version = repos.gtfs.currentVersion();
 
-  // 1. A GTFS route_id, as published in `id`.
   const fromGtfs = version ? repos.gtfs.lineNameForRoute(version.versionId, lineId) : null;
   if (fromGtfs) return { routeId: lineId, name: fromGtfs };
 
-  // 2. A slug, as published in `slug` — mapped back through the live GTFS
-  //    routes so the returned route_id matches the real-time feed.
+  // Map a slug back through the live GTFS routes, so the returned route_id
+  // matches the real-time feed.
   if (version) {
     for (const route of repos.gtfs.routes(version.versionId)) {
       if (route.mode === "light_rail") continue;
@@ -77,27 +69,24 @@ export function resolveLine(repos: Repositories, lineId: string): ResolvedLine |
     }
   }
 
-  // 3. The reference catalog, so ids and slugs still resolve before any GTFS
-  //    has been ingested. `defaultRouteId` is best-effort (see shared/lines.ts).
+  // Fall back to the reference catalog so ids resolve before any GTFS is
+  // ingested; its `defaultRouteId` is best-effort (see shared/lines.ts).
   const catalog = RAIL_LINES.find((l) => l.defaultRouteId === lineId || l.id === lineId);
   if (catalog) return { routeId: catalog.defaultRouteId, name: catalog.name };
 
   return null;
 }
 
-/** `resolveLine` or a 404 — for route handlers, which must not serve zeros. */
 export function requireLine(repos: Repositories, lineId: string): ResolvedLine {
   const line = resolveLine(repos, lineId);
   if (!line) notFound(`unknown line "${lineId}"`);
   return line;
 }
 
-/** Stations with the human line names that serve them. */
 export function listStations(repos: Repositories): { stopId: string; stopName: string; lines: string[] }[] {
   const version = repos.gtfs.currentVersion();
   if (!version) return [];
-  // Resolve route_id → line name once, in memory, rather than one query per
-  // (station, route) pair.
+  // Resolve route_id → line name once, not one query per (station, route) pair.
   const lineByRoute = new Map(repos.gtfs.routes(version.versionId).map((r) => [r.routeId, r.lineName]));
   return repos.gtfs.stationsWithLines(version.versionId).map((station) => ({
     stopId: station.stopId,

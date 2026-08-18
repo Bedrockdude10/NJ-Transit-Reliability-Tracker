@@ -32,7 +32,6 @@ import { monthRange, resolveRange } from "../dates";
 import { resolveOfficialWindow } from "../official-window";
 import { CACHE_CONTROL_DAILY, parseHeatmapType, parseLimit, round1 } from "../util";
 
-/** Monday (ISO week start) of a YYYY-MM-DD date, as YYYY-MM-DD. */
 function weekStart(date: string): string {
   const { year, month, day } = parseDateString(date);
   const d = new Date(Date.UTC(year, month - 1, day));
@@ -91,8 +90,7 @@ export function lineRoutes(repos: Repositories): Hono {
     const { routeId, name } = requireLine(repos, c.req.param("lineId"));
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const dist = repos.aggregates.getDelayDistributionDailyRows("line", routeId, range.from, range.to);
-    // One ranged query across all directions, grouped in memory (was three
-    // getOtpDailyRows differing only by direction).
+    // One ranged query across all directions, grouped in memory (N+1).
     const byDirection = new Map<string, OtpDailyRow[]>();
     for (const row of repos.aggregates.getOtpDailyRowsAllDirections("line", routeId, range.from, range.to)) {
       const list = byDirection.get(row.direction);
@@ -101,8 +99,6 @@ export function lineRoutes(repos: Repositories): Hono {
     }
     const otpFor = (dir: "all" | "inbound" | "outbound") => byDirection.get(dir) ?? [];
     const months = monthRange(range);
-    // NJT publishes monthly and in arrears; fall back to the newest published
-    // month rather than blanking the comparison on a recent-dates request.
     const official = resolveOfficialWindow(
       months,
       (from, to) => repos.official.getForLineRange(name, from, to),
@@ -116,7 +112,7 @@ export function lineRoutes(repos: Repositories): Hono {
       from: range.from,
       to: range.to,
       overall: buildOtpSummary(otpFor("all"), dist),
-      // Per-direction distribution isn't stored; direction summaries focus on OTP/counts.
+      // Per-direction distribution isn't stored, hence the empty dist rows.
       inbound: buildOtpSummary(otpFor("inbound"), []),
       outbound: buildOtpSummary(otpFor("outbound"), []),
       njtOfficial: buildOfficialComparison(officialMetrics),
@@ -147,13 +143,12 @@ export function lineRoutes(repos: Repositories): Hono {
     return c.json(response);
   });
 
-  // Full monthly history: NJT's published OTP (real, back to 2017) joined with
-  // this project's monthly OTP wherever independent data exists. Newest first.
+  // NJT's published OTP goes back to 2017; this project's only covers whatever
+  // it has independently observed. Newest month first.
   router.get("/:lineId/monthly", (c) => {
     const { routeId, name } = requireLine(repos, c.req.param("lineId"));
 
-    // Monthly project OTP is bucketed in SQL (GROUP BY the YYYY-MM prefix)
-    // rather than pulling every daily row across all history and re-bucketing.
+    // Bucketed in SQL, not by pulling every daily row across all history.
     const projectByMonth = new Map<string, { operated: number; onTime15: number }>();
     for (const row of repos.aggregates.getOtpMonthly("line", routeId, "all", ON_TIME_15_MIN)) {
       projectByMonth.set(row.month, { operated: row.tripsOperated, onTime15: row.onTimeCount });
@@ -213,13 +208,6 @@ export function lineRoutes(repos: Repositories): Hono {
     return c.json(response);
   });
 
-  /**
-   * GET /lines/:lineId/propagation — where along the route delay accumulates.
-   *
-   * Built from the daily station aggregates rather than raw events, so a year
-   * of history answers instantly; the trade-off is that it describes the
-   * typical train rather than following individual ones.
-   */
   router.get("/:lineId/propagation", (c) => {
     const { routeId, name } = requireLine(repos, c.req.param("lineId"));
     const range = resolveRange(c.req.query("from"), c.req.query("to"));

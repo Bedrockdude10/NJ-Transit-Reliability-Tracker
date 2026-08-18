@@ -6,7 +6,6 @@ import { monthRange, resolveRange, type MonthRange } from "../dates";
 import { resolveOfficialWindow } from "../official-window";
 import { CACHE_CONTROL_DAILY } from "../util";
 
-/** The inclusive (min, max) month span of a non-empty set of monthly rows. */
 function monthSpanOf(rows: readonly YearMonth[]): MonthRange {
   const index = (m: YearMonth) => m.year * 12 + m.month;
   let from = rows[0]!;
@@ -18,7 +17,6 @@ function monthSpanOf(rows: readonly YearMonth[]): MonthRange {
   return { from: { year: from.year, month: from.month }, to: { year: to.year, month: to.month } };
 }
 
-/** GET /lightrail/summary — systemwide light-rail OTP + per-line MDBF. */
 export function lightRailRoutes(repos: Repositories): Hono {
   const router = new Hono();
 
@@ -26,8 +24,6 @@ export function lightRailRoutes(repos: Repositories): Hono {
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const months = monthRange(range);
 
-    // Light rail figures are monthly and published in arrears, so a trailing
-    // 30-day request contains none — fall back to the newest published month.
     const otp = resolveOfficialWindow(
       months,
       (from, to) => repos.lightRail.getOtpForRange(from, to),
@@ -36,8 +32,8 @@ export function lightRailRoutes(repos: Repositories): Hono {
     const otpRows = otp.metrics;
     const otpPercent = averageLightRailOtp(otpRows);
 
-    // MDBF is published alongside OTP, so reuse the months OTP resolved to
-    // rather than falling back independently and mixing periods in one panel.
+    // Reuse the months OTP resolved to; falling back independently would mix
+    // periods in one panel.
     const mdbfMonths = otp.coverage?.outsideRequestedRange ? monthSpanOf(otpRows) : months;
     const byLine = new Map<string, { sum: number; count: number }>();
     for (const row of repos.lightRail.getMdbfForRange(mdbfMonths.from, mdbfMonths.to)) {

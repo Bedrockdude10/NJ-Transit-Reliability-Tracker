@@ -1,29 +1,11 @@
-/** Small API-wide helpers. */
-
 import { HEATMAP_TYPES, type HeatmapType } from "@njt/shared";
 
-/**
- * Cache-Control for stable, expensive endpoints backed by daily aggregates.
- * A short cache window (with a day of stale-while-revalidate) — daily rollups
- * change at most once per service date, so brief caching is safe. NOT applied
- * to /health, which must reflect live pipeline state.
- */
+/** For daily-aggregate endpoints only — never /health, which must reflect live pipeline state. */
 export const CACHE_CONTROL_DAILY = "public, max-age=3600, stale-while-revalidate=86400";
 
-/**
- * Cache-Control for data that is refreshed during the day.
- *
- * Predictions are re-imported hourly and re-published whenever a model runs, so
- * an hour-long cache would routinely serve a superseded forecast. It also
- * interacts badly with the app's response validation: after a deploy that adds a
- * field, a client holding a cached body fails the contract check and renders an
- * error until the cache expires — which is exactly what happened while testing
- * this endpoint. A minute keeps the browser from hammering it without either
- * effect.
- */
+/** For data refreshed intraday; a longer cache serves superseded rows and fails the app's contract check after a field is added. */
 export const CACHE_CONTROL_MINUTE = "public, max-age=60, stale-while-revalidate=300";
 
-/** An error carrying an HTTP status, thrown by handlers and mapped to JSON. */
 export class ApiError extends Error {
   constructor(
     readonly status: 400 | 404 | 500,
@@ -51,42 +33,26 @@ export function slugify(name: string): string {
     .replace(/^-+|-+$/g, "");
 }
 
-/** Round to one decimal place — percentages and average-delay values. */
 export function round1(value: number): number {
   return Math.round(value * 10) / 10;
 }
 
-/**
- * Parse a positive-integer query value (page, pageSize, limit): falls back when
- * absent/invalid/<1, floors fractional input (so it never yields a fractional
- * OFFSET/page), and clamps to `max` when one is given.
- */
 export function parsePositiveInt(value: string | undefined, fallback: number, max = Number.MAX_SAFE_INTEGER): number {
   const n = value ? Number(value) : fallback;
   if (!Number.isFinite(n) || n < 1) return fallback;
   return Math.min(Math.floor(n), max);
 }
 
-/**
- * Parse a `?limit=` query value: falls back when absent/invalid/<1, floors,
- * and clamps to a maximum of 100.
- */
 export function parseLimit(value: string | undefined, fallback: number): number {
   return parsePositiveInt(value, fallback, 100);
 }
 
-/**
- * Parse an integer query value clamped to `[min, max]`, falling back when
- * absent or unparseable. Unlike {@link parsePositiveInt} this has a floor other
- * than 1 — a departure-board horizon of 2 minutes is valid input but useless.
- */
 export function parseBoundedInt(value: string | undefined, fallback: number, min: number, max: number): number {
   const n = value ? Number(value) : fallback;
   if (!Number.isFinite(n)) return fallback;
   return Math.min(Math.max(Math.floor(n), min), max);
 }
 
-/** Parse a `?type=` heatmap query value, defaulting to `hour_of_day`. */
 export function parseHeatmapType(value: string | undefined): HeatmapType {
   const type = value ?? "hour_of_day";
   if (!HEATMAP_TYPES.includes(type as HeatmapType)) badRequest(`type must be one of ${HEATMAP_TYPES.join(", ")}`);

@@ -3,19 +3,9 @@ import { LOW_SAMPLE_THRESHOLD, type StationRanking, type StationRankingSort } fr
 import { round1 } from "./util";
 
 /**
- * Rank stations so problems surface instead of hiding in an alphabetical list.
- *
- * Two very different questions get asked of a station, and they need separate
- * orderings:
- *
- *  - **delay**: how late are trains when they get here? Mostly inherited from
- *    up the line, so it says where riders *feel* delay.
- *  - **amplification**: how often does a train arrive on time and leave late?
- *    That is delay the station itself introduces — a dwell, platform or
- *    crewing problem — and it is the one an operator can actually fix.
- *
- * Ranking amplifies noise, so anything under the sample floor is withheld
- * rather than allowed to top a chart on a handful of observations.
+ * `delay` is mostly inherited from up the line — where riders feel it.
+ * `amplification` is how often a train arrives on time and leaves late — delay
+ * the station itself introduces. Under the sample floor, both are withheld.
  */
 
 export interface StationNaming {

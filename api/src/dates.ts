@@ -8,7 +8,6 @@ export interface DateRange {
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 
-/** Days in a (1-12) month of a given year, accounting for leap years. */
 function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
 }
@@ -25,10 +24,7 @@ function validateDate(value: string, label: string): string {
   return value;
 }
 
-/**
- * Resolve `from`/`to` query params. Both default to a trailing 30-day window
- * ending "today" in NJT local time (PRD: "default to last 30 days").
- */
+/** Defaults to a trailing 30 days ending today, NJT-local (PRD: "last 30 days"). */
 export function resolveRange(fromParam?: string, toParam?: string, nowMs: number = Date.now()): DateRange {
   const today = toLocalDateString(Math.floor(nowMs / 1000));
   const to = toParam ? validateDate(toParam, "to") : today;
@@ -42,10 +38,9 @@ export interface MonthRange {
   to: { year: number; month: number };
 }
 
-/** Inclusive month bounds wide enough to cover all published history. */
+/** Deliberately absurd bounds: wide enough to cover all published history. */
 export const ALL_MONTHS: MonthRange = { from: { year: 2000, month: 1 }, to: { year: 2100, month: 12 } };
 
-/** The inclusive month range covering a date range, for official-metric joins. */
 export function monthRange(range: DateRange): MonthRange {
   const f = parseDateString(range.from);
   const t = parseDateString(range.to);

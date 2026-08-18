@@ -60,9 +60,8 @@ export function alertRoutes(repos: Repositories): Hono {
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const rows = repos.alerts.frequency(startOfDayMs(range.from), endOfDayMs(range.to));
 
-    // Resolve the GTFS version and route_id → line name once. Unlike
-    // `resolveLine`, this echoes an unknown route_id rather than 404ing: alert
-    // routes come from NJT's feed and may reference routes outside the catalog.
+    // Unlike `resolveLine`, echo an unknown route_id rather than 404ing: alert
+    // routes come from NJT's feed and may name routes outside the catalog.
     const version = repos.gtfs.currentVersion();
     const nameByRoute = new Map(
       version ? repos.gtfs.routes(version.versionId).map((r) => [r.routeId, r.lineName] as const) : [],

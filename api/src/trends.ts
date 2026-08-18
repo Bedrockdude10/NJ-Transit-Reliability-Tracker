@@ -3,24 +3,12 @@ import type { LineTrend, TrendDirection } from "@njt/shared";
 import { round1 } from "./util";
 
 /**
- * Detect which lines have actually changed, rather than which ones happen to
- * look different this fortnight.
- *
- * Comparing two on-time rates is easy; knowing whether the difference means
- * anything is the hard part, and getting it wrong turns a reliability tool into
- * a rumour mill. A fixed threshold ("flag anything over 3 points") can't tell a
- * real shift on a busy line from noise on a quiet one, so this screens with a
- * two-proportion z-test instead: the same delta is called on the Northeast
- * Corridor and withheld on the Princeton Shuttle, which is the correct
- * behaviour.
- *
- * The test assumes independent trials. Trains on the same day share weather,
- * crew and infrastructure, so they are *not* independent, and the test will
- * therefore flag slightly more often than its nominal 5%. It is used here as a
- * screen — "worth looking at" — not as proof, and the UI says so.
+ * A two-proportion z-test, not a fixed point threshold, so the same delta is
+ * called on a busy line and withheld on a quiet one. Trains on one day share
+ * weather and crew, so trials aren't independent and this over-flags: a screen,
+ * not proof.
  */
 
-/** Two-sided z for a difference in proportions. Null when either side is empty. */
 export function twoProportionZ(
   successesA: number,
   totalA: number,
@@ -31,8 +19,7 @@ export function twoProportionZ(
   const pA = successesA / totalA;
   const pB = successesB / totalB;
   const pooled = (successesA + successesB) / (totalA + totalB);
-  // A pooled rate at either extreme leaves no variance to divide by; with every
-  // train on time in both periods there is, correctly, nothing to report.
+  // A pooled rate at either extreme leaves no variance to divide by.
   const variance = pooled * (1 - pooled) * (1 / totalA + 1 / totalB);
   if (variance <= 0) return null;
   return (pA - pB) / Math.sqrt(variance);
@@ -41,7 +28,6 @@ export function twoProportionZ(
 /** |z| beyond this is conventionally "unlikely to be chance" at p < 0.05. */
 export const SIGNIFICANCE_Z = 1.96;
 
-/** Below this many trips in either period, a rate is not worth comparing. */
 export const MIN_TRIPS_PER_PERIOD = 50;
 
 export interface PeriodTotals {

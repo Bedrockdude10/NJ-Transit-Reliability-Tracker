@@ -13,7 +13,6 @@ function csvResponse(c: Context, filename: string, body: string): Response {
   return c.body(body);
 }
 
-/** GET /export — same data as the summary endpoints, as a downloadable CSV. */
 export function exportRoutes(repos: Repositories): Hono {
   const router = new Hono();
 

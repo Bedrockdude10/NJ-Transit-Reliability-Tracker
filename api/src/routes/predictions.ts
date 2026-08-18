@@ -8,28 +8,9 @@ import { predictionInterval } from "@njt/shared";
 import { Hono } from "hono";
 import { CACHE_CONTROL_MINUTE } from "../util";
 
-/**
- * `GET /predictions?date=` — model output for one service date.
- *
- * Read from SQLite like everything else. The predictions were produced by
- * `njt-delay-modeling`, written to object storage, and imported by the pipeline;
- * serving them from a local table keeps a bucket outage out of the request path.
- *
- * The endpoint's most important job is the empty answer. No model has run yet,
- * and this project publishes no synthetic data, so an unpredicted day says so
- * explicitly — `available: false` with the dates that *do* hold predictions — and
- * a screen can render that calmly instead of treating it as a failure.
- */
 const SERVICE_DATE = /^\d{4}-\d{2}-\d{2}$/;
 
-/**
- * How many legs a response carries.
- *
- * A day holds ~50,000, nearly all of them small and most of them repetitive —
- * the Princeton shuttle predicted on time, forty times over. Returning them all
- * is ~5 MB of JSON for a phone to parse in order to show a table nobody reads
- * past the top of. The interesting ones are the trains in trouble.
- */
+/** A day holds ~50,000 legs; returning them all is ~5 MB of JSON. */
 const DEFAULT_LIMIT = 100;
 const MAX_LIMIT = 1000;
 
@@ -49,8 +30,7 @@ export function predictionRoutes(repos: Repositories): Hono {
     }
 
     const availableDates = repos.predictions.serviceDates();
-    // With no date asked for, the newest predicted day is the useful default:
-    // today is usually empty, since predictions are published per service date.
+    // Today is usually empty, so default to the newest predicted day.
     const serviceDate = requested ?? availableDates.at(-1) ?? new Date().toISOString().slice(0, 10);
 
     const line = c.req.query("line");
@@ -66,8 +46,6 @@ export function predictionRoutes(repos: Repositories): Hono {
     const stopName = (stopId: string) =>
       (version && repos.gtfs.stopName(version.versionId, stopId)) ?? stopId;
 
-    // Largest predicted delay first, then truncate: the top of this list is the
-    // reason anyone opened the page.
     const ranked = [...stored].sort(
       (a, b) => Math.abs(b.predictedDelaySeconds) - Math.abs(a.predictedDelaySeconds),
     );
@@ -83,9 +61,8 @@ export function predictionRoutes(repos: Repositories): Hono {
       errorSeconds: errorSeconds(prediction),
     }));
 
-    // Scored over the *whole* day, not the truncated list: the headline is how
-    // the model did, and ranking by delay first would score it only on the
-    // hardest cases it faces.
+    // Score the whole day, not `predictions`: that is ranked by delay, so it
+    // would score the model only on its hardest cases.
     const scored = stored.filter((p) => p.actualDelaySeconds !== null);
     const meanAbsoluteErrorSeconds = scored.length
       ? scored.reduce(

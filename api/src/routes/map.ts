@@ -16,7 +16,6 @@ import { requireLine } from "../catalog";
 import { monthRange, resolveRange } from "../dates";
 import { CACHE_CONTROL_DAILY, round1 } from "../util";
 
-/** GET /map — real network geometry + per-line reliability for the system map. */
 export function mapRoutes(repos: Repositories): Hono {
   const router = new Hono();
 
@@ -29,11 +28,10 @@ export function mapRoutes(repos: Repositories): Hono {
     const months = monthRange(range);
     const stationIds = new Set<string>();
 
-    // Systemwide light-rail OTP (one figure, shared by the light rail lines).
+    // One figure, shared by every light rail line.
     const lightRailOtp = averageLightRailOtp(repos.lightRail.getOtpForRange(months.from, months.to));
 
-    // All lines' official metrics in one ranged query, grouped by line name in
-    // memory (rather than one getForLineRange per route).
+    // One ranged query for every line, grouped in memory (N+1).
     const officialByLine = new Map<string, OfficialNjtMetric[]>();
     for (const m of repos.official.getAllForRange(months.from, months.to)) {
       const list = officialByLine.get(m.lineName);
@@ -41,8 +39,7 @@ export function mapRoutes(repos: Repositories): Hono {
       else officialByLine.set(m.lineName, [m]);
     }
 
-    // All lines' OTP daily rows in one ranged query, grouped by scope_id
-    // (route id) in memory — rather than one getOtpDailyRows per route (N+1).
+    // Likewise; `scopeId` is the route id here.
     const otpByRoute = new Map<string, OtpDailyRow[]>();
     for (const row of repos.aggregates.getOtpDailyRowsForScope("line", "all", range.from, range.to)) {
       const list = otpByRoute.get(row.scopeId);
@@ -83,8 +80,7 @@ export function mapRoutes(repos: Repositories): Hono {
     return c.json({ from: range.from, to: range.to, stations, lines } satisfies MapResponse);
   });
 
-  // Live train positions. Unlike the rest of the map this is not cacheable —
-  // it changes every poll — so it's a separate route with no-store.
+  // Separate from /map because it changes every poll and so cannot be cached.
   router.get("/vehicles", (c) => {
     const now = Date.now();
     const routeId = c.req.query("lineId");

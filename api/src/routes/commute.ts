@@ -6,13 +6,6 @@ import { stopName } from "../catalog";
 import { resolveRange } from "../dates";
 import { CACHE_CONTROL_DAILY, badRequest, round1 } from "../util";
 
-/**
- * GET /commute?origin=&destination= — reliability of one journey.
- *
- * The rest of the app answers "how is this line doing?"; this answers "how does
- * the train I actually take do?", which is the question riders ask and no
- * official reporting covers.
- */
 export function commuteRoutes(repos: Repositories): Hono {
   const router = new Hono();
 

@@ -26,12 +26,11 @@ import { buildLineTrend, sumPeriod } from "../trends";
 import { resolveOfficialWindow } from "../official-window";
 import { CACHE_CONTROL_DAILY, parseBoundedInt, parseHeatmapType } from "../util";
 
-/** A fortnight against the fortnight before — long enough to smooth a bad week. */
+/** A fortnight, so one bad week cannot carry the comparison. */
 const DEFAULT_TREND_DAYS = 14;
 /** Compare at the strict threshold the project leads with, not NJT's 6 minutes. */
 const TREND_THRESHOLD = "300";
 
-/** /system/summary and /system/heatmap — system-wide rollups. */
 export function systemRoutes(repos: Repositories): Hono {
   const router = new Hono();
 
@@ -41,8 +40,6 @@ export function systemRoutes(repos: Repositories): Hono {
     const dist = repos.aggregates.getDelayDistributionDailyRows("system", SYSTEM_SCOPE_ID, range.from, range.to);
     const months = monthRange(range);
 
-    // NJT publishes monthly and in arrears, so the default 30-day window has no
-    // published months — fall back to the newest that exist and say so.
     const official = resolveOfficialWindow(
       months,
       (from, to) => repos.official.getAllForRange(from, to),
@@ -68,13 +65,6 @@ export function systemRoutes(repos: Repositories): Hono {
     return c.json(response);
   });
 
-  /**
-   * GET /system/trends — which lines have measurably changed.
-   *
-   * Compares the last `days` against the `days` immediately before, per line.
-   * The comparison is screened for noise (see ../trends.ts) so a quiet line
-   * cannot top the list on a handful of trips.
-   */
   router.get("/trends", (c) => {
     const days = parseBoundedInt(c.req.query("days"), DEFAULT_TREND_DAYS, 3, 180);
     const today = toLocalDateString(Math.floor(Date.now() / 1000));
@@ -83,8 +73,7 @@ export function systemRoutes(repos: Repositories): Hono {
     const priorTo = addDays(recentFrom, -1);
     const priorFrom = addDays(priorTo, -(days - 1));
 
-    // Two ranged queries across every line, grouped in memory — not one pair
-    // of queries per line.
+    // Two ranged queries for every line, grouped in memory — not a pair per line.
     const byScope = (from: string, to: string) => {
       const map = new Map<string, OtpDailyRow[]>();
       for (const row of repos.aggregates.getOtpDailyRowsForScope("line", "all", from, to)) {

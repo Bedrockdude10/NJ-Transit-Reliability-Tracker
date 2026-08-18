@@ -3,12 +3,8 @@ import type { MonthRange } from "./dates";
 
 /**
  * Official NJT figures are monthly and published in arrears, so the default
- * trailing-30-day window usually contains no published month — which used to
- * blank the official comparison, cancellations, fleet MDBF and the entire light
- * rail summary on first load.
- *
- * Resolve such a request against the newest month that *does* exist and report
- * the substitution, so the response carries real data and says what it covers.
+ * trailing-30-day window usually contains no published month. Fall back to the
+ * newest month that exists and report the substitution in `coverage`.
  */
 export interface ResolvedOfficialWindow<T> {
   metrics: T[];
@@ -32,7 +28,6 @@ export function resolveOfficialWindow<T extends YearMonth>(
   return { metrics: fallback, coverage: coverageOf(fallback, true) };
 }
 
-/** The real span of a metric set, from the rows themselves. */
 function coverageOf(metrics: readonly YearMonth[], outsideRequestedRange: boolean): PublishedCoverage {
   let min = metrics[0]!;
   let max = metrics[0]!;

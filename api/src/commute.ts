@@ -8,17 +8,11 @@ import {
 import { round1 } from "./util";
 
 /**
- * Turn observed journeys between two stops into the answer riders actually
- * want: not "how is the line doing?" but "how does *my* train do?".
- *
- * Reliability is judged at the destination, because that is where lateness is
- * felt — a train that leaves on time and arrives twenty minutes late is not a
- * punctual train. Departures are grouped by their timetabled slot rather than
- * by trip id, since the trip id changes across schedule revisions while "the
- * 7:42" is the thing a commuter actually plans around.
+ * Reliability is judged at the destination, not the origin. Departures group by
+ * timetabled slot, not trip id — the trip id changes across schedule revisions.
  */
 
-/** Exact percentile of raw values (unlike the bucketed estimate used elsewhere). */
+/** Exact percentile of raw values, unlike the bucketed estimate in aggregation.ts. */
 export function percentileOf(values: readonly number[], p: number): number | null {
   if (values.length === 0) return null;
   const sorted = [...values].sort((a, b) => a - b);
@@ -31,7 +25,6 @@ export function medianOf(values: readonly number[]): number | null {
   return percentileOf(values, 50);
 }
 
-/** Minutes after local midnight for an instant, for grouping by timetable slot. */
 export function departureMinutes(epochSeconds: number): number {
   const { hour, minute } = getLocalParts(epochSeconds);
   return hour * 60 + minute;
@@ -54,7 +47,6 @@ interface Group {
   cancellations: number;
 }
 
-/** Journeys that completed — the only ones with a delay to measure. */
 function isMeasurable(j: ObservedJourney): boolean {
   return !j.cancelled && !j.skipped && j.destinationDelaySeconds !== null;
 }
@@ -93,7 +85,7 @@ export function buildCommuteDepartures(journeys: readonly ObservedJourney[]): Co
         scheduledMinutes: g.scheduledMinutes,
         observations: g.observations,
         cancellations: g.cancellations,
-        // Withhold a rate rather than publish one from a handful of runs.
+        // Null, not 0%, when nothing was measurable.
         onTimePercent: g.delays.length > 0 ? round1((onTime / g.delays.length) * 100) : null,
         avgArrivalDelaySeconds:
           g.delays.length > 0 ? round1(g.delays.reduce((s, d) => s + d, 0) / g.delays.length) : null,
@@ -104,10 +96,7 @@ export function buildCommuteDepartures(journeys: readonly ObservedJourney[]): Co
     .sort((a, b) => a.departureMinutes - b.departureMinutes);
 }
 
-/**
- * Rank only departures with enough observations to mean something. Naming a
- * "most reliable" train off three runs would be worse than naming none.
- */
+/** Naming a "most reliable" train off three runs is worse than naming none. */
 export function rankDepartures(departures: readonly CommuteDeparture[]): {
   mostReliable: CommuteDeparture | null;
   leastReliable: CommuteDeparture | null;

@@ -80,7 +80,6 @@ export function connectionRoutes(repos: Repositories): Hono {
     return c.json(buildResponse(inbound, transfer, outbound, range.from, range.to, rows));
   });
 
-  // Highest-frequency transfer triples, to auto-populate the UI picker.
   router.get("/top", (c) => {
     const limit = parseLimit(c.req.query("limit"), 10);
     const range = resolveRange(c.req.query("from"), c.req.query("to"));

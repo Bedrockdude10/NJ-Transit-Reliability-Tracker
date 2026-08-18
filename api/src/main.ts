@@ -9,16 +9,8 @@ const dbPath = process.env.NJT_DB_PATH ?? "./data/njt.sqlite";
 const port = Number(process.env.PORT ?? 4000);
 
 /**
- * Say something before dying.
- *
- * The API had no handler for either of these, so a fatal error at boot — a
- * migration losing the write lock, say, which is exactly what happened — killed
- * the process with nothing in the log but the supervisor noting a non-zero
- * exit. Diagnosing that took reading raw output and guessing.
- *
- * These log and then exit rather than attempting to continue: the supervisor
- * restarts the process, and a half-initialised API serving wrong answers is
- * worse than one that is briefly absent.
+ * Log and exit rather than continue: the supervisor restarts the process, and a
+ * half-initialised API serving wrong answers is worse than one briefly absent.
  */
 for (const fatal of ["uncaughtException", "unhandledRejection"] as const) {
   process.on(fatal, (error: unknown) => {

@@ -20,7 +20,7 @@ import { buildStationRankings } from "../station-rankings";
 import { resolveRange } from "../dates";
 import { CACHE_CONTROL_DAILY, parseBoundedInt, parseLimit, round1 } from "../util";
 
-/** How far ahead the board looks by default — roughly a commuter's planning window. */
+/** Roughly a commuter's planning window. */
 const DEFAULT_HORIZON_MINUTES = 90;
 /** Keep a just-departed train visible briefly so it doesn't vanish mid-glance. */
 const DEPARTED_GRACE_SECONDS = 120;
@@ -34,11 +34,7 @@ export function stationRoutes(repos: Repositories): Hono {
     return c.json(response);
   });
 
-  /**
-   * GET /stations/rankings — which stations are worst, and in which sense.
-   *
-   * Declared before `/:stopId/...` so "rankings" is never read as a stop id.
-   */
+  /** Must stay declared before `/:stopId/…`, or "rankings" reads as a stop id. */
   router.get("/rankings", (c) => {
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
     const sort: StationRankingSort = c.req.query("sort") === "amplification" ? "amplification" : "delay";
@@ -66,11 +62,8 @@ export function stationRoutes(repos: Repositories): Hono {
   });
 
   /**
-   * GET /stations/:stopId/departures — the live board.
-   *
-   * Reads forward predictions the pipeline already stores: each poll rewrites a
-   * trip's stop rows, so stops a train has yet to reach hold the feed's current
-   * estimate. Not cacheable — it changes every poll and every second.
+   * Each poll rewrites a trip's stop rows, so stops a train has yet to reach
+   * already hold the feed's current estimate. Not cacheable.
    */
   router.get("/:stopId/departures", (c) => {
     const stopId = c.req.param("stopId");
@@ -80,8 +73,6 @@ export function stationRoutes(repos: Repositories): Hono {
     const limit = parseLimit(c.req.query("limit"), 12);
 
     const version = repos.gtfs.currentVersion()?.versionId ?? null;
-    // Look slightly back as well, so a train due a moment ago still shows as
-    // "departed" rather than silently disappearing while a rider is looking.
     const rows = repos.events.upcomingAtStop(
       stopId,
       version,
@@ -162,8 +153,7 @@ export function stationRoutes(repos: Repositories): Hono {
     return c.json(response);
   });
 
-  // Worst trips *through* a station. This is a bounded single-station query on
-  // the event table (indexed by stop_id, service_date) — not a system-wide scan.
+  // Scans events, but bounded by the (stop_id, service_date) index.
   router.get("/:stopId/top-delayed-trips", (c) => {
     const stopId = c.req.param("stopId");
     const range = resolveRange(c.req.query("from"), c.req.query("to"));

@@ -26,16 +26,9 @@ import { round1 } from "./util";
 
 const DOW_LABELS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"] as const;
 
-/**
- * On-time threshold key (in seconds, as stored in `on_time_counts`) for the
- * project's 15-minute OTP figure. SSOT for the routes that report OTP@15min.
- */
+/** Key into `on_time_counts`, which is keyed by threshold seconds. */
 export const ON_TIME_15_MIN = "900";
 
-/**
- * Systemwide light-rail OTP: a plain average of the monthly figures (rounded),
- * or null when no months are present. Shared by /map and /lightrail.
- */
 export function averageLightRailOtp(rows: readonly LightRailOtpMetric[]): number | null {
   if (rows.length === 0) return null;
   return round1(rows.reduce((s, r) => s + r.otpPercent, 0) / rows.length);
@@ -46,7 +39,6 @@ export function heatmapBucketLabel(type: HeatmapType, bucket: number): string {
   return `${bucket}:00`;
 }
 
-/** Turn summed heatmap buckets into labelled average-delay cells. */
 export function buildHeatmap(
   buckets: readonly { bucket: number; sumDelaySeconds: number; observations: number }[],
   type: HeatmapType,
@@ -61,7 +53,6 @@ export function buildHeatmap(
 
 export type CountMap = Record<string, number>;
 
-/** Merge `{ key: number }` maps by summing values. */
 export function mergeCountMaps(maps: Iterable<CountMap>): CountMap {
   const out: CountMap = {};
   for (const map of maps) {
@@ -73,10 +64,8 @@ export function mergeCountMaps(maps: Iterable<CountMap>): CountMap {
 }
 
 /**
- * Estimate a percentile (0-100) from bucketed delay counts via linear
- * interpolation within the containing bucket. This is an approximation (the
- * raw values aren't retained), suitable for the median/p90 summaries. The
- * open-ended "early" and "60+" buckets are clamped to representative bounds.
+ * Approximate, not exact: raw delays aren't retained, so this interpolates within
+ * the containing bucket and clamps the open-ended "early" / "60+" buckets.
  */
 export function percentileFromDistribution(counts: CountMap, p: number): number {
   const total = Object.values(counts).reduce((s, v) => s + v, 0);
@@ -101,7 +90,6 @@ export function buildDistributionResult(counts: CountMap): DistributionBucketRes
   return DELAY_BUCKETS.map((bucket) => ({ label: bucket.label, count: counts[bucket.label] ?? 0 }));
 }
 
-/** Sum a set of daily OTP + distribution rows into the shared OtpSummary DTO. */
 export function buildOtpSummary(
   otpRows: readonly OtpDailyRow[],
   distRows: readonly DelayDistributionDailyRow[],
@@ -135,7 +123,6 @@ export function buildOtpSummary(
   };
 }
 
-/** Trips-weighted average of NJT's official monthly figures over the period. */
 export function buildOfficialComparison(
   metrics: readonly OfficialNjtMetric[],
 ): NjtOfficialComparison | null {
@@ -168,7 +155,6 @@ export function buildOfficialComparison(
   };
 }
 
-/** Total cancellations + cause breakdown over a set of official metrics. */
 export function buildCancellations(metrics: readonly OfficialNjtMetric[]): NjtCancellations | null {
   if (metrics.length === 0) return null;
   const total = metrics.reduce((s, m) => s + m.cancellations, 0);
@@ -179,14 +165,12 @@ export function buildCancellations(metrics: readonly OfficialNjtMetric[]): NjtCa
   return { total, byCause, monthsCovered: new Set(metrics.map((m) => monthKey(m.year, m.month))).size };
 }
 
-/** Average fleet MDBF over a set of monthly rows. */
 export function buildFleetMdbf(rows: readonly FleetMdbfMetric[]): FleetMdbf | null {
   if (rows.length === 0) return null;
   const avg = rows.reduce((s, r) => s + r.mdbf, 0) / rows.length;
   return { avgMiles: Math.round(avg), monthsCovered: rows.length };
 }
 
-/** Trips-weighted average OTP grouped by `keyOf`, ordered by the numeric key. */
 function weightedOtpByKey(
   metrics: readonly OfficialNjtMetric[],
   keyOf: (m: OfficialNjtMetric) => number,
@@ -204,7 +188,6 @@ function weightedOtpByKey(
   return by;
 }
 
-/** Average OTP for each calendar month (1-12) across all available years. */
 export function buildSeasonality(metrics: readonly OfficialNjtMetric[]): SeasonalityMonth[] {
   const by = weightedOtpByKey(metrics, (m) => m.month);
   const out: SeasonalityMonth[] = [];
@@ -219,7 +202,6 @@ export function buildSeasonality(metrics: readonly OfficialNjtMetric[]): Seasona
   return out;
 }
 
-/** Average OTP for each calendar year present, ascending. */
 export function buildAnnualOtp(metrics: readonly OfficialNjtMetric[]): AnnualOtpYear[] {
   const by = weightedOtpByKey(metrics, (m) => m.year);
   return [...by.entries()]
@@ -231,7 +213,6 @@ export function buildAnnualOtp(metrics: readonly OfficialNjtMetric[]): AnnualOtp
     }));
 }
 
-/** Average fleet MDBF per calendar year, ascending. */
 export function buildMdbfAnnual(rows: readonly FleetMdbfMetric[]): { year: number; avgMdbf: number }[] {
   const by = new Map<number, { sum: number; n: number }>();
   for (const r of rows) {
@@ -243,9 +224,8 @@ export function buildMdbfAnnual(rows: readonly FleetMdbfMetric[]): { year: numbe
   return [...by.entries()].sort(([a], [b]) => a - b).map(([year, acc]) => ({ year, avgMdbf: Math.round(acc.sum / acc.n) }));
 }
 
-/** Per-line completeness of NJT's monthly data, flagging missing months. */
 export function buildOfficialCoverage(metrics: readonly OfficialNjtMetric[]): OfficialCoverage[] {
-  const byLine = new Map<string, number[]>(); // lineName -> monthIndexes present
+  const byLine = new Map<string, number[]>();
   for (const m of metrics) {
     const list = byLine.get(m.lineName) ?? [];
     list.push(monthIndex(m.year, m.month));

@@ -12,7 +12,6 @@ export function toCsv(rows: readonly Cell[][]): string {
   return rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
 }
 
-/** Long-format CSV of a summary endpoint's payload (mirrors the JSON). */
 export function summaryToCsv(
   title: string,
   range: DateRange,

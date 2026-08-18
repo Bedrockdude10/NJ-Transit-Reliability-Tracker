@@ -6,19 +6,12 @@ import { ALL_MONTHS } from "../dates";
 import { ingestLiveness } from "../liveness";
 import { round1 } from "../util";
 
-/** GET /health — pipeline operational status + official-data completeness. */
 export function healthRoutes(repos: Repositories): Hono {
   const router = new Hono();
 
   /**
-   * `GET /health/live` — 200 while ingest is running, 503 once it has stalled.
-   *
-   * The endpoint an external uptime monitor watches. `/health` is a report and
-   * answers 200 whether or not the pipeline is alive; a monitor can only act on
-   * a status code, so the judgement has to be made here rather than left to a
-   * keyword match against a JSON body full of timestamps.
-   *
-   * Never cached. A cached liveness check is a check of the cache.
+   * 200 while ingest is running, 503 once it has stalled — the endpoint external
+   * monitors watch. Never cached: a cached liveness check checks the cache.
    */
   router.get("/live", (c) => {
     const liveness = ingestLiveness(
@@ -31,8 +24,7 @@ export function healthRoutes(repos: Repositories): Hono {
   });
 
   router.get("/", (c) => {
-    // Resolve the collection start once and pass it into uptimePercent (which
-    // would otherwise look it up again).
+    // Pass into uptimePercent, which would otherwise look it up again.
     const collectionStartDate = repos.health.collectionStartDate();
     const response: HealthResponse = {
       collectionStartDate,
