@@ -41,7 +41,7 @@ describe("buildDelayDistribution", () => {
   it("zero-fills every bucket and tallies correctly", () => {
     const dist = buildDelayDistribution([-30, 100, 100, 4000]);
     expect(Object.keys(dist)).toHaveLength(DELAY_BUCKETS.length);
-    expect(dist["early"]).toBe(1);
+    expect(dist.early).toBe(1);
     expect(dist["0-5 min"]).toBe(2);
     expect(dist["60+ min"]).toBe(1);
     expect(dist["30-60 min"]).toBe(0);

@@ -1,7 +1,7 @@
 // Watches the workspace root so Metro transforms the symlinked `@njt/shared`
 // source, and resolves from both app and hoisted root node_modules.
 const { getDefaultConfig } = require("expo/metro-config");
-const path = require("path");
+const path = require("node:path");
 
 const projectRoot = __dirname;
 const workspaceRoot = path.resolve(projectRoot, "..");

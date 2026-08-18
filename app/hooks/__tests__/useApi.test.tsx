@@ -1,6 +1,6 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react-native";
-import React from "react";
+import type React from "react";
 import { Text } from "react-native";
 import type { ApiQuery } from "../../lib/api";
 import { QueryBoundary } from "../../components/QueryBoundary";

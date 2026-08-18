@@ -20,7 +20,7 @@ export function startScheduler(
   let stopped = false;
   const timers = new Set<ReturnType<typeof setTimeout>>();
 
-  const loop = (task: () => Promise<unknown> | void, nextDelayMs: () => number): void => {
+  const loop = (task: () => unknown, nextDelayMs: () => number): void => {
     const tick = async (): Promise<void> => {
       if (stopped) return;
       try {

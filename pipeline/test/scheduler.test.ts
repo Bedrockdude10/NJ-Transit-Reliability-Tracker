@@ -22,13 +22,27 @@ interface Calls {
 function makeIngestor(tripUpdates?: () => Promise<unknown>): { ingestor: Ingestor; calls: Calls } {
   const calls: Calls = { tu: 0, vp: 0, sa: 0, recompute: 0, staleness: 0 };
   const ingestor = {
-    pollTripUpdates: tripUpdates ?? (async () => (calls.tu++, true)),
-    pollVehiclePositions: async () => (calls.vp++, true),
-    pollServiceAlerts: async () => (calls.sa++, true),
+    pollTripUpdates:
+      tripUpdates ??
+      (async () => {
+        calls.tu++;
+        return true;
+      }),
+    pollVehiclePositions: async () => {
+      calls.vp++;
+      return true;
+    },
+    pollServiceAlerts: async () => {
+      calls.sa++;
+      return true;
+    },
     recompute: () => {
       calls.recompute++;
     },
-    checkStaleness: async () => (calls.staleness++, true),
+    checkStaleness: async () => {
+      calls.staleness++;
+      return true;
+    },
   } as unknown as Ingestor;
   return { ingestor, calls };
 }

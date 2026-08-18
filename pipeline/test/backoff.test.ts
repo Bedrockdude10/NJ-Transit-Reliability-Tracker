@@ -6,7 +6,13 @@ function fakeClock(): { clock: Clock; sleeps: number[] } {
   const sleeps: number[] = [];
   return {
     sleeps,
-    clock: { now: () => 0, sleep: (ms) => (sleeps.push(ms), Promise.resolve()) },
+    clock: {
+      now: () => 0,
+      sleep: (ms) => {
+        sleeps.push(ms);
+        return Promise.resolve();
+      },
+    },
   };
 }
 

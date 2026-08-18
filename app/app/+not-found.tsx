@@ -1,5 +1,5 @@
 import { Link } from "expo-router";
-import { StyleSheet, Text } from "react-native";
+import { StyleSheet } from "react-native";
 import { theme } from "../lib/theme";
 import { PageTitle, Screen } from "../components/ui";
 

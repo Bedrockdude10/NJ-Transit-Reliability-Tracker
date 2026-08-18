@@ -1,6 +1,5 @@
 import { QueryClientProvider } from "@tanstack/react-query";
 import { render, waitFor } from "@testing-library/react-native";
-import React from "react";
 import { PredictionsPanel } from "../PredictionsPanel";
 import { createQueryClient } from "../../lib/query-client";
 

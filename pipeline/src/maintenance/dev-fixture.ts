@@ -1,21 +1,12 @@
-import { createRepositories, openDatabase, type Repositories } from "@njt/db";
+import type { Repositories } from "@njt/db";
 import { RAIL_LINES, toLocalDateString, type TripStopEvent } from "@njt/shared";
 import { recomputeServiceDate } from "../aggregator";
 
 /**
  * Build a **local development** database so UI work can be seen without NJT
- * credentials or a copy of production.
- *
- * This writes fabricated data, which is exactly what once contaminated the
- * deployed database — so it is fenced in three ways:
- *
- *  1. it refuses to touch a path under `/data` (the production volume mount);
- *  2. it refuses to run if the database already holds real observations;
- *  3. every trip id it mints uses the `<LINE>-<direction>-<n>` shape that
- *     `npm run purge:seed` deletes, so if this ever did reach a real database
- *     the existing purge removes it completely.
- *
- * It is never imported by the pipeline or API — only by the dev CLI.
+ * credentials. Writes fabricated data, so it is fenced three ways: it refuses a path
+ * under `/data`, it refuses a database holding real observations, and every trip id
+ * it mints uses the `<LINE>-<direction>-<n>` shape `npm run purge:seed` deletes.
  */
 
 const LINES = RAIL_LINES.slice(0, 6);
@@ -88,7 +79,7 @@ export function buildDevFixture(repos: Repositories, nowMs: number = Date.now(),
     for (const t of trips) {
       for (const [i, s] of STOPS.entries()) {
         const r = rand(seed++);
-        // A realistic-ish spread: mostly punctual, a long tail of lateness.
+        // Mostly punctual, with a long tail of lateness.
         const delay = r > 0.86 ? Math.round(120 + r * 1500) : Math.round((r - 0.4) * 120);
         const cancelled = r > 0.985;
         const scheduled = nowSec - d * 86_400 + (6 + i) * 3600;
@@ -126,8 +117,7 @@ export function buildDevFixture(repos: Repositories, nowMs: number = Date.now(),
       // Mostly ahead, with a couple just gone so the "departed" row is visible.
       const dueIn = (ti % 12) * 420 + i * 180 - 240;
       const scheduled = nowSec + dueIn;
-      // A spread wide enough to exercise every board state: punctual, a few
-      // minutes late, badly late, early, untracked, cancelled.
+      // Wide enough to exercise every board state, including early and untracked.
       const delay = r > 0.72 ? Math.round(150 + r * 1200) : r < 0.12 ? Math.round(-90 - r * 120) : Math.round((r - 0.4) * 100);
       const cancelled = r > 0.93;
       const untracked = r > 0.62 && r <= 0.66;

@@ -1,6 +1,5 @@
 import { QueryClientProvider, useSuspenseQuery } from "@tanstack/react-query";
 import { act, fireEvent, render, waitFor } from "@testing-library/react-native";
-import React from "react";
 import { Text } from "react-native";
 import { QueryBoundary } from "../QueryBoundary";
 import { createQueryClient } from "../../lib/query-client";

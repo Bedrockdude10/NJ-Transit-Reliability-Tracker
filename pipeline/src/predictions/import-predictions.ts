@@ -1,5 +1,5 @@
 import { gunzipSync } from "node:zlib";
-import { GetObjectCommand, ListObjectsV2Command, S3Client } from "@aws-sdk/client-s3";
+import { GetObjectCommand, ListObjectsV2Command, type S3Client } from "@aws-sdk/client-s3";
 import type { Repositories } from "@njt/db";
 import { DATASETS, type DelayPrediction } from "@njt/shared";
 import { delayPredictionSchema, intervalProblem } from "@njt/shared";

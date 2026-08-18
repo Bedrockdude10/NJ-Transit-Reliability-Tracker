@@ -30,6 +30,7 @@ export default function Root({ children }: PropsWithChildren) {
         <link rel="preconnect" href="https://fonts.googleapis.com" />
         <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
         <link rel="stylesheet" href={FONT_HREF} />
+        {/* biome-ignore lint/security/noDangerouslySetInnerHtml: buildThemeCss() is theme constants, no untrusted input */}
         <style id={STYLE_ELEMENT_ID} dangerouslySetInnerHTML={{ __html: buildThemeCss() }} />
 
         <title>{TITLE}</title>

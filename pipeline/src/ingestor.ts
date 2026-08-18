@@ -10,7 +10,7 @@ import { loadOfficialMetrics } from "./official/parse";
 import { parseServiceAlerts, parseTripUpdates, parseVehiclePositions } from "./gtfs-rt/parse";
 import { createScheduleCache, createScheduleContext, type ScheduleCache } from "./gtfs-rt/schedule-context";
 import { type Logger, consoleLogger } from "@njt/shared/logger";
-import { type RateLimiter } from "./rate-limiter";
+import type { RateLimiter } from "./rate-limiter";
 
 export interface IngestorDeps {
   repos: Repositories;

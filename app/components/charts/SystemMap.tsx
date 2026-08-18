@@ -106,6 +106,7 @@ export function SystemMap({
     setSelected(null);
   };
 
+  // biome-ignore lint/correctness/useExhaustiveDependencies: listeners attach once, state flows via itx.current
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const el = containerRef.current as unknown as HTMLElement | null;
@@ -158,7 +159,6 @@ export function SystemMap({
       window.removeEventListener("pointerup", onUp);
       el.removeEventListener("wheel", onWheel);
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [height]);
 
   const zoomButton = (factor: number) => () => {

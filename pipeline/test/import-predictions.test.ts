@@ -43,7 +43,7 @@ function bucket(objects: Record<string, unknown[] | string>) {
   const bodies = new Map<string, Uint8Array>();
   for (const [key, value] of Object.entries(objects)) {
     const text =
-      typeof value === "string" ? value : value.map((row) => JSON.stringify(row)).join("\n") + "\n";
+      typeof value === "string" ? value : `${value.map((row) => JSON.stringify(row)).join("\n")}\n`;
     bodies.set(key, gzipSync(text));
   }
   return {

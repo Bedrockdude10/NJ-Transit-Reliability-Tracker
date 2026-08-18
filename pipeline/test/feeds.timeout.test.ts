@@ -31,7 +31,12 @@ const clock: Clock = { now: () => Date.UTC(2026, 6, 15, 12, 0, 0), sleep: () => 
 
 function store(token = "tok"): TokenStore {
   let current: { token: string; fetchedAtMs: number } | null = { token, fetchedAtMs: clock.now() };
-  return { read: () => current, write: (t, ms) => void (current = { token: t, fetchedAtMs: ms }) };
+  return {
+    read: () => current,
+    write: (t, ms) => {
+      current = { token: t, fetchedAtMs: ms };
+    },
+  };
 }
 
 /** A server that accepts the connection and then never answers. */

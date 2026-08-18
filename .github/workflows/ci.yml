@@ -28,6 +28,11 @@ jobs:
       - name: Install
         run: npm ci
 
+      # Biome is the repo's linter (formatter intentionally off — the codebase
+      # is hand-formatted with wide lines). Config lives in biome.json.
+      - name: Lint (Biome)
+        run: npm run lint
+
       - name: Typecheck (node packages)
         run: npm run typecheck
 
@@ -48,6 +53,25 @@ jobs:
             echo "contract/ is stale — run 'npm run emit:data-contract' and commit:"
             git status --porcelain contract/
             exit 1
+          }
+
+      # Comments carry what the code can't, and a diff meant to be comments-only
+      # must not sneak in code. The gate strips comments from both sides and
+      # compares code; it fails when code changed, which is expected for a
+      # feature PR — so this only fails when a PR mixes comment edits into a code
+      # change, the offender a review misses. Runs on PRs only: a push to dev
+      # legitimately accumulates both.
+      - name: Comment gate (no code hidden in comment edits)
+        if: github.event_name == 'pull_request'
+        run: |
+          base=origin/${{ github.event.pull_request.base.ref }}
+          git fetch origin "${{ github.event.pull_request.base.ref }}"
+          npm run lint:comments "$base" || {
+            if git diff "$base"...HEAD | grep -E '^[+-][[:space:]]*(//|/\*|\*|/\*\*)' >/dev/null; then
+              echo "This PR mixes comment edits with code edits — split them:"
+              exit 1
+            fi
+            echo "Code changed (feature PR) — comment gate not applicable."
           }
 
       - name: Test (node packages)

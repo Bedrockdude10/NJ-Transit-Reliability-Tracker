@@ -17,6 +17,8 @@
   ],
   "scripts": {
     "typecheck": "tsc --noEmit -p tsconfig.json",
+    "lint": "biome check .",
+    "lint:comments": "tsx scripts/check-comments-only.ts",
     "generate:contract": "tsx scripts/generate-contract.ts",
     "emit:data-contract": "tsx scripts/emit-data-contract.ts",
     "test": "vitest run",
@@ -44,6 +46,7 @@
     "app": "npm run start --workspace app"
   },
   "devDependencies": {
+    "@biomejs/biome": "^2.5.9",
     "@types/node": "^22.10.0",
     "@vitest/coverage-v8": "3.2.6",
     "fast-check": "^4.9.0",

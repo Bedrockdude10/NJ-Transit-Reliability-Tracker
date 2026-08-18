@@ -9,6 +9,7 @@ Run all of it. The regeneration steps at the end are the ones everyone forgets a
 ones CI actually rejects the push for.
 
 ```bash
+npm run lint
 npm run typecheck
 npm run typecheck --workspace app
 npm test
@@ -31,5 +32,9 @@ edit — see `CONTRACT-VERSIONING.md`).
 For a diff that is meant to touch only comments, add:
 
 ```bash
-npx tsx scripts/check-comments-only.ts
+npm run lint:comments
 ```
+
+That strips comments from both sides and proves the code is unchanged; it accepts a
+base ref argument (default `HEAD`), e.g. `npm run lint:comments origin/main`. CI runs
+the same gate on PRs and fails when comment edits are mixed into a code change.

@@ -61,6 +61,8 @@ npm test --workspace app         # jest-expo component tests (.test.tsx only)
 npm run typecheck                # strict tsc for the 4 node packages (also proves api.zod.ts matches api.ts)
 npm run generate:contract        # regenerate shared/src/api.zod.ts from api.ts (ts-to-zod)
 npm run typecheck --workspace app
+npm run lint                   # Biome (linter only; formatter is intentionally off — see biome.json)
+npm run lint:comments           # prove a diff changed only comments (base ref arg, default HEAD; CI runs it on PRs)
 npm run import:gtfs              # real GTFS static network (stops/coords/lines/colors/trips) from a local dir
 npm run import:official          # real NJT monthly OTP + cancellations + MDBF + light rail from CSVs in ./data (keyless)
 npm run repair:line-names        # one-off: repoint events stored under a raw feed route_id, then recompute

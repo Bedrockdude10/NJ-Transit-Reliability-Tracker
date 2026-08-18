@@ -9,7 +9,7 @@ function escapeCell(value: Cell): string {
 }
 
 export function toCsv(rows: readonly Cell[][]): string {
-  return rows.map((row) => row.map(escapeCell).join(",")).join("\r\n") + "\r\n";
+  return `${rows.map((row) => row.map(escapeCell).join(",")).join("\r\n")}\r\n`;
 }
 
 export function summaryToCsv(

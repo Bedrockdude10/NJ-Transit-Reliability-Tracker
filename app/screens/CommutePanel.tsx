@@ -1,6 +1,6 @@
 import { useLocalSearchParams, useRouter } from "expo-router";
 import { useCallback } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
+import { Pressable, StyleSheet, Text } from "react-native";
 import { api, type DateRange } from "../lib/api";
 import { formatDelayShort, formatInt, formatPercent } from "../lib/format";
 import { otpColor, theme } from "../lib/theme";
@@ -11,7 +11,7 @@ import { StationPicker } from "../components/StationPicker";
 import { Table } from "../components/Table";
 import { WindowPicker } from "../components/WindowPicker";
 import { QueryBoundary } from "../components/QueryBoundary";
-import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile } from "../components/ui";
+import { Card, EmptyState, Loading, Muted, PageTitle, Row, SectionTitle, StatTile } from "../components/ui";
 
 export function CommutePanel() {
   // In the URL, not component state, so a commute is bookmarkable and survives reload.

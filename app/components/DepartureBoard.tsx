@@ -2,7 +2,7 @@ import { formatCountdown, minutesUntil, type Departure, type DepartureStatus } f
 import { StyleSheet, Text, View } from "react-native";
 import { formatClockTime, formatDelayShort } from "../lib/format";
 import { theme } from "../lib/theme";
-import { Badge, EmptyState, Muted, StatusDot } from "./ui";
+import { EmptyState, Muted, StatusDot } from "./ui";
 
 /**
  * A live platform board. The countdown is recomputed from `nowMs` rather than

@@ -87,12 +87,12 @@ export function buildProjection(
 
   const coord = new Map(stations.map((s) => [s.stopId, project(s.lat, s.lon)]));
   const outlineD =
-    outline
+    `${outline
       .map(([lon, lat], i) => {
         const p = project(lat, lon);
         return `${i === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`;
       })
-      .join(" ") + " Z";
+      .join(" ")} Z`;
 
   return { project, coord, outlineD };
 }

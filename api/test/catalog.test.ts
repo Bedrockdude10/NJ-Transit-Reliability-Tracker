@@ -2,7 +2,7 @@ import { createRepositories, openDatabase, type Repositories } from "@njt/db";
 import type { OfficialNjtMetric } from "@njt/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { listLines, listStations, requireLine, resolveLine, stopName, toLineItem } from "../src/catalog";
-import { ApiError } from "../src/util";
+import type { ApiError } from "../src/util";
 
 function metric(o: Partial<OfficialNjtMetric>): OfficialNjtMetric {
   return {

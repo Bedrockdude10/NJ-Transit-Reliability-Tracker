@@ -1,5 +1,6 @@
 import { QueryErrorResetBoundary } from "@tanstack/react-query";
-import React, { Suspense } from "react";
+import type React from "react";
+import { Suspense } from "react";
 import { ErrorBoundary } from "react-error-boundary";
 import { ErrorView, SkeletonCard } from "./ui";
 
@@ -30,7 +31,7 @@ export function QueryBoundary({
           fallbackRender={({ error, resetErrorBoundary }) => {
             const message = error instanceof Error ? error.message : String(error);
             return failed ? (
-              <>{failed(message, resetErrorBoundary)}</>
+              failed(message, resetErrorBoundary)
             ) : (
               <ErrorView message={message} onRetry={resetErrorBoundary} />
             );
