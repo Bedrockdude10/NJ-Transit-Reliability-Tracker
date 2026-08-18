@@ -3,18 +3,21 @@ import { ScrollView, StyleSheet, Text, View } from "react-native";
 import Svg, { Rect } from "react-native-svg";
 import { theme } from "../lib/theme";
 
+/**
+ * Five destinations, not twelve.
+ *
+ * The bar used to carry one button per screen, which overflowed into a
+ * sideways scroll and gave every panel equal weight — a reader had no way to
+ * tell that "Lines", "Stations" and "Map" are three views of one subject. Each
+ * entry here is a question someone arrives with; the panels that answer it are
+ * tabs inside the page (see `TabbedPage`). The old paths still resolve, as
+ * redirects onto the right tab.
+ */
 const LINKS = [
   { href: "/", label: "Overview" },
-  { href: "/map", label: "Map" },
-  { href: "/lines", label: "Lines" },
-  { href: "/compare", label: "Compare" },
-  { href: "/lightrail", label: "Light Rail" },
-  { href: "/stations", label: "Stations" },
-  { href: "/commute", label: "My Commute" },
-  { href: "/connections", label: "Connections" },
-  { href: "/alerts", label: "Alerts" },
-  { href: "/predictions", label: "Predictions" },
-  { href: "/health", label: "Health" },
+  { href: "/network", label: "Network" },
+  { href: "/trips", label: "Trips" },
+  { href: "/analysis", label: "Analysis" },
   { href: "/about", label: "About" },
 ] as const;
 
