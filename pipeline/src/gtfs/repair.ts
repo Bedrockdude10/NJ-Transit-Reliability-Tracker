@@ -5,8 +5,8 @@ import { repairLineNames } from "./repair-line-names";
 /** CLI: repair events stored under a raw feed route_id instead of a line name. */
 const dbPath = process.env.NJT_DB_PATH ?? "./data/njt.sqlite";
 
-// Unlike the importers, this must never create a database: repairing a fresh
-// empty file silently "succeeds" while the real one goes untouched.
+// Must never create a database: repairing a fresh empty file silently "succeeds"
+// while the real one goes untouched.
 if (!existsSync(dbPath)) {
   console.error(
     `No database at ${dbPath}.\n` +
@@ -17,9 +17,8 @@ if (!existsSync(dbPath)) {
 }
 
 const db = openDatabase(dbPath);
-// This runs against a live database while the pipeline keeps polling. The
-// default 5s busy_timeout is tuned for short writes; a recompute is longer, so
-// wait rather than fail — and pause between days so the pipeline gets a turn.
+// The default 5s busy_timeout is tuned for short writes; a recompute is longer, so
+// wait rather than fail — and pause between days so the live pipeline gets a turn.
 db.exec("PRAGMA busy_timeout = 60000;");
 
 const PAUSE_MS = Number(process.env.NJT_REPAIR_PAUSE_MS ?? 250);

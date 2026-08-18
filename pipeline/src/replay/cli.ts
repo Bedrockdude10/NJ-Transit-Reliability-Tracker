@@ -3,16 +3,7 @@ import { createRepositories, openDatabase } from "@njt/db";
 import { toLocalDateString } from "@njt/shared";
 import { replayRange, totalsOf } from "./replay";
 
-/**
- * CLI: re-derive measurement from the raw GTFS-Realtime archive.
- *
- *   npm run replay                                    # preview every stored day
- *   npm run replay -- --from 2026-08-01 --to 2026-08-05
- *   npm run replay -- --from 2026-08-01 --apply       # write
- *
- * Previews by default. A replay rewrites measurement, so it should be read
- * before it is trusted.
- */
+/** CLI: re-derive measurement from the raw GTFS-RT archive. Previews unless `--apply`. */
 function arg(name: string): string | undefined {
   const i = process.argv.indexOf(`--${name}`);
   return i >= 0 ? process.argv[i + 1] : undefined;
@@ -27,8 +18,8 @@ if (!existsSync(dbPath)) {
 }
 
 const db = openDatabase(dbPath);
-// Runs against a live database while the pipeline keeps polling: wait for the
-// lock rather than failing, and pause between days so polls get a turn.
+// Runs against a live database while the pipeline polls: wait for the lock rather
+// than failing, and pause between days so polls get a turn.
 db.exec("PRAGMA busy_timeout = 60000;");
 const repos = createRepositories(db);
 
@@ -47,7 +38,6 @@ console.log(
   `${apply ? "Replaying" : "Previewing replay of"} ${from} .. ${to} from ${repos.snapshots.count("TripUpdates").toLocaleString()} archived TripUpdates polls\n`,
 );
 
-// A count cannot tell a correction from a regression: show what actually moves.
 const sampleLimit = Number(arg("sample") ?? 8);
 const fieldTally = new Map<string, number>();
 let shown = 0;

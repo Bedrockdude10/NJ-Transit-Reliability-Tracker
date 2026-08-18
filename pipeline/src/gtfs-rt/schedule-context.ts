@@ -3,52 +3,36 @@ import { gtfsStopTimeToEpochSeconds } from "@njt/shared/zoned";
 import { directionFromId, type ResolvedRoute, type ScheduleContext, type TripSchedule } from "./parse";
 
 /**
- * Cross-tick cache backing {@link createScheduleContext}. Resolving a trip's
- * schedule hits the DB (trip meta + every stop time) and recomputes absolute
- * instants; TripUpdates is polled continuously and the same trips recur every
- * tick, so without a persistent cache we'd redo that work — and warm the stop
- * name cache from scratch — on every poll. Keyed implicitly by GTFS version:
- * the cache is cleared on version rollover so stale schedules never leak.
+ * Cross-tick cache: the same trips recur every poll, and resolving one hits trip meta
+ * plus every stop time. Cleared on GTFS version rollover so stale schedules can't leak.
  */
 export interface ScheduleCache {
   /** `${serviceDate}|${tripId}` → resolved schedule (null memoized too). */
   schedules: Map<string, TripSchedule | null>;
-  /** stopId → resolved stop name (or the raw id fallback). */
   stopNames: Map<string, string>;
-  /** RT route_id → canonical route + line name (null memoized too). */
   routes: Map<string, ResolvedRoute | null>;
-  /** GTFS version the cached entries belong to; rollover invalidates them. */
   versionId: string | undefined;
 }
 
-/** A fresh, empty schedule cache to hold across ingest ticks. */
 export function createScheduleCache(): ScheduleCache {
   return { schedules: new Map(), stopNames: new Map(), routes: new Map(), versionId: undefined };
 }
 
 /**
- * A {@link ScheduleContext} backed by the current GTFS static version. Resolves
- * a trip's scheduled stop times (as absolute epoch seconds for the service
- * date) so the parser can compute delays even when the RT feed omits them.
- *
- * Pass a {@link ScheduleCache} to reuse resolved schedules and stop names
- * across polls; it self-invalidates when the current GTFS version changes. When
- * omitted a private cache is used (single-context behaviour, e.g. in tests).
+ * Resolves a trip's stop times to absolute epoch seconds, so the parser can compute
+ * delay even when the RT feed omits it.
  */
 export function createScheduleContext(
   gtfs: GtfsRepository,
   cache: ScheduleCache = createScheduleCache(),
   /**
-   * Parse against a specific GTFS version instead of the current one. Live
-   * ingest always wants "current"; replaying the archive wants the version that
-   * was effective when the snapshot was recorded, since trip ids are reused
-   * across schedule revisions and would otherwise resolve to the wrong service.
+   * Replay needs the version effective when the snapshot was recorded: trip ids are
+   * reused across schedule revisions and would otherwise resolve to the wrong service.
    */
   versionIdOverride?: string,
 ): ScheduleContext {
   const versionId = versionIdOverride ?? gtfs.currentVersion()?.versionId;
 
-  // Version rollover: drop everything resolved against the prior version.
   if (cache.versionId !== versionId) {
     cache.schedules.clear();
     cache.stopNames.clear();
@@ -80,8 +64,7 @@ export function createScheduleContext(
     lookup(tripId: string, serviceDate: string): TripSchedule | null {
       if (!versionId) return null;
       const key = `${serviceDate}|${tripId}`;
-      // `has` distinguishes a memoized `null` (unknown trip) from a cache miss,
-      // so mismatched trips aren't re-resolved every tick either.
+      // `has`, not `get`: memoizes `null` so unknown trips aren't re-resolved per tick.
       if (cache.schedules.has(key)) return cache.schedules.get(key) ?? null;
       const schedule = resolve(tripId, serviceDate);
       cache.schedules.set(key, schedule);
@@ -100,11 +83,8 @@ export function createScheduleContext(
 
     resolveRoute(routeId: string): ResolvedRoute | null {
       if (!versionId || !routeId) return null;
-      // `has` distinguishes a memoized `null` (route maps to no line) from a miss.
       if (cache.routes.has(routeId)) return cache.routes.get(routeId) ?? null;
 
-      // Already canonical (the id gtfs_routes is keyed by), or a source id the
-      // static ingest collapsed onto a canonical line.
       const canonicalId = gtfs.lineNameForRoute(versionId, routeId)
         ? routeId
         : (gtfs.canonicalRouteFor(versionId, routeId) ?? null);

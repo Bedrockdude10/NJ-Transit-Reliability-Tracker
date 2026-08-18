@@ -11,18 +11,11 @@ import {
 import { parseCsv } from "../csv";
 
 /**
- * Importer for NJ Transit's published rail performance CSVs (downloaded from
- * njtransit.com/performance-data-download — no API key required). NJT splits the
- * data across one set of files per line, identified by a code in the filename:
- *
- *   RAIL_<CODE>_OTP_DATA.csv                  YEAR, MONTH, <label>, COUNT, TOTAL, PERCENTAGE
- *   RAIL_<CODE>_OTP_DATA_AMTRAK_ADJUSTED.csv  (same shape; Amtrak delays excluded)
- *   RAIL_<CODE>_CANCELLATIONS_DATA.csv        YEAR, MONTH, CATEGORY, CANCEL_COUNT, CANCEL_TOTAL, ...
- *
- * Files have a dashed separator row under the header and space-padded values.
- * The systemwide RAIL_*_DATA.csv files are intentionally not imported — the API
- * derives the system figure as the trips-weighted aggregate of the lines, which
- * is exactly how NJT's systemwide number is composed.
+ * NJT's published rail performance CSVs, one set per line, keyed by a code in the
+ * filename (`RAIL_<CODE>_OTP_DATA.csv`, `…_AMTRAK_ADJUSTED`, `…_CANCELLATIONS_DATA`).
+ * Each file has a dashed separator row under the header and space-padded values.
+ * The systemwide `RAIL_*_DATA.csv` are deliberately skipped: the API derives the
+ * system figure as the trips-weighted aggregate of the lines, as NJT does.
  */
 
 const MONTH_NUMBERS: Record<string, number> = {
@@ -70,7 +63,6 @@ interface OtpEntry {
   tripsOperated: number;
 }
 
-/** Parse an OTP CSV into `month → { otpPercent, tripsOperated }`. */
 export function parseOtpData(csv: string): Map<string, OtpEntry> {
   const out = new Map<string, OtpEntry>();
   for (const row of parseCsv(csv)) {
@@ -82,7 +74,6 @@ export function parseOtpData(csv: string): Map<string, OtpEntry> {
   return out;
 }
 
-/** Parse a cancellations CSV into `month → totalCancellations` (CANCEL_TOTAL). */
 export function parseCancellationsData(csv: string): Map<string, number> {
   const out = new Map<string, number>();
   for (const row of parseCsv(csv)) {
@@ -94,7 +85,6 @@ export function parseCancellationsData(csv: string): Map<string, number> {
   return out;
 }
 
-/** Parse a cancellations CSV into `month → { cause: count }` by category. */
 export function parseCancellationCauses(csv: string): Map<string, Record<string, number>> {
   const out = new Map<string, Record<string, number>>();
   for (const row of parseCsv(csv)) {
@@ -109,14 +99,12 @@ export function parseCancellationCauses(csv: string): Map<string, Record<string,
   return out;
 }
 
-/** Parse a "YYYY MonthName" label (used by the MDBF / light rail files). */
 function parseYearMonthLabel(label: string | undefined): { year: number; month: number } | null {
   const match = /^(\d{4})\s+([A-Za-z]+)/.exec(label ?? "");
   const month = match ? MONTH_NUMBERS[match[2]!.toUpperCase()] : undefined;
   return match && month ? { year: Number(match[1]), month } : null;
 }
 
-/** Parse the systemwide MDBF CSV (MONTH column is "YYYY MonthName"). */
 export function parseMdbf(csv: string): FleetMdbfMetric[] {
   const out: FleetMdbfMetric[] = [];
   for (const row of parseCsv(csv)) {
@@ -128,7 +116,6 @@ export function parseMdbf(csv: string): FleetMdbfMetric[] {
   return out;
 }
 
-/** Parse the systemwide light rail OTP CSV (MONTH "YYYY MonthName", OTP). */
 export function parseLightRailOtp(csv: string): LightRailOtpMetric[] {
   const out: LightRailOtpMetric[] = [];
   for (const row of parseCsv(csv)) {
@@ -140,7 +127,6 @@ export function parseLightRailOtp(csv: string): LightRailOtpMetric[] {
   return out;
 }
 
-/** Parse the per-line light rail MDBF CSV (MONTH "YYYY MonthName", LINE, MDBF). */
 export function parseLightRailMdbf(csv: string): LightRailMdbfMetric[] {
   const out: LightRailMdbfMetric[] = [];
   for (const row of parseCsv(csv)) {
@@ -153,7 +139,6 @@ export function parseLightRailMdbf(csv: string): LightRailMdbfMetric[] {
   return out;
 }
 
-/** Join a line's OTP, Amtrak-adjusted OTP, and cancellations into metrics. */
 export function buildLineMetrics(
   lineName: string,
   otpCsv: string,
@@ -190,7 +175,6 @@ export interface PerformanceImportResult {
   lightRailMdbfRows: number;
 }
 
-/** Import every per-line performance file present in `dir` into the db. */
 export function importNjtPerformanceDir(repos: Repositories, dir: string): PerformanceImportResult {
   const read = (name: string): string | null => {
     const path = join(dir, name);
@@ -219,7 +203,6 @@ export function importNjtPerformanceDir(repos: Repositories, dir: string): Perfo
     result.totalMetrics += metrics.length;
   }
 
-  // Systemwide fleet reliability (MDBF).
   const mdbfCsv = read("RAIL_MDBF_DATA.csv");
   if (mdbfCsv) {
     const rows = parseMdbf(mdbfCsv);
@@ -227,7 +210,6 @@ export function importNjtPerformanceDir(repos: Repositories, dir: string): Perfo
     result.mdbfMonths = rows.length;
   }
 
-  // Light rail (systemwide OTP + per-line MDBF).
   const lightRailOtpCsv = read("LIGHTRAIL_OTP_DATA.csv");
   if (lightRailOtpCsv) {
     const rows = parseLightRailOtp(lightRailOtpCsv);

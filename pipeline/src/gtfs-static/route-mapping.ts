@@ -2,22 +2,14 @@ import type { GtfsRouteRecord } from "@njt/db";
 import { findLineById, findLineByName } from "@njt/shared";
 
 /**
- * Maps GTFS rail routes onto the canonical catalog lines. Shared by both GTFS
- * ingest paths (the `import:gtfs` CLI and the pipeline's startup getGTFS sync)
- * so route_id, colors, and line attribution are derived identically.
- *
- * `route_type` for NJT rail is `"2"` (standard commuter rail, used by the
- * Mobility Database mirror) or `"113"` (the extended "Regional Rail Service"
- * type NJT emits from its own getGTFS). Light rail (`"0"`) is handled by the
- * caller — it's a separate catalog, not one of the canonical lines.
+ * NJT rail is `route_type` `"2"` from the Mobility Database mirror but `"113"`
+ * ("Regional Rail Service") from NJT's own getGTFS, so both count as rail.
  */
 export const RAIL_ROUTE_TYPES = new Set(["2", "113"]);
 
 /**
- * GTFS `route_short_name` → canonical catalog line id. Covers NJT's own feed
- * (getGTFS: `ACRL`/`MNBTN`/`BERG`/`MAIN`/…) and the Mobility Database mirror
- * (`ATLC`/`BNTN`/`MNBN`/…). NJT groups Main, Bergen County, and Port Jervis
- * service under the Main Line route, so those collapse to `main-bergen`.
+ * Covers both NJT's own getGTFS short names and the Mobility Database mirror's. NJT
+ * groups Main, Bergen County and Port Jervis under one route → `main-bergen`.
  */
 export const SHORT_NAME_TO_LINE_ID: Record<string, string> = {
   // NJT getGTFS short names
@@ -49,11 +41,7 @@ export interface RailRouteMapping {
   realToCanonical: Map<string, string>;
 }
 
-/**
- * Build the rail route mapping from raw `routes.txt` rows. A route matches a
- * canonical line by short name first, then by long name as a fallback. Rows
- * that aren't rail or don't map to a known line are skipped.
- */
+/** Matches by short name first, then long name as a fallback. */
 export function mapRailRoutes(rawRoutes: readonly Record<string, string>[]): RailRouteMapping {
   const canonicalRoutes = new Map<string, GtfsRouteRecord>();
   const realToCanonical = new Map<string, string>();

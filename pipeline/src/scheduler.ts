@@ -8,9 +8,8 @@ export interface RunningScheduler {
 }
 
 /**
- * Drive the ingestor on a schedule. Each feed self-reschedules via setTimeout
- * so the TripUpdates interval can stretch under budget pressure, and the
- * lower-priority feeds can be skipped — without ever stopping TripUpdates.
+ * Each feed self-reschedules via setTimeout, so the TripUpdates interval can stretch
+ * under budget pressure and lower-priority feeds can be skipped independently.
  */
 export function startScheduler(
   ingestor: Ingestor,

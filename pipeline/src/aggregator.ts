@@ -45,9 +45,6 @@ export interface AggregateBundle {
   connections: ConnectionDailyRow[];
 }
 
-// Precomputed once: the on-time thresholds paired with their JSON string keys,
-// so the per-event OtpAcc loop never rebuilds `String(t)` (mirrors the
-// countOnTimeByThreshold pattern in shared/src/delay.ts).
 const THRESHOLD_KEYS: readonly (readonly [number, string])[] = OTP_THRESHOLDS_SECONDS.map(
   (t) => [t, String(t)] as const,
 );
@@ -68,7 +65,6 @@ function emptyOnTime(): Record<string, number> {
   return counts;
 }
 
-/** Group a service date's events by trip, each ordered by stop sequence. */
 function groupByTrip(events: readonly TripStopEvent[]): Map<string, TripStopEvent[]> {
   const byTrip = new Map<string, TripStopEvent[]>();
   for (const e of events) {
@@ -80,10 +76,7 @@ function groupByTrip(events: readonly TripStopEvent[]): Map<string, TripStopEven
   return byTrip;
 }
 
-/**
- * Compute all daily aggregate rows for one service date from its raw events.
- * Pure: takes events, returns rows. The persistence wrapper writes them.
- */
+/** Pure: takes a service date's events, returns every daily aggregate row. */
 export function computeAggregates(
   events: readonly TripStopEvent[],
   serviceDate: string,
@@ -108,7 +101,6 @@ export function computeAggregates(
       acc.operated += 1;
       acc.sumDelay += delay;
       for (const [t, tKey] of THRESHOLD_KEYS) {
-        // onTime is pre-seeded by emptyOnTime(), so every threshold key exists.
         if (isOnTime(delay, t)) acc.onTime[tKey] = acc.onTime[tKey]! + 1;
       }
     }
@@ -136,10 +128,8 @@ export function computeAggregates(
     }
   };
 
-  // Group once; reused by the per-trip rollups and station amplification.
   const byTrip = groupByTrip(events);
 
-  // --- Per-trip rollups (OTP, distribution, heatmap, trip terminal delay) ----
   for (const [tripId, tripEvents] of byTrip) {
     const terminal = tripEvents[tripEvents.length - 1];
     if (!terminal) continue;
@@ -172,10 +162,8 @@ export function computeAggregates(
     });
   }
 
-  // --- Station rollups (per stop) + amplification (consecutive stops) --------
   const station = computeStationAggregates(events, byTrip, serviceDate, tz, lateThreshold);
 
-  // --- Connections -----------------------------------------------------------
   const connections = computeConnections(events, serviceDate, tz, maxWindow, minBuffer);
 
   return {
@@ -228,7 +216,6 @@ function computeStationAggregates(
   const hourlyAcc = new Map<string, { stopId: string; hour: number; sum: number; obs: number }>();
   const distAcc = new Map<string, Record<string, number>>();
 
-  // Arrival-based stats over every event with a known delay.
   for (const e of events) {
     if (e.delaySeconds === null || e.tripCancelled) continue;
     const dKey = `${e.stopId}|${e.lineName}|${e.direction}`;
@@ -253,7 +240,7 @@ function computeStationAggregates(
     distAcc.set(e.stopId, counts);
   }
 
-  // Amplification: arrived within 5 min here, then late at the next stop.
+  // Amplification: on time (within 5 min) here, late at the next stop.
   for (const tripEvents of byTrip.values()) {
     for (let i = 0; i < tripEvents.length - 1; i++) {
       const cur = tripEvents[i];
@@ -296,7 +283,6 @@ function computeConnections(
   maxWindow: number,
   minBuffer: number,
 ): ConnectionDailyRow[] {
-  // Group events by transfer stop.
   const byStop = new Map<string, TripStopEvent[]>();
   for (const e of events) {
     const list = byStop.get(e.stopId) ?? [];
@@ -319,7 +305,6 @@ function computeConnections(
   }
   const acc = new Map<string, ConnAcc>();
 
-  // Narrowed views so the sweep works on non-null times without `as number`.
   interface Arrival {
     tripId: string;
     scheduledArrival: number;
@@ -342,9 +327,8 @@ function computeConnections(
         departures.push({ tripId: e.tripId, scheduledDeparture: e.scheduledDeparture });
       }
     }
-    // Sort once, then sweep a two-pointer window [schedArr, schedArr + maxWindow]
-    // over the departures for each arrival (arrivals ascending ⇒ window start
-    // only ever advances). Replaces the old O(arrivals × departures) loop.
+    // Two-pointer sweep over [schedArr, schedArr + maxWindow]: arrivals ascending
+    // means the window start only ever advances, so this is O(n) not O(n²).
     arrivals.sort((a, b) => a.scheduledArrival - b.scheduledArrival);
     departures.sort((a, b) => a.scheduledDeparture - b.scheduledDeparture);
 
@@ -352,8 +336,7 @@ function computeConnections(
     for (const inbound of arrivals) {
       const schedArr = inbound.scheduledArrival;
       const actualArr = inbound.observedArrival;
-      // These depend only on the inbound arrival, so compute them once per
-      // arrival rather than per candidate outbound (O(arrivals), not O(pairs)).
+      // Depends only on the inbound arrival — hoisted out of the candidate loop.
       const peak = isPeak(schedArr, PEAK_WINDOWS, tz);
       const dow = String(localDayOfWeek(schedArr, tz));
       const label = bucketForDelay(actualArr - schedArr).label;
@@ -417,7 +400,6 @@ export function recomputeServiceDate(repos: Repositories, serviceDate: string, o
   const events = repos.events.getByServiceDate(serviceDate);
   const bundle = computeAggregates(events, serviceDate, options);
 
-  // One atomic clear+upsert so API readers never see a half-cleared day and a
-  // failed recompute rolls back cleanly (persistence lives in @njt/db).
+  // One atomic clear+upsert so readers never see a half-cleared day.
   repos.aggregates.replaceServiceDate(serviceDate, bundle);
 }

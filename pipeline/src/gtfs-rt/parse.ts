@@ -30,9 +30,8 @@ function toServiceDate(startDate: string | null | undefined, fallback: string): 
 }
 
 /**
- * NJT direction mapping. GTFS `direction_id` 1 is treated as inbound (toward
- * the NYC/terminal anchor), 0 as outbound. This is an assumption documented for
- * the public dataset; the static schedule's direction wins when available.
+ * An assumption, not from the feed: `direction_id` 1 is inbound (toward the NYC
+ * terminal anchor). The static schedule's direction wins when available.
  */
 export function directionFromId(directionId: number | null | undefined): Direction {
   return directionId === 1 ? "inbound" : "outbound";
@@ -52,22 +51,16 @@ export interface TripSchedule {
   stops: ScheduledStop[];
 }
 
-/** A route the RT feed reports, resolved onto a canonical catalog line. */
 export interface ResolvedRoute {
   routeId: string;
   lineName: string;
 }
 
-/** Resolves a trip's static schedule, used to compute scheduled times/delay. */
 export interface ScheduleContext {
   lookup(tripId: string, serviceDate: string): TripSchedule | null;
   stopName(stopId: string): string;
-  /**
-   * Resolve a route_id straight from the RT feed — which reports *source* ids,
-   * not the canonical ones GTFS ingest collapses them onto. Used for trips
-   * missing from the static schedule, where there's no trip row to go through.
-   * Returns null when the id maps to no known line.
-   */
+  /** The RT feed reports *source* route ids, not the canonical ones ingest collapses
+   * them onto. Null when the id maps to no known line. */
   resolveRoute(routeId: string): ResolvedRoute | null;
 }
 
@@ -101,14 +94,9 @@ function firstTranslation(text: { translation?: { text?: string | null }[] | nul
   return text?.translation?.[0]?.text ?? "";
 }
 
-/**
- * Decode a TripUpdates FeedMessage into one {@link TripStopEvent} per stop-time
- * update. Scheduled times come from the static schedule when matched; otherwise
- * they're derived from the predicted time minus the reported delay.
- */
+/** One {@link TripStopEvent} per stop-time update. */
 export function parseTripUpdates(buffer: Uint8Array, ctx: ScheduleContext, opts: ParseOptions): TripStopEvent[] {
-  // NJT returns an empty body when the feed has no entities (200, 0 bytes);
-  // that's an empty feed, not a decode error.
+  // NJT returns 200 with 0 bytes for an empty feed, not a decode error.
   if (buffer.length === 0) return [];
   const feed = tr.FeedMessage.decode(buffer);
   const events: TripStopEvent[] = [];
@@ -122,10 +110,8 @@ export function parseTripUpdates(buffer: Uint8Array, ctx: ScheduleContext, opts:
     const schedule = ctx.lookup(tripId, serviceDate);
     if (!schedule) opts.onTripMismatch?.(tripId);
 
-    // The RT feed reports *source* route ids, which GTFS ingest collapses onto
-    // canonical lines. With no static schedule to resolve through, go via the
-    // alias map — storing the raw id as a line name poisons every aggregate
-    // keyed by line (a station reporting service on a line called "10").
+    // With no static schedule, resolve via the alias map: storing the raw feed id as
+    // a line name poisons every aggregate keyed by line.
     const rtRoute = schedule ? null : ctx.resolveRoute(tu.trip.routeId ?? "");
     const routeId = schedule?.routeId ?? rtRoute?.routeId ?? tu.trip.routeId ?? "";
     const lineName = schedule?.lineName ?? rtRoute?.lineName ?? UNKNOWN_LINE_NAME;
@@ -136,7 +122,7 @@ export function parseTripUpdates(buffer: Uint8Array, ctx: ScheduleContext, opts:
     const base = { tripId, routeId, lineName, direction, serviceDate, gtfsStaticVersion: opts.gtfsStaticVersion, ingestedAtMs: opts.now };
 
     if (cancelled && schedule) {
-      // A cancelled trip: mark each scheduled stop cancelled so terminal OTP sees it.
+      // Mark every scheduled stop cancelled so terminal OTP counts the trip.
       for (const stop of schedule.stops) {
         events.push({
           ...base,
@@ -187,14 +173,8 @@ const STOP_STATUS_MAP: Record<number, VehicleStopStatus> = {
   2: "in_transit_to",
 };
 
-/**
- * Decode a VehiclePositions FeedMessage into {@link VehiclePosition}s.
- *
- * Route ids come from the RT feed in *source* form, so they're resolved onto
- * canonical lines the same way trip updates are. Entities without a usable
- * latitude/longitude are dropped: a vehicle with no position can't be mapped,
- * and a 0/0 placeholder would render off the coast of Africa.
- */
+/** Drops entities with no usable lat/lon — the feed's 0/0 placeholder would render
+ * off the coast of Africa. */
 export function parseVehiclePositions(
   buffer: Uint8Array,
   ctx: ScheduleContext,
@@ -222,8 +202,7 @@ export function parseVehiclePositions(
     const stopId = vp.stopId ?? null;
 
     positions.push({
-      // NJT populates vehicle.id; fall back to the entity id so a feed that
-      // omits it still yields distinct rows rather than collapsing to one.
+      // Fall back to entity id: a feed omitting vehicle.id would collapse to one row.
       vehicleId: vp.vehicle?.id || entity.id,
       tripId,
       routeId: schedule?.routeId ?? route?.routeId ?? null,
@@ -246,9 +225,7 @@ export function parseVehiclePositions(
   return positions;
 }
 
-/** Decode a ServiceAlerts FeedMessage into {@link ServiceAlert}s. */
 export function parseServiceAlerts(buffer: Uint8Array, opts: { now: number }): ServiceAlert[] {
-  // Empty body = no active alerts (a successful poll), not a decode error.
   if (buffer.length === 0) return [];
   const feed = tr.FeedMessage.decode(buffer);
   const alerts: ServiceAlert[] = [];

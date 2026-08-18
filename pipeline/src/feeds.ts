@@ -2,60 +2,34 @@ import { type Clock, systemClock } from "./clock";
 import type { PipelineConfig } from "./config";
 import { type Logger, consoleLogger } from "@njt/shared/logger";
 
-/**
- * Fetches raw bytes from the NJT real-time feeds. The interface is what the
- * ingestor depends on, so tests inject a fake instead of hitting the network.
- */
 export interface FeedClient {
   fetchTripUpdates(): Promise<Uint8Array>;
   fetchVehiclePositions(): Promise<Uint8Array>;
   fetchServiceAlerts(): Promise<Uint8Array>;
 }
 
-/**
- * Persists the daily API token across process restarts. Backed by
- * `pipeline_meta` in production so a redeploy doesn't burn the getToken quota.
- */
+/** Backed by `pipeline_meta` in production so a redeploy doesn't burn the getToken quota. */
 export interface TokenStore {
   read(): { token: string; fetchedAtMs: number } | null;
   write(token: string, fetchedAtMs: number): void;
 }
 
-/**
- * Refresh the cached token proactively once it's older than this. NJT caps
- * getToken at 10 calls/day and recommends calling it ~once/day, so we keep a
- * wide margin under the daily rollover (tokens are minted per calendar day).
- */
+/** NJT caps getToken at 10 calls/day; tokens are minted per calendar day. */
 const TOKEN_TTL_MS = 20 * 60 * 60 * 1000;
 
 /**
- * Ceilings on how long a single outbound NJT call may take.
- *
- * Without them a hung connection stalls ingest indefinitely and nothing
- * notices: the poller sits in a `fetch` that never settles while `/health`
- * keeps answering, because the API is a separate process and perfectly fine.
- * A stalled feed therefore looked exactly like a healthy one.
- *
- * The real-time ceiling sits below the poll interval on purpose, so a stalled
- * poll is abandoned before the next is due rather than accumulating.
+ * Without a deadline a hung connection stalls ingest silently while `/health` still
+ * returns 200. Sits below the poll interval so stalled polls don't accumulate.
  */
 export const FEED_TIMEOUT_MS = 15_000;
 
-/** getGTFS ships the entire static schedule as a zip, so it needs far longer. */
+/** getGTFS ships the entire static schedule as a zip. */
 export const GTFS_STATIC_TIMEOUT_MS = 120_000;
 
 /**
- * Run an outbound call under a deadline, and say so plainly if it expires.
- *
- * The deadline is an `AbortController` driven by `setTimeout` rather than
- * `AbortSignal.timeout`, which reads slightly worse but is testable: the
- * built-in uses an internal timer that fake timers cannot advance, so a
- * deadline built on it could only be verified by actually waiting fifteen
- * seconds.
- *
- * The abort reason carries the message, because the default surfaces as "This
- * operation was aborted" — naming neither the call nor the limit, and
- * diagnosing a stall from logs is the whole point of having a deadline.
+ * `setTimeout` + `AbortController` rather than `AbortSignal.timeout`: the built-in's
+ * timer cannot be advanced by fake timers. The abort reason names the call and limit,
+ * since the default is a bare "This operation was aborted".
  */
 async function withDeadline<T>(
   label: string,
@@ -68,8 +42,7 @@ async function withDeadline<T>(
   try {
     return await run(controller.signal);
   } catch (error) {
-    // Any failure once the deadline has passed is the deadline, however `fetch`
-    // chose to report it.
+    // Any failure after the deadline is the deadline, however `fetch` reported it.
     throw controller.signal.aborted ? expired : error;
   } finally {
     clearTimeout(timer);
@@ -83,9 +56,8 @@ interface GetTokenResponse {
 }
 
 /**
- * Acquires and caches the NJT rail-data token. POSTs username/password to
- * `getToken` (multipart/form-data) and stores `{ UserToken }`. Concurrent
- * refreshes are de-duped so the three feeds polling at once spend one call.
+ * POSTs username/password to `getToken` as multipart/form-data. Concurrent refreshes
+ * are de-duped so the three feeds polling at once spend one call against the quota.
  */
 export class TokenManager {
   private inFlight: Promise<string> | null = null;
@@ -98,7 +70,6 @@ export class TokenManager {
     private readonly logger: Logger = consoleLogger,
   ) {}
 
-  /** Return a usable token, refreshing if stale or `force` is set. */
   async get(force = false): Promise<string> {
     if (!force) {
       const cached = this.store.read();
@@ -127,7 +98,7 @@ export class TokenManager {
         signal,
       });
       if (!res.ok) throw new Error(`getToken failed: ${res.status} ${res.statusText}`);
-      // Returns `null` when credentials are missing, else a JSON envelope.
+      // getToken returns bare `null` when credentials are missing.
       return (await res.json().catch(() => null)) as GetTokenResponse | null;
     });
     if (!data) throw new Error("getToken returned null (missing or unrecognized credentials)");
@@ -144,10 +115,8 @@ export class TokenManager {
 const INVALID_TOKEN = Symbol("invalid-token");
 
 /**
- * HTTP feed client for NJT's token-based GTFS-RT Web API. Each feed is a POST
- * with a `token` form field; success returns protobuf bytes
- * (`application/octet-stream`), while errors return a small JSON body. On an
- * "Invalid token" response it refreshes the token once and retries.
+ * Each feed is a POST with a `token` form field; success returns protobuf bytes,
+ * errors return a small JSON/text body with HTTP 200.
  */
 export class HttpFeedClient implements FeedClient {
   constructor(
@@ -166,11 +135,6 @@ export class HttpFeedClient implements FeedClient {
     return this.fetchProto("getAlerts");
   }
 
-  /**
-   * Download NJT's own GTFS static zip (getGTFS). Ingesting this — rather than a
-   * third-party mirror — is what makes the real-time feed's numeric trip/stop
-   * ids resolve against the static network.
-   */
   fetchGtfsStatic(): Promise<Uint8Array> {
     return this.fetchProto("getGTFS", GTFS_STATIC_TIMEOUT_MS);
   }
@@ -179,7 +143,6 @@ export class HttpFeedClient implements FeedClient {
     const first = await this.post(method, await this.tokens.get(), timeoutMs);
     if (first !== INVALID_TOKEN) return first;
 
-    // Token was rejected (expired/rotated) — mint a fresh one and retry once.
     const retry = await this.post(method, await this.tokens.get(true), timeoutMs);
     if (retry === INVALID_TOKEN) throw new Error(`${method}: invalid token after refresh`);
     return retry;
@@ -192,8 +155,7 @@ export class HttpFeedClient implements FeedClient {
   ): Promise<Uint8Array | typeof INVALID_TOKEN> {
     const form = new FormData();
     form.append("token", token);
-    // The deadline covers reading the body, not just opening the response: a
-    // download that stalls halfway is the same stall as one that never starts.
+    // The deadline covers reading the body too: a half-stalled download is a stall.
     const { bytes, contentType } = await withDeadline(method, timeoutMs, async (signal) => {
       const res = await this.fetchImpl(`${this.config.railData.baseUrl}/${method}`, {
         method: "POST",
@@ -207,7 +169,6 @@ export class HttpFeedClient implements FeedClient {
         contentType: res.headers.get("content-type") ?? "",
       };
     });
-    // Proto payloads are binary; any JSON/text body is an error envelope.
     if (contentType.includes("octet-stream") || contentType.includes("protobuf")) return bytes;
 
     const text = new TextDecoder().decode(bytes).trim();

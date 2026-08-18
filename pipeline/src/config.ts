@@ -1,17 +1,9 @@
-/**
- * Pipeline configuration, loaded from environment variables with sensible
- * defaults. Credentials are read from the environment only — never committed
- * (PRD compliance). See `.env.example`.
- */
+/** Configuration from the environment. See `.env.example`. */
 import { NO_TRIP_UPDATES_ALERT_MS } from "@njt/shared";
 
 export interface PipelineConfig {
   dbPath: string;
-  /**
-   * NJT GTFS-RT Web API (raildata.njtransit.com). Auth is token-based: POST
-   * username/password to `${baseUrl}/getToken`, then POST that token to the
-   * feed endpoints. See `pipeline/src/feeds.ts`.
-   */
+  /** raildata.njtransit.com — token auth, see `pipeline/src/feeds.ts`. */
   railData: {
     username: string | undefined;
     password: string | undefined;

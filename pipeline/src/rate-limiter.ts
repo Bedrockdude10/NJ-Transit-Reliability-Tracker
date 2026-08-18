@@ -3,11 +3,7 @@ import { RATE_LIMITS } from "@njt/shared";
 
 export type BudgetGroup = "gtfs_rt" | "xml_api";
 
-/**
- * Tracks daily request budgets against the NJT limits and decides how to
- * degrade as a budget fills. Counts are persisted via the health repo so they
- * survive a pipeline restart within the same UTC day.
- */
+/** Counts persist via the health repo, so they survive a restart within the same UTC day. */
 export class RateLimiter {
   constructor(
     private readonly health: HealthRepository,
@@ -30,7 +26,6 @@ export class RateLimiter {
     return this.used(group, now) / this.limitFor(group);
   }
 
-  /** True while at least the required headroom (default 20%) is unused. */
   withinHeadroom(group: BudgetGroup, now: number): boolean {
     return this.usedFraction(group, now) <= 1 - this.limits.headroomFraction;
   }
@@ -50,9 +45,8 @@ export interface PollPlan {
 }
 
 /**
- * Graceful-degradation policy as the GTFS-RT budget fills (PRD: extend
- * TripUpdates before dropping anything; drop VehiclePositions before
- * TripUpdates; never drop TripUpdates).
+ * Degradation order as the budget fills: stretch the TripUpdates interval first, then
+ * drop VehiclePositions. TripUpdates is never dropped.
  */
 export function planPoll(limiter: RateLimiter, now: number): PollPlan {
   const gtfs = limiter.usedFraction("gtfs_rt", now);

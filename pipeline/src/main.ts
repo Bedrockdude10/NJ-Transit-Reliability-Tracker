@@ -10,7 +10,6 @@ import { RateLimiter } from "./rate-limiter";
 import { startScheduler } from "./scheduler";
 
 async function main(): Promise<void> {
-  // Best-effort .env load (Node 25 built-in); ignored if the file is absent.
   try {
     process.loadEnvFile(".env");
   } catch {
@@ -24,7 +23,6 @@ async function main(): Promise<void> {
   const repos = createRepositories(db);
   const rateLimiter = new RateLimiter(repos.health);
 
-  // Token cached in pipeline_meta so redeploys don't spend the getToken quota.
   const tokenStore: TokenStore = {
     read() {
       const raw = repos.health.getMeta("njt_rail_token");
@@ -44,9 +42,8 @@ async function main(): Promise<void> {
   const client = new HttpFeedClient(config, tokens);
   const ingestor = new Ingestor({ repos, client, config, rateLimiter, logger: consoleLogger });
 
-  // One-time syncs at startup. Prefer NJT's own GTFS (getGTFS) so the static
-  // network shares ids with the real-time feed; fall back to a plain URL.
-  // loadGtfsStatic dedupes by checksum, so re-fetching on every boot is cheap.
+  // Prefer getGTFS so static ids match the real-time feed. loadGtfsStatic dedupes
+  // by checksum, so re-fetching on every boot is cheap.
   if (config.railData.username && config.railData.password) {
     try {
       const zip = await client.fetchGtfsStatic();

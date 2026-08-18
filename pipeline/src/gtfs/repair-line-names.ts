@@ -5,39 +5,21 @@ import { parseCsv } from "../csv";
 import { mapRailRoutes } from "../gtfs-static/route-mapping";
 
 /**
- * One-off repair for events recorded before the RT parser could resolve the
- * feed's *source* route ids.
- *
- * GTFS static ingest collapses variant routes onto canonical catalog lines, so
- * `gtfs_routes` holds only canonical ids. A real-time trip missing from the
- * static schedule had no trip row to resolve through, so the raw feed id was
- * stored as the line name — a station reporting service on a line called "10",
- * and its delays split off from the real line's aggregates.
- *
- * The fix repoints the *events* (the source of truth) and then re-runs the
- * normal aggregator for each affected service date, so every derived table
- * lands consistently rather than three of them being patched by hand.
+ * One-off repair for events whose line_name holds a raw feed route id. Repoints the
+ * events, then re-runs the normal aggregator so derived tables land consistently.
  */
 
 export interface LineNameRepairResult {
-  /** Aliases written to gtfs_route_aliases when the table was empty. */
   aliasesBackfilled: number;
   /** stale line name → what it was rewritten to, with the event count. */
   relabelled: { from: string; to: string; routeId: string; events: number }[];
-  /** Service dates whose aggregates were recomputed. */
   serviceDatesRecomputed: string[];
 }
 
 /**
- * Rebuild `gtfs_route_aliases` from each version's archived `routes.txt`.
- *
- * Versions ingested before the alias table existed have no rows, but the raw
- * feed files were archived, so the mapping is recoverable. This covers *every*
- * version, not just the current one: replaying the archive resolves each
- * snapshot against the schedule effective at the time, so a historical version
- * without aliases makes the replay label real trips "Unknown line" — undoing
- * this very repair. A version whose `routes.txt` was never archived (the old
- * `import:gtfs` path did not store files) simply has nothing to recover.
+ * Rebuild `gtfs_route_aliases` from each version's archived `routes.txt`. Must cover
+ * every version, not just the current one: replay resolves each snapshot against the
+ * schedule effective then, so a version missing aliases relabels real trips "Unknown".
  */
 function backfillAliases(repos: Repositories): number {
   let written = 0;
@@ -71,11 +53,9 @@ export function repairLineNames(repos: Repositories, options?: RepairOptions): L
 
   const aliasesBackfilled = backfillAliases(repos);
 
-  // Real line names, judged against every GTFS version ever ingested *and* the
-  // reference catalog — not just the current version. NJT's feed changes shape
-  // (Port Jervis is its own route in some feeds, folded into the Main Line in
-  // others), so a line missing from today's feed is still a real line with real
-  // history. Treating it as a stray route id would destroy that attribution.
+  // Judged against every GTFS version ever ingested plus the catalog: NJT's feed
+  // changes shape (Port Jervis is its own route in some feeds, folded into Main in
+  // others), so a line absent from today's feed still has real history.
   const realLineNames = new Set([
     ...repos.gtfs.knownLineNames(),
     ...RAIL_LINES.map((l) => l.name),
@@ -85,8 +65,7 @@ export function repairLineNames(repos: Repositories, options?: RepairOptions): L
   const relabelled: LineNameRepairResult["relabelled"] = [];
   const affectedDates = new Set<string>();
 
-  // A route_id holding a *line name* is malformed whatever produced it: restore
-  // the name to line_name and put the catalog's route id back in route_id.
+  // A route_id holding a line name is malformed: swap the two back.
   for (const staleRouteId of repos.events.distinctRouteIds()) {
     if (!realLineNames.has(staleRouteId) || staleRouteId === UNKNOWN_LINE_NAME) continue;
     const routeId = findLineByName(staleRouteId)?.defaultRouteId ?? staleRouteId;
@@ -101,8 +80,7 @@ export function repairLineNames(repos: Repositories, options?: RepairOptions): L
     const canonicalRouteId = repos.gtfs.canonicalRouteFor(version.versionId, stale);
     const lineName = canonicalRouteId ? repos.gtfs.lineNameForRoute(version.versionId, canonicalRouteId) : null;
 
-    // Unresolvable ids become explicitly unknown; they keep their route_id so
-    // the original feed value isn't lost.
+    // Unresolvable ids keep their route_id so the original feed value isn't lost.
     const target =
       canonicalRouteId && lineName ? { routeId: canonicalRouteId, lineName } : { routeId: stale, lineName: UNKNOWN_LINE_NAME };
 
@@ -111,10 +89,8 @@ export function repairLineNames(repos: Repositories, options?: RepairOptions): L
     relabelled.push({ from: stale, to: target.lineName, routeId: target.routeId, events });
   }
 
-  // Days already rolled up from stale events. Without this the repair cannot
-  // resume: relabelling commits per statement, so a run that dies during the
-  // recompute leaves clean events and stranded aggregates, and a re-run finds
-  // nothing to do while the site still serves the old names.
+  // Needed for resumability: relabelling commits per statement, so a run that dies
+  // mid-recompute leaves clean events with stranded aggregates and nothing to redo.
   for (const date of repos.aggregates.serviceDatesWithUnknownLineNames([...realLineNames])) {
     affectedDates.add(date);
   }
@@ -122,9 +98,7 @@ export function repairLineNames(repos: Repositories, options?: RepairOptions): L
   const serviceDatesRecomputed = [...affectedDates].sort();
   for (const date of serviceDatesRecomputed) {
     recomputeServiceDate(repos, date);
-    // Yield the write lock between days. Each recompute is its own transaction,
-    // but running ~80 of them back-to-back starves the live pipeline, which
-    // polls every 30s — and a poll that can't write is a lost observation.
+    // Yield the write lock: ~80 recomputes back-to-back starve the 30s live poll.
     options?.betweenDates?.(date);
   }
 

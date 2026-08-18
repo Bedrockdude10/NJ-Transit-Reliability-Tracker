@@ -18,7 +18,6 @@ export interface GtfsStaticData {
   stopTimes: GtfsStopTimeRecord[];
 }
 
-/** Unzip a GTFS static archive into `{ "routes.txt": contents, ... }`. */
 export function unzipGtfs(zip: Uint8Array): Record<string, string> {
   const files = unzipSync(zip);
   const out: Record<string, string> = {};
@@ -26,11 +25,7 @@ export function unzipGtfs(zip: Uint8Array): Record<string, string> {
   return out;
 }
 
-/**
- * Parse GTFS static text files into catalog records: rail routes mapped to the
- * canonical catalog lines (so real-time trip/route ids resolve to the same
- * lines as the official metrics), and the trips/stops/stop_times they use.
- */
+/** Parse GTFS static text files into catalog records. */
 export function parseGtfsStatic(files: Record<string, string>): GtfsStaticData {
   const rawRoutes = files["routes.txt"] ? parseCsv(files["routes.txt"]) : [];
   const { canonicalRoutes, realToCanonical } = mapRailRoutes(rawRoutes);

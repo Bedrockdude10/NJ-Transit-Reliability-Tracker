@@ -11,18 +11,10 @@ import { parseCsv } from "../csv";
 import { mapRailRoutes } from "../gtfs-static/route-mapping";
 
 /**
- * Importer for NJ Transit's GTFS *static* rail feed (keyless — from the Mobility
- * Database mirror or NJT's own getGTFS). It loads the real network into the
- * GTFS tables: routes (mapped to our canonical catalog lines, with NJT's real
- * colors), stops with coordinates, trips, and stop_times. This becomes the
- * current GTFS version, so the whole app runs on the real network.
- *
- * Rail route mapping (route_type 2 / 113, variant collapsing) is shared with
- * the pipeline via {@link mapRailRoutes}. Light rail (route_type 0) is handled
- * here as its own catalog, keyed by short name.
+ * GTFS static rail feed from an unzipped directory. Light rail (route_type 0) is a
+ * separate catalog keyed by short name, not one of the canonical lines.
  */
 
-/** GTFS `route_short_name` → light rail line (route_type 0). */
 const LIGHT_RAIL_BY_SHORT: Record<string, { routeId: string; lineName: string }> = {
   HBLR: { routeId: "HBLR", lineName: "Hudson-Bergen Light Rail" },
   NLR: { routeId: "NLR", lineName: "Newark Light Rail" },
@@ -37,10 +29,9 @@ export interface GtfsImportResult {
   stopTimes: number;
 }
 
-/** Locate a GTFS directory: `dir` itself, or the newest `mdb-*` child of it. */
+/** `dir` itself, or the newest `mdb-*` child of it. */
 export function findGtfsDir(dir: string): string | null {
   if (existsSync(join(dir, "stops.txt")) && existsSync(join(dir, "routes.txt"))) return dir;
-  // Fall back to a child directory that looks like an unzipped feed.
   if (!existsSync(dir)) return null;
   const candidates = readdirSync(dir)
     .map((name) => join(dir, name))
@@ -58,7 +49,6 @@ function num(value: string | undefined): number | null {
 export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImportResult {
   const read = (name: string) => readFileSync(join(gtfsDir, name), "utf8");
 
-  // --- routes: rail → canonical catalog lines; light rail → its own lines ----
   const rawRoutes = parseCsv(read("routes.txt"));
   const { canonicalRoutes, realToCanonical } = mapRailRoutes(rawRoutes);
   for (const row of rawRoutes) {
@@ -71,7 +61,6 @@ export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImpo
     }
   }
 
-  // --- stops (all, with coordinates) ----------------------------------------
   const stops: GtfsStopRecord[] = parseCsv(read("stops.txt")).map((row) => ({
     stopId: row.stop_id!,
     stopName: row.stop_name ?? row.stop_id!,
@@ -79,7 +68,6 @@ export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImpo
     stopLon: num(row.stop_lon),
   }));
 
-  // --- trips (rail only, route_id rewritten to canonical) -------------------
   const railTripIds = new Set<string>();
   const trips: GtfsTripRecord[] = [];
   for (const row of parseCsv(read("trips.txt"))) {
@@ -95,7 +83,6 @@ export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImpo
     });
   }
 
-  // --- stop_times (rail trips only) -----------------------------------------
   const stopTimes: GtfsStopTimeRecord[] = [];
   for (const row of parseCsv(read("stop_times.txt"))) {
     if (!railTripIds.has(row.trip_id ?? "")) continue;
@@ -108,7 +95,6 @@ export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImpo
     });
   }
 
-  // --- persist as a new, current GTFS version -------------------------------
   const checksum = createHash("sha256").update(read("trips.txt")).digest("hex").slice(0, 16);
   const versionId = `gtfs-${checksum}`;
   const nowSeconds = Math.floor(Date.now() / 1000);

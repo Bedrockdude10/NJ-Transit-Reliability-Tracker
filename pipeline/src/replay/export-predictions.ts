@@ -6,21 +6,9 @@ import { parseTripUpdates } from "../gtfs-rt/parse";
 import { createScheduleCache, createScheduleContext } from "../gtfs-rt/schedule-context";
 
 /**
- * Export every prediction in the archive as a flat, gzipped CSV for analysis.
- *
- * `trip_stop_events` keeps one row per stop — the final answer. The archive
- * holds *every* forecast NJT published on the way there, roughly 600 per poll
- * and a couple of hundred per stop. That is a different dataset, and the only
- * one that can answer "how far ahead was this knowable?" and "how much should a
- * rider trust the number on screen?".
- *
- * This is deliberately an ETL step and nothing more: decode, flatten, write.
- * No statistics live here. Protobuf is the one thing a columnar engine cannot
- * read for itself, so this exists purely to hand DuckDB something it can query.
- *
- * Constant memory by construction — rows stream straight out, and the writer
- * is respected via backpressure. Buffering 50M rows is what killed the earlier
- * attempts at this.
+ * Export every forecast in the archive (not just the final one per stop) as a flat
+ * gzipped CSV — decode, flatten, write, no statistics. Must stay constant-memory:
+ * it streams and respects writer backpressure, since ~50M rows will not fit.
  */
 
 export interface ExportOptions {
@@ -32,7 +20,6 @@ export interface ExportOptions {
 const PAGE_SIZE = 100;
 const HEADER = "trip_id,stop_id,line_name,route_id,direction,service_date,observed_at,scheduled_arrival,lead_seconds,predicted_delay,cancelled,skipped\n";
 
-/** CSV-quote a value that may contain commas (line names do). */
 function q(value: string): string {
   return `"${value.replace(/"/g, '""')}"`;
 }
@@ -46,16 +33,14 @@ export async function exportPredictions(
   const file = createWriteStream(outPath);
   gzip.pipe(file);
 
-  /** Write, pausing when the stream asks us to. */
   const write = async (chunk: string): Promise<void> => {
     if (!gzip.write(chunk)) await new Promise<void>((r) => gzip.once("drain", () => r()));
   };
 
   await write(HEADER);
 
-  // Bounds are applied per row rather than in SQL: a `fetched_at_ms` predicate
-  // sends SQLite to the time index and costs a full sort per page (see
-  // `pageById`). Walking ids and skipping is far cheaper across the archive.
+  // Bounds filtered per row, not in SQL: a `fetched_at_ms` predicate sends SQLite to
+  // the time index and costs a full sort per page. Walking ids is far cheaper.
   const fromMs = options.fromDate ? Date.parse(`${options.fromDate}T00:00:00Z`) - 6 * 3600e3 : -Infinity;
   const toMs = options.toDate ? Date.parse(`${options.toDate}T00:00:00Z`) + 36 * 3600e3 : Infinity;
 
@@ -94,8 +79,7 @@ export async function exportPredictions(
         rows++;
       }
 
-      // Flush in batches rather than per row: 50M individual writes is most of
-      // the runtime, and one string per poll keeps memory flat regardless.
+      // Batched flush: 50M individual writes is most of the runtime.
       if (buffer.length > 1_000_000) {
         await write(buffer);
         buffer = "";
@@ -117,7 +101,6 @@ export async function exportPredictions(
   return { polls, rows };
 }
 
-// --- CLI ---------------------------------------------------------------------
 
 if (process.argv[1]?.endsWith("export-predictions.ts")) {
   const arg = (name: string) => {

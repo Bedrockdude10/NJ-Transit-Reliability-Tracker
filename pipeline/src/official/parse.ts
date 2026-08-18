@@ -2,7 +2,7 @@ import type { Repositories } from "@njt/db";
 import type { OfficialNjtMetric } from "@njt/shared";
 import { parseCsv } from "../csv";
 
-/** Lower-cased header aliases -> our field. NJT's column names vary by export. */
+/** Lower-cased header aliases → our field: NJT's column names vary by export. */
 const ALIASES = {
   year: ["year", "yr"],
   month: ["month", "mo", "month_num"],
@@ -31,11 +31,7 @@ function toNumber(value: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-/**
- * Parse NJT's monthly performance CSV into {@link OfficialNjtMetric}s. Rows
- * missing year/month/line or OTP are skipped rather than producing partial
- * records.
- */
+/** Rows missing year/month/line or OTP are skipped rather than partially recorded. */
 export function parseOfficialMetrics(csv: string): OfficialNjtMetric[] {
   const metrics: OfficialNjtMetric[] = [];
   for (const raw of parseCsv(csv)) {

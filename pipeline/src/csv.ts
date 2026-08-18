@@ -1,8 +1,4 @@
-/**
- * Minimal RFC-4180 CSV parser (handles quoted fields, embedded commas/newlines,
- * escaped quotes, CRLF, and a BOM). Used for GTFS static and the official NJT
- * performance CSVs. No dependency needed.
- */
+/** Minimal RFC-4180 CSV parser: quoted fields, embedded commas/newlines, CRLF, BOM. */
 export function parseCsvRows(input: string): string[][] {
   const text = input.charCodeAt(0) === 0xfeff ? input.slice(1) : input;
   const rows: string[][] = [];
@@ -40,7 +36,6 @@ export function parseCsvRows(input: string): string[][] {
       field += ch;
     }
   }
-  // Flush trailing field/row if the file didn't end with a newline.
   if (field !== "" || row.length > 0) {
     row.push(field);
     rows.push(row);
@@ -48,7 +43,6 @@ export function parseCsvRows(input: string): string[][] {
   return rows;
 }
 
-/** Parse CSV into objects keyed by the header row, skipping blank lines. */
 export function parseCsv(input: string): Record<string, string>[] {
   const rows = parseCsvRows(input);
   const header = rows[0];

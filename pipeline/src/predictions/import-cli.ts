@@ -5,13 +5,8 @@ import { withLock } from "../archive/run-lock";
 import { importPredictions } from "./import-predictions";
 
 /**
- * CLI: land model predictions from object storage into SQLite.
- *
- *   npm run import:predictions
- *   npm run import:predictions -- --date 2026-08-14
- *
- * Safe to schedule and safe to rerun: a day already imported is replaced by
- * whatever the modelling repo published last, which is what a re-run means.
+ * CLI: land model predictions from object storage into SQLite. Safe to rerun — a day
+ * already imported is replaced by whatever the modelling repo published last.
  */
 function flag(name: string): string | undefined {
   const index = process.argv.indexOf(`--${name}`);

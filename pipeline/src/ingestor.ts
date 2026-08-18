@@ -24,9 +24,8 @@ export interface IngestorDeps {
 const RETRY = { retries: 3, baseDelayMs: 500, maxDelayMs: 5_000 };
 
 /**
- * Orchestrates a single poll of each feed: fetch (with retry) -> store raw
- * snapshot -> parse -> persist -> update health + budget. Never writes partial
- * records: a fully failed fetch records a failure and a gap, nothing else.
+ * One poll per feed: fetch (with retry) → store raw snapshot → parse → persist →
+ * update health + budget. A failed fetch writes a failure and a gap, nothing partial.
  */
 export class Ingestor {
   private readonly repos: Repositories;
@@ -52,14 +51,9 @@ export class Ingestor {
   }
 
   /**
-   * Record a poll failure without ever throwing.
-   *
-   * `recordFailure` is itself a write, so under write contention (a concurrent
-   * maintenance script, say) it can raise SQLITE_BUSY *from inside the catch
-   * block* that was handling the original error. That escapes the handler,
-   * rejects the scheduler tick, and takes the process down — which stops the
-   * supervisor and the whole machine with it. A failed poll must never be able
-   * to do that: the next tick is 30 seconds away and recovers on its own.
+   * Never throws. `recordFailure` is itself a write, so under contention it can raise
+   * SQLITE_BUSY from inside the catch block, rejecting the tick and killing the
+   * process. The next tick is 30s away and recovers on its own.
    */
   private recordFailureSafely(feed: FeedType, now: number): void {
     try {
@@ -69,7 +63,6 @@ export class Ingestor {
     }
   }
 
-  /** Fetch with retry while counting every attempt against the GTFS-RT budget. */
   private async fetchCounting(fetchOnce: () => Promise<Uint8Array>): Promise<Uint8Array> {
     const now = this.clock.now();
     let attempts = 0;
@@ -137,8 +130,8 @@ export class Ingestor {
       const bytes = await this.fetchCounting(() => this.client.fetchVehiclePositions());
       this.repos.snapshots.insert({ feedType: "VehiclePositions", fetchedAtMs: now, rawBytes: bytes });
 
-      // Each poll is a complete snapshot of active vehicles, so the stored set
-      // is swapped wholesale — trains that stopped reporting drop off the map.
+      // Each poll is a complete snapshot, so swap the set wholesale — trains that
+      // stopped reporting must drop off the map.
       const ctx = createScheduleContext(this.repos.gtfs, this.scheduleCache);
       const positions = parseVehiclePositions(bytes, ctx, { now, defaultServiceDate: this.serviceDate(now) });
       this.repos.vehicles.replaceAll(positions);
@@ -153,7 +146,6 @@ export class Ingestor {
     }
   }
 
-  /** Recompute today's aggregates (called hourly + after midnight rollover). */
   recompute(serviceDate: string = this.serviceDate(this.clock.now())): void {
     recomputeServiceDate(this.repos, serviceDate);
     this.logger.info("aggregates recomputed", { serviceDate });
@@ -174,7 +166,6 @@ export class Ingestor {
     return this.repos.health.feedHealth().find((f) => f.feedType === feed)?.lastSuccessAtMs ?? null;
   }
 
-  /** Record a gap when ingest resumes after a longer-than-expected silence. */
   private recordGapIfResumed(feed: FeedType, now: number): void {
     const prior = this.lastSuccessMs(feed);
     const gapThreshold = this.config.intervals.tripUpdatesMs * 5;

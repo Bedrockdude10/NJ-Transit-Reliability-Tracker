@@ -12,10 +12,7 @@ function sha256(bytes: Uint8Array): string {
   return createHash("sha256").update(bytes).digest("hex");
 }
 
-/**
- * Ingest a GTFS static zip: dedup by checksum, supersede the current version,
- * and store the version, raw files, and parsed catalog. Returns the version id.
- */
+/** Ingest a GTFS static zip, deduping by checksum. Returns the version id. */
 export function loadGtfsStatic(repos: Repositories, zip: Uint8Array, now: number = Date.now()): LoadResult {
   const checksum = sha256(zip);
   const existing = repos.gtfs.findByChecksum(checksum);

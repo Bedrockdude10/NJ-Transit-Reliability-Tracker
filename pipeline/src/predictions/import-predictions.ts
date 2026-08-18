@@ -7,23 +7,10 @@ import type { Logger } from "@njt/shared/logger";
 import { createClient, type ObjectStore } from "../archive/object-store";
 
 /**
- * Import model predictions from object storage into SQLite.
- *
- * The return half of the seam with `njt-delay-modeling`. That repo writes
- * `predictions/service_date=…/predictions.jsonl.gz`; this lands them locally so
- * the API can serve them from a local read, for the same reason every other read
- * is local — the request path should not depend on a bucket being up, and a third
- * party's outage should not be able to take the site down.
- *
- * **Everything here is untrusted.** It was produced by a repo that shares no code
- * with this one, by a model that is expected to change. Every row goes through
- * `delayPredictionSchema` — the runtime shadow of the same TypeScript interface
- * the modelling repo generated its pydantic models from — before it reaches the
- * database. A day that fails is left alone and the run fails loudly, because the
- * alternative is a half-imported day shown as though it were complete.
+ * Everything read here is untrusted — produced by a repo that shares no code with
+ * this one — so every row goes through `delayPredictionSchema` before it is stored.
  */
 
-/** Just enough of object storage to read a prefix. Injected in tests. */
 export interface ObjectReader {
   list: (prefix: string) => Promise<string[]>;
   get: (key: string) => Promise<Uint8Array>;
@@ -50,13 +37,8 @@ export function serviceDateFromKey(key: string): string | null {
 }
 
 /**
- * Parse a whole object into predictions, or throw.
- *
- * All-or-nothing per day. A half-written upload — an interrupted producer — has
- * lines that parse perfectly well up to the cut, and taking those would import a
- * partial day as if it were complete. Nothing is stored unless every line is
- * valid, and validity is decided by the generated contract schema rather than by
- * anything hand-written here.
+ * All-or-nothing per day: a half-written upload parses cleanly up to the cut, so
+ * taking those lines would import a partial day as if it were complete.
  */
 export function parsePredictions(serviceDate: string, body: Uint8Array): DelayPrediction[] {
   const text = gunzipSync(body).toString("utf8");
@@ -79,11 +61,9 @@ export function parsePredictions(serviceDate: string, body: Uint8Array): DelayPr
           .join("; ")}`,
       );
     }
-    // Coherence the generated schema cannot state: the three interval fields
-    // are optional one at a time but meaningless one at a time. Same
-    // all-or-nothing rule as the rest of the day — a range that contradicts its
-    // own point estimate is the shape a unit mixup takes, and it would render
-    // as a confident wrong answer rather than as an error.
+    // Coherence the generated schema cannot state: the interval fields are optional
+    // individually but meaningless individually. An incoherent range is how a unit
+    // mixup shows up, and it would render as a confident wrong answer.
     const problem = intervalProblem(parsed.data);
     if (problem !== null) throw new Error(`${serviceDate}: line ${index + 1} ${problem}`);
     return parsed.data;
@@ -130,18 +110,14 @@ export async function importPredictions(options: ImportOptions): Promise<Importe
   for (const key of keys) {
     const serviceDate = serviceDateFromKey(key);
     if (!serviceDate) {
-      // Something under the prefix that is not a partition. Not this importer's
-      // business, and not a reason to fail the run.
       log?.warn("skipping object that is not a service-date partition", { key });
       continue;
     }
     if (options.serviceDates && !options.serviceDates.includes(serviceDate)) continue;
 
     const predictions = parsePredictions(serviceDate, await reader.get(key));
-    // Replace the day rather than merge into it, in one transaction after the
-    // whole day has validated. A re-run can publish fewer legs than the run
-    // before — a corrected model drops the ones it should never have made — and
-    // merging would serve those corrections alongside what they replaced.
+    // Replace, don't merge: a re-run can publish *fewer* legs than the one before
+    // (a corrected model drops bad ones), and merging would keep what it replaced.
     repos.predictions.replaceServiceDate(serviceDate, predictions);
     log?.info("imported predictions", { serviceDate, rows: predictions.length, key });
     imported.push({ serviceDate, rows: predictions.length });
