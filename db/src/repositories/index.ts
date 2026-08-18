@@ -21,8 +21,6 @@ export * from "./predictions";
 export * from "./snapshots";
 export * from "./vehicles";
 
-/** All repositories bound to one database — the single dependency the
- * pipeline and API receive. */
 export interface Repositories {
   events: TripStopEventRepository;
   snapshots: RawSnapshotRepository;

@@ -8,10 +8,6 @@ interface SnapshotRow {
   raw_bytes: Uint8Array;
 }
 
-/**
- * Append-only archive of raw GTFS-RT protobuf payloads, retained indefinitely
- * so parsing logic can be re-run over history (PRD: "enables reprocessing").
- */
 export class RawSnapshotRepository {
   constructor(private readonly db: Database) {}
 
@@ -34,16 +30,9 @@ export class RawSnapshotRepository {
   }
 
   /**
-   * A page of snapshots in ingest order, for replaying the archive.
-   *
-   * Paged by `id` rather than offset: ids are assigned on insert so they are
-   * already chronological, which both gives a stable resumable cursor and
-   * replays polls in the order they arrived — the order that makes
-   * last-write-wins reproduce the live pipeline's final state.
-   *
-   * The blobs are large (~18 KB each, ~3 GB in total), so callers must page
-   * rather than select the range: holding the archive in memory is not an
-   * option on the deployed machine.
+   * Paged by `id`, which is chronological, so a replay sees polls in arrival
+   * order. Blobs are ~18 KB each (~3 GB total) — callers must page, not select
+   * the range; the archive does not fit in memory on the deployed machine.
    */
   pageByTime(
     feedType: FeedType,
@@ -71,13 +60,10 @@ export class RawSnapshotRepository {
   }
 
   /**
-   * A page of snapshots by id alone, for walking the whole archive.
-   *
-   * {@link pageByTime} adds a `fetched_at_ms` range, which sends SQLite to the
-   * time index and leaves it sorting every matching row into a temp B-tree to
-   * satisfy `ORDER BY id`. Over one day that is free; over the whole archive it
-   * is quadratic. Keyed on `(feed_type, id)` this is an ordered index walk, so
-   * each page costs the page, not the archive.
+   * For walking the whole archive. {@link pageByTime}'s `fetched_at_ms` range
+   * sends SQLite to the time index and makes it sort into a temp B-tree for
+   * `ORDER BY id` — quadratic over the archive. On `(feed_type, id)` this is an
+   * ordered index walk, so each page costs the page.
    */
   pageById(feedType: FeedType, afterId: number, limit: number): RawSnapshot[] {
     const rows = this.db.all<SnapshotRow>(
@@ -98,7 +84,6 @@ export class RawSnapshotRepository {
     }));
   }
 
-  /** How many snapshots a replay of this window will have to decode. */
   countByTime(feedType: FeedType, fromMs: number, toMs: number): number {
     return (
       this.db.get<{ c: number }>(
@@ -108,7 +93,6 @@ export class RawSnapshotRepository {
     );
   }
 
-  /** Earliest and latest snapshot instants held, for reporting archive extent. */
   extent(feedType: FeedType): { firstMs: number; lastMs: number } | null {
     const row = this.db.get<{ firstMs: number | null; lastMs: number | null }>(
       "SELECT MIN(fetched_at_ms) AS firstMs, MAX(fetched_at_ms) AS lastMs FROM raw_snapshots WHERE feed_type = :t",
@@ -117,7 +101,6 @@ export class RawSnapshotRepository {
     return row?.firstMs && row.lastMs ? { firstMs: row.firstMs, lastMs: row.lastMs } : null;
   }
 
-  /** Earliest and latest snapshot instants across all feeds, or null if empty. */
   timeRange(): { firstMs: number; lastMs: number } | null {
     const row = this.db.get<{ firstMs: number | null; lastMs: number | null }>(
       "SELECT MIN(fetched_at_ms) AS firstMs, MAX(fetched_at_ms) AS lastMs FROM raw_snapshots",
@@ -128,24 +111,18 @@ export class RawSnapshotRepository {
   }
 
   /**
-   * Flush the WAL into the main database file.
-   *
-   * Anything read by a tool that opens the file directly — DuckDB's SQLite
-   * scanner, for one — may not see rows still living in `-wal`. The archive
-   * sweep exports through DuckDB and then deletes through this repository, so
-   * without a checkpoint first it could write a partial day and delete a whole
-   * one. That is unrecoverable: NJT serves no history.
+   * A tool that opens the file directly may not see rows still in `-wal`, so the
+   * archive sweep must checkpoint before it exports-then-deletes; otherwise it
+   * writes a partial day and deletes a whole one. NJT serves no history to refetch.
    */
   checkpointWal(): void {
     this.db.exec("PRAGMA wal_checkpoint(FULL)");
   }
 
   /**
-   * Snapshot instants bounding a UTC day, and how many rows it holds.
-   *
-   * The archive sweep works a whole UTC day at a time: a partial day could be
-   * written to object storage, then gain more rows from the still-running
-   * pipeline, and the second write would not cover what the first deleted.
+   * Only closed windows are safe to sweep: a partial one gains rows from the
+   * running pipeline after it is written, and the second write would not cover
+   * what the first deleted.
    */
   dayExtent(dayStartMs: number, dayEndMs: number): { rows: number } {
     return {
@@ -158,16 +135,9 @@ export class RawSnapshotRepository {
   }
 
   /**
-   * Delete a UTC day's snapshots, in batches, returning how many went.
-   *
-   * Batched because this runs against a live database the pipeline is writing
-   * to: one statement removing a day's 5,700 blobs holds the write lock long
-   * enough to stall a poll, and a stalled poll loses data that cannot be
-   * refetched. `betweenBatches` lets the caller yield between them.
-   *
-   * Note this frees pages *inside* the file for reuse rather than shrinking it.
-   * That is the intent — it stops the file growing, which is what the volume
-   * ceiling actually requires, without the full rewrite a VACUUM would cost.
+   * Batched because the pipeline is writing concurrently: one statement removing
+   * a day's ~5,700 blobs holds the write lock long enough to stall a poll, and a
+   * stalled poll loses data that cannot be refetched.
    */
   deleteDay(
     dayStartMs: number,
@@ -177,9 +147,6 @@ export class RawSnapshotRepository {
     const batchSize = options.batchSize ?? 500;
     let deleted = 0;
 
-    // A subquery with LIMIT rather than an assembled `IN (?, ?, …)` list: all
-    // parameters stay named, matching the driver, and the statement is constant
-    // so SQLite can reuse its plan across batches.
     for (;;) {
       const before = this.dayExtent(dayStartMs, dayEndMs).rows;
       if (before === 0) break;

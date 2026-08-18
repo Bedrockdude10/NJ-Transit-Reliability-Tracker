@@ -27,7 +27,6 @@ export interface GtfsTripRecord {
   directionId?: number | null;
   tripHeadsign?: string | null;
 }
-/** A source GTFS route_id and the canonical catalog route it collapses onto. */
 export interface GtfsRouteAliasRecord {
   sourceRouteId: string;
   canonicalRouteId: string;
@@ -63,11 +62,6 @@ function toVersion(row: VersionRow): GtfsStaticVersion {
   };
 }
 
-/**
- * GTFS static catalog: versioned schedule snapshots and the routes/stops/trips/
- * stop_times parsed from them. Historical events join back to the version that
- * was effective when they were recorded.
- */
 export class GtfsRepository {
   constructor(private readonly db: Database) {}
 
@@ -92,20 +86,18 @@ export class GtfsRepository {
       });
   }
 
-  /** Close out the currently-effective version at `atSeconds` (epoch s). */
+  /** `atSeconds` is epoch seconds. */
   supersede(versionId: string, atSeconds: number): void {
     this.db
       .prepare("UPDATE gtfs_static_versions SET effective_to = :at WHERE version_id = :id")
       .run({ at: atSeconds, id: versionId });
   }
 
-  /** The most recently effective version, or null if none ingested yet. */
   currentVersion(): GtfsStaticVersion | null {
     const row = this.db.get<VersionRow>("SELECT * FROM gtfs_static_versions ORDER BY effective_from DESC LIMIT 1");
     return row ? toVersion(row) : null;
   }
 
-  /** Every ingested version, oldest first. */
   allVersions(): GtfsStaticVersion[] {
     return this.db
       .all<VersionRow>("SELECT * FROM gtfs_static_versions ORDER BY effective_from")
@@ -136,7 +128,6 @@ export class GtfsRepository {
     });
   }
 
-  /** A stored raw feed file (e.g. "routes.txt"), as archived at ingest. */
   readFile(versionId: string, filename: string): Uint8Array | null {
     const row = this.db.get<{ content: Uint8Array }>(
       "SELECT content FROM gtfs_static_files WHERE version_id = :v AND filename = :f",
@@ -155,12 +146,9 @@ export class GtfsRepository {
   }
 
   /**
-   * The GTFS version that was effective at an instant.
-   *
-   * Replaying the archive must parse each snapshot against the schedule that
-   * was current when it was recorded, not against today's. NJT reissues GTFS
-   * regularly and trip ids are reused, so decoding a June poll with an August
-   * schedule silently resolves trips to the wrong routes and stops.
+   * A replay must parse each snapshot against the schedule current when it was
+   * recorded: NJT reissues GTFS regularly and reuses trip ids, so decoding a
+   * June poll with an August schedule silently resolves to the wrong routes.
    */
   versionAt(epochSeconds: number): GtfsStaticVersion | null {
     const row = this.db.get<VersionRow>(
@@ -176,11 +164,9 @@ export class GtfsRepository {
   }
 
   /**
-   * Every line name ever ingested, across all GTFS versions. Historical events
-   * were labelled against whichever version was current at the time, and NJT's
-   * feed changes shape (Port Jervis is its own route in some feeds and folded
-   * into the Main Line in others) — so "is this a real line name?" must be
-   * asked of all versions, not just the current one.
+   * Across all versions, not just the current one: NJT's feed changes shape
+   * (Port Jervis is its own route in some feeds, folded into the Main Line in
+   * others) and historical events were labelled against the version of the day.
    */
   knownLineNames(): string[] {
     return this.db
@@ -188,7 +174,6 @@ export class GtfsRepository {
       .map((r) => r.lineName);
   }
 
-  /** The canonical route_id a source (feed) route_id collapses onto, if any. */
   canonicalRouteFor(versionId: string, sourceRouteId: string): string | null {
     const row = this.db.get<{ canonicalRouteId: string }>(
       "SELECT canonical_route_id AS canonicalRouteId FROM gtfs_route_aliases WHERE version_id = :v AND source_route_id = :s",
@@ -197,7 +182,6 @@ export class GtfsRepository {
     return row?.canonicalRouteId ?? null;
   }
 
-  /** Every source route_id → canonical route_id pair for a version. */
   routeAliases(versionId: string): GtfsRouteAliasRecord[] {
     return this.db.all<GtfsRouteAliasRecord>(
       "SELECT source_route_id AS sourceRouteId, canonical_route_id AS canonicalRouteId FROM gtfs_route_aliases WHERE version_id = :v",
@@ -256,7 +240,6 @@ export class GtfsRepository {
     );
   }
 
-  /** Every stop in a version with its coordinates. */
   allStops(versionId: string): GtfsStopCoord[] {
     return this.db.all<GtfsStopCoord>(
       "SELECT stop_id AS stopId, stop_name AS stopName, stop_lat AS lat, stop_lon AS lon FROM gtfs_stops WHERE version_id = :v",
@@ -264,7 +247,7 @@ export class GtfsRepository {
     );
   }
 
-  /** The stop sequence of the longest trip on a route — a line's path. */
+  /** The longest trip on the route, taken as the line's path. */
   representativeStopSequence(versionId: string, routeId: string): GtfsStopTimeRecord[] {
     const longest = this.db.get<{ tripId: string }>(
       /* sql */ `
@@ -310,7 +293,6 @@ export class GtfsRepository {
     );
   }
 
-  /** Stops that are actually served, each with the route_ids that call there. */
   stationsWithLines(versionId: string): StationWithLines[] {
     const rows = this.db.all<{ stopId: string; stopName: string; routes: string | null }>(
       /* sql */ `

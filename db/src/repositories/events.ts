@@ -21,9 +21,6 @@ interface EventRow {
   ingested_at_ms: number;
 }
 
-/** Explicit column list for event reads (B5: no SELECT *); every column is
- * consumed by {@link toEvent} and the pipeline aggregator. */
-/** A train still to call at a stop, for the live departure board. */
 export interface UpcomingDeparture {
   tripId: string;
   routeId: string;
@@ -37,7 +34,6 @@ export interface UpcomingDeparture {
   delaySeconds: number | null;
   stopSkipped: boolean;
   tripCancelled: boolean;
-  /** GTFS trip headsign — the destination shown to riders. */
   headsign: string | null;
   /** Ordering key: predicted, else scheduled departure, else scheduled arrival. */
   dueAt: number;
@@ -59,17 +55,14 @@ interface UpcomingDepartureRow {
   due_at: number;
 }
 
-/** One trip's observed run between two stops, on one service date. */
 export interface ObservedJourney {
   tripId: string;
   serviceDate: string;
   lineName: string;
   routeId: string;
   direction: Direction;
-  /** Timetabled departure from the origin, epoch seconds UTC. */
   scheduledDeparture: number | null;
   originDelaySeconds: number | null;
-  /** Timetabled arrival at the destination, epoch seconds UTC. */
   scheduledArrival: number | null;
   destinationDelaySeconds: number | null;
   observedArrival: number | null;
@@ -120,23 +113,8 @@ function toEvent(row: EventRow): TripStopEvent {
 }
 
 /**
- * Store of {@link TripStopEvent}s. `record` upserts on (trip, stop, service
- * date) and keeps the reading closest to the scheduled arrival as the
- * authoritative "final reading" (PRD deduplication rule), while always letting
- * a cancellation and the first non-null delay win.
- */
-/**
- * Whether an incoming reading should displace the stored one.
- *
- * **This mirrors the `WHERE` clause of `UPSERT` below, and the two must agree.**
- * The SQL arbitrates between live polls; replaying the archive has to make the
- * same choice in memory before it writes, and a divergence between them would
- * silently rewrite history with a different answer than live ingest produced.
+ * Mirrors the `WHERE` clause of `UPSERT` below; the two must agree, and
  * `events.upsert-parity.test.ts` holds them together.
- *
- * The rule is *closest to the scheduled arrival wins*, not last-wins: a poll
- * taken near the moment a train is due carries a better estimate than one taken
- * hours earlier, whichever order they happen to arrive in.
  */
 export function prefersIncomingReading(
   stored: Pick<TripStopEvent, "delaySeconds" | "scheduledArrival" | "ingestedAtMs">,
@@ -154,7 +132,6 @@ export function prefersIncomingReading(
 export class TripStopEventRepository {
   constructor(private readonly db: Database) {}
 
-  /** Insert + full column overwrite. Both statements below build on this. */
   private static readonly WRITE = /* sql */ `
     INSERT INTO trip_stop_events (
       trip_id, route_id, line_name, stop_id, stop_name, stop_sequence, direction,
@@ -181,10 +158,7 @@ export class TripStopEventRepository {
       ingested_at_ms      = excluded.ingested_at_ms
   `;
 
-  /**
-   * Live ingest: keep whichever reading was taken closest to the scheduled
-   * arrival. Mirrored in {@link prefersIncomingReading} — change both together.
-   */
+  /** Mirrored in {@link prefersIncomingReading} — change both together. */
   private static readonly UPSERT = `${TripStopEventRepository.WRITE}
     WHERE
       excluded.trip_cancelled = 1
@@ -194,7 +168,6 @@ export class TripStopEventRepository {
          < abs(trip_stop_events.ingested_at_ms - trip_stop_events.scheduled_arrival * 1000)
   `;
 
-  /** Replay: the caller already arbitrated, so write what it decided. */
   private static readonly REPLACE = TripStopEventRepository.WRITE;
 
   private bind(event: TripStopEvent) {
@@ -230,14 +203,9 @@ export class TripStopEventRepository {
   }
 
   /**
-   * Overwrite unconditionally — for replaying the archive, which has already
-   * chosen the winning reading in memory (see {@link prefersIncomingReading}).
-   *
-   * Live ingest must not use this. Its guard exists to arbitrate between polls
-   * arriving out of order; a replay is a re-derivation of the whole day and its
-   * result is authoritative, so applying the guard again would block exactly
-   * the corrections a replay exists to make — a parser fix changes field
-   * values, not timings, and would never look "closer to arrival".
+   * Unconditional overwrite, for replay only — the caller already arbitrated.
+   * Live ingest must not use it: a parser fix changes values, not timings, so
+   * the UPSERT guard would reject exactly the corrections a replay exists to make.
    */
   replaceMany(events: readonly TripStopEvent[]): void {
     const stmt = this.db.prepare(TripStopEventRepository.REPLACE);
@@ -246,7 +214,6 @@ export class TripStopEventRepository {
     });
   }
 
-  /** All events on a service date — used by the nightly aggregator. */
   getByServiceDate(serviceDate: string): TripStopEvent[] {
     return this.db
       .all<EventRow>(
@@ -256,7 +223,7 @@ export class TripStopEventRepository {
       .map(toEvent);
   }
 
-  /** Bounded single-station query (inclusive date range), for station detail. */
+  /** Inclusive date range. */
   getByStop(stopId: string, from: string, to: string): TripStopEvent[] {
     return this.db
       .all<EventRow>(
@@ -267,14 +234,9 @@ export class TripStopEventRepository {
   }
 
   /**
-   * Trains still to call at a stop, soonest first — the data behind a live
-   * departure board.
-   *
-   * Each poll rewrites a trip's stop rows, so a stop the train hasn't reached
-   * yet holds the feed's current *prediction* rather than an observation. The
-   * ordering key falls back through predicted -> scheduled departure ->
-   * scheduled arrival so cancelled trips (no prediction at all) still take
-   * their scheduled slot on the board instead of vanishing from it.
+   * `observed_arrival` on a stop the train hasn't reached yet is the feed's
+   * current prediction, not an observation. The fallback chain exists so
+   * cancelled trips, which have no prediction, still take their scheduled slot.
    */
   upcomingAtStop(
     stopId: string,
@@ -316,16 +278,7 @@ export class TripStopEventRepository {
     }));
   }
 
-  /**
-   * Every observed journey between two stops — the same trip calling at the
-   * origin and later at the destination, on the same service date.
-   *
-   * Self-joining the event table is what makes "how reliable is *my* commute?"
-   * answerable: reliability is a property of the pair, not of either station.
-   * `o.stop_sequence < d.stop_sequence` enforces travel direction, so asking
-   * A→B and B→A returns genuinely different trains rather than the same rows
-   * mirrored. Bounded by the (stop_id, service_date) index at both ends.
-   */
+  /** Bounded by the (stop_id, service_date) index at both ends. */
   journeysBetween(originStopId: string, destinationStopId: string, from: string, to: string): ObservedJourney[] {
     const rows = this.db.all<JourneyRow>(
       /* sql */ `
@@ -363,7 +316,6 @@ export class TripStopEventRepository {
     }));
   }
 
-  /** Distinct service dates present, ascending. */
   serviceDates(): string[] {
     return this.db
       .all<{ service_date: string }>("SELECT DISTINCT service_date FROM trip_stop_events ORDER BY service_date")
@@ -375,16 +327,12 @@ export class TripStopEventRepository {
   }
 
   /**
-   * Matches events fabricated by the pre-API seed, which is the *only* thing
-   * that ever minted trip ids of the form `<LINE>-<direction>-<n>` (e.g.
-   * "PJ-outbound-8"). Real GTFS-RT trip ids from NJT are numeric, and rows the
-   * feed supplies without a trip id are empty — never this shape. Keeping the
-   * predicate here makes it the single definition of "not real measurement".
+   * Real NJT GTFS-RT trip ids are numeric (or empty); only the removed pre-API
+   * seed ever minted `<LINE>-<direction>-<n>`, so this shape means "fabricated".
    */
   private static readonly SEED_PREDICATE =
     "(trip_id GLOB '*-inbound-*' OR trip_id GLOB '*-outbound-*')";
 
-  /** How many fabricated events remain. */
   countSeedEvents(): number {
     return (
       this.db.get<{ c: number }>(
@@ -393,7 +341,6 @@ export class TripStopEventRepository {
     );
   }
 
-  /** Service dates holding fabricated events, ascending. */
   serviceDatesWithSeedEvents(): string[] {
     return this.db
       .all<{ service_date: string }>(
@@ -402,26 +349,23 @@ export class TripStopEventRepository {
       .map((r) => r.service_date);
   }
 
-  /** Delete every fabricated event. Callers must recompute the affected dates. */
+  /** Callers must recompute the affected dates. */
   deleteSeedEvents(): number {
     const affected = this.countSeedEvents();
     this.db.run(`DELETE FROM trip_stop_events WHERE ${TripStopEventRepository.SEED_PREDICATE}`);
     return affected;
   }
 
-  /** Earliest service date still holding an event (null when empty). */
   earliestServiceDate(): string | null {
     return this.db.get<{ d: string | null }>("SELECT MIN(service_date) AS d FROM trip_stop_events")?.d ?? null;
   }
 
-  /** Distinct route ids events are stored under, ascending. */
   distinctRouteIds(): string[] {
     return this.db
       .all<{ route_id: string }>("SELECT DISTINCT route_id FROM trip_stop_events ORDER BY route_id")
       .map((r) => r.route_id);
   }
 
-  /** Service dates holding at least one event under a given route id. */
   serviceDatesForRouteId(routeId: string): string[] {
     return this.db
       .all<{ service_date: string }>(
@@ -431,7 +375,6 @@ export class TripStopEventRepository {
       .map((r) => r.service_date);
   }
 
-  /** Repoint events keyed by a malformed route id onto the right route + line. */
   relabelRouteId(staleRouteId: string, routeId: string, lineName: string): number {
     const affected =
       this.db.get<{ c: number }>("SELECT COUNT(*) AS c FROM trip_stop_events WHERE route_id = :stale", {
@@ -445,14 +388,12 @@ export class TripStopEventRepository {
     return affected;
   }
 
-  /** Distinct line names events are stored under, ascending. */
   distinctLineNames(): string[] {
     return this.db
       .all<{ line_name: string }>("SELECT DISTINCT line_name FROM trip_stop_events ORDER BY line_name")
       .map((r) => r.line_name);
   }
 
-  /** Service dates holding at least one event under a given line name. */
   serviceDatesForLineName(lineName: string): string[] {
     return this.db
       .all<{ service_date: string }>(
@@ -463,9 +404,8 @@ export class TripStopEventRepository {
   }
 
   /**
-   * Repoint events stored under a stale line name (historically the raw feed
-   * `route_id`) onto the resolved line. `line_name` is not part of the primary
-   * key, so this can't collide; callers must recompute the affected days.
+   * `line_name` is not part of the primary key, so this can't collide; callers
+   * must recompute the affected days.
    */
   relabelLineName(staleLineName: string, routeId: string, lineName: string): number {
     const affected =

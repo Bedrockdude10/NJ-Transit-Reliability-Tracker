@@ -18,35 +18,20 @@ interface PredictionRow {
   run_id: string;
 }
 
-/**
- * Model output, landed from object storage.
- *
- * A landing area, not a source: predictions are produced by `njt-delay-modeling`,
- * written to `predictions/` as gzipped JSON Lines, and imported here so the API
- * can serve them from local reads. Nothing in this repo derives from them.
- *
- * They are pulled into SQLite rather than read from object storage per request
- * for the same reason every other read is local: the request path should not
- * depend on a third party being up, and a bucket outage should not be able to
- * take the site down.
- */
+/** Model output, landed from object storage. Nothing in this repo derives from it. */
 export class PredictionRepository {
   constructor(private readonly db: Database) {}
 
   /**
-   * Insert or replace. The key is the leg — (trip, from, to, service date) —
-   * because one trip carries a prediction from each stop to each later stop, and
-   * keying on the trip alone would keep only the last one imported.
-   *
-   * Replace rather than ignore: the modelling repo rewrites a whole service date
-   * when it re-runs, whether that is a better model or actuals filled in after
-   * the trips have run, and the newest write is the authoritative one.
+   * Keyed on the leg, not the trip: one trip carries a prediction from each stop
+   * to each later stop. Replace, not ignore — a re-run of a service date is
+   * authoritative over what it supersedes.
    */
   upsertMany(predictions: readonly DelayPrediction[]): void {
     this.db.transaction(() => this.write(predictions));
   }
 
-  /** The write itself, without a transaction, so callers can compose one. */
+  /** Untransacted, so callers can compose one. */
   private write(predictions: readonly DelayPrediction[]): void {
     const statement = this.db.prepare(/* sql */ `
       INSERT INTO predictions (
@@ -87,8 +72,7 @@ export class PredictionRepository {
         horizon_seconds: prediction.horizonSeconds,
         predicted_delay_seconds: prediction.predictedDelaySeconds,
         actual_delay_seconds: prediction.actualDelaySeconds,
-        // Absent in the contract, NULL in the column: SQLite has no notion of
-        // an unset parameter, and `undefined` would fail to bind.
+        // `undefined` would fail to bind; SQLite has no unset parameter.
         predicted_delay_lower_seconds: prediction.predictedDelayLowerSeconds ?? null,
         predicted_delay_upper_seconds: prediction.predictedDelayUpperSeconds ?? null,
         prediction_interval_percent: prediction.predictionIntervalPercent ?? null,
@@ -99,15 +83,8 @@ export class PredictionRepository {
   }
 
   /**
-   * Replace a whole service date.
-   *
-   * The unit the modelling repo publishes is a day, and a re-run can emit
-   * *fewer* legs than the one before — because the model changed, or because the
-   * previous rows were wrong. Upserting alone leaves those orphans in place: a
-   * prediction for a leg that no longer exists was still being served after the
-   * run that produced it had been corrected and republished.
-   *
-   * One transaction, so a day is never half-replaced.
+   * Delete-then-write, in one transaction: a re-run can emit *fewer* legs than
+   * the one before, and upserting alone would leave the orphans being served.
    */
   replaceServiceDate(serviceDate: string, predictions: readonly DelayPrediction[]): void {
     this.db.transaction(() => {
@@ -116,7 +93,6 @@ export class PredictionRepository {
     });
   }
 
-  /** Every prediction for a service date, in the order a trip travels. */
   forServiceDate(serviceDate: string): DelayPrediction[] {
     return this.db
       .all<PredictionRow>(
@@ -130,19 +106,12 @@ export class PredictionRepository {
       .map(toPrediction);
   }
 
-  /** Service dates holding predictions, oldest first. */
   serviceDates(): string[] {
     return this.db
       .all<{ d: string }>("SELECT DISTINCT service_date AS d FROM predictions ORDER BY d")
       .map((row) => row.d);
   }
 
-  /**
-   * The model and run behind the most recent prediction, or null.
-   *
-   * Shown next to the numbers: a prediction is only as good as the run that made
-   * it, and an unlabelled figure invites more confidence than it has earned.
-   */
   latestRun(): { modelVersion: string; runId: string; predictedAtEpochSeconds: number } | null {
     const row = this.db.get<{ model_version: string; run_id: string; predicted_at: number }>(
       "SELECT model_version, run_id, predicted_at FROM predictions ORDER BY predicted_at DESC LIMIT 1",
@@ -175,13 +144,9 @@ function toPrediction(row: PredictionRow): DelayPrediction {
 }
 
 /**
- * The interval fields, or no fields at all.
- *
- * Spread rather than assigned so a row without an interval yields a prediction
- * with the keys *absent*, which is what the contract says: the schema types
- * them as numbers and forbids unknown properties, so re-publishing a row that
- * carried `"predictedDelayLowerSeconds": null` would fail validation on the
- * other side of the seam.
+ * Spread, so a row without an interval yields the keys *absent* rather than
+ * null: the contract types them as numbers and forbids unknowns, so a null
+ * would fail validation on the other side of the seam.
  */
 function intervalOf(row: PredictionRow): Partial<DelayPrediction> {
   if (row.predicted_delay_lower_seconds === null) return {};

@@ -1,19 +1,16 @@
 import { DatabaseSync, type StatementSync } from "node:sqlite";
 import { MIGRATIONS } from "./schema";
 
-/** Values bindable to a named SQL parameter. */
 export type SqlParams = Record<string, string | number | bigint | null | Uint8Array>;
 
-/**
- * Thin wrapper around the built-in `node:sqlite` synchronous driver. Keeping
- * the surface small (prepare / exec / transaction) means a future Postgres
- * adapter only has to satisfy this shape, and repositories never touch the
- * driver directly.
- */
 export class Database {
   readonly handle: DatabaseSync;
 
-  /** Startup must survive a schema migration holding the write lock. */
+  /**
+   * The API and the pipeline both open the database and run migrations on boot;
+   * the loser must outwait the winner's DDL. Adding an index over a 3 GB table
+   * took far longer than the 5 s default, so the loser died "database is locked".
+   */
   private static readonly BUSY_TIMEOUT_MS = 120_000;
 
   /** @param path filesystem path, or `:memory:` (default) for an ephemeral db. */
@@ -21,15 +18,6 @@ export class Database {
     this.handle = new DatabaseSync(path);
     this.handle.exec("PRAGMA journal_mode = WAL;");
     this.handle.exec("PRAGMA foreign_keys = ON;");
-    // Long enough to outlast a migration, not just a normal write.
-    //
-    // The API and the pipeline open the database at the same moment on boot and
-    // both run migrations; one wins and the other must wait. A five-second
-    // timeout covers ordinary contention but not DDL — adding an index over a
-    // 3 GB table took far longer than that, so the loser died with "database is
-    // locked" at startup, the supervisor stopped the machine, and the whole
-    // service went down. Waiting is always better than crashing here: the
-    // loser finds the migration already applied and continues.
     this.handle.exec(`PRAGMA busy_timeout = ${Database.BUSY_TIMEOUT_MS};`);
     this.migrate();
   }
@@ -42,11 +30,6 @@ export class Database {
     this.handle.exec(sql);
   }
 
-  /**
-   * Typed query helpers. SQLite returns loosely-typed row objects; these cast
-   * to the caller's row shape at the single boundary, so repositories stay
-   * free of `as unknown as` noise.
-   */
   all<T>(sql: string, params: SqlParams = {}): T[] {
     return this.handle.prepare(sql).all(params) as unknown as T[];
   }
@@ -59,7 +42,6 @@ export class Database {
     this.handle.prepare(sql).run(params);
   }
 
-  /** Run `fn` inside a transaction, rolling back on any thrown error. */
   transaction<T>(fn: () => T): T {
     this.handle.exec("BEGIN");
     try {
@@ -76,7 +58,6 @@ export class Database {
     this.handle.close();
   }
 
-  /** Apply any migrations not yet recorded in `schema_migrations`. */
   private migrate(): void {
     this.handle.exec(
       "CREATE TABLE IF NOT EXISTS schema_migrations (id TEXT PRIMARY KEY, applied_at_ms INTEGER NOT NULL)",
@@ -100,7 +81,7 @@ export class Database {
   }
 }
 
-/** Open a database, applying migrations. */
+/** Opens and migrates. */
 export function openDatabase(path?: string): Database {
   return new Database(path);
 }

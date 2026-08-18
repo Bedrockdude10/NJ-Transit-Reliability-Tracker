@@ -26,11 +26,9 @@ function toMetric(row: MetricRow): OfficialNjtMetric {
   };
 }
 
-/** Explicit column list for metric reads (B5: no SELECT *). */
 const METRIC_COLUMNS =
   "year, month, line_name, otp_percent, otp_percent_amtrak_adjusted, trips_operated, cancellations, cancellation_causes";
 
-/** NJT's officially published monthly OTP, used as the comparison baseline. */
 export class OfficialMetricRepository {
   constructor(private readonly db: Database) {}
 
@@ -62,7 +60,7 @@ export class OfficialMetricRepository {
       });
   }
 
-  /** Metrics for a line across an inclusive month range. */
+  /** Month range is inclusive. */
   getForLineRange(
     lineName: string,
     from: { year: number; month: number },
@@ -80,7 +78,7 @@ export class OfficialMetricRepository {
       .map(toMetric);
   }
 
-  /** All lines' metrics across an inclusive month range (system rollup). */
+  /** Month range is inclusive. */
   getAllForRange(
     from: { year: number; month: number },
     to: { year: number; month: number },
@@ -97,7 +95,6 @@ export class OfficialMetricRepository {
       .map(toMetric);
   }
 
-  /** Full monthly history for a line (the Line Detail comparison table). */
   getAllForLine(lineName: string): OfficialNjtMetric[] {
     return this.db
       .all<MetricRow>(`SELECT ${METRIC_COLUMNS} FROM official_njt_metrics WHERE line_name = :line ORDER BY year, month`, {
@@ -106,11 +103,6 @@ export class OfficialMetricRepository {
       .map(toMetric);
   }
 
-  /**
-   * The single most-recent published metric for every line, in one query — the
-   * `/lines` list only needs each line's latest month, so this replaces an N+1
-   * of one full-history query per line.
-   */
   latestPerLine(): Map<string, OfficialNjtMetric> {
     const rows = this.db
       .all<MetricRow>(
@@ -127,10 +119,8 @@ export class OfficialMetricRepository {
   }
 
   /**
-   * The most recent month NJT has published, across all lines (or one line).
-   * NJT publishes months in arrears, so a "last 30 days" request routinely
-   * falls outside published history — callers use this to fall back to the
-   * newest figures that do exist rather than rendering an empty panel.
+   * NJT publishes months in arrears, so a "last 30 days" request routinely falls
+   * outside published history; callers fall back to this instead of showing nothing.
    */
   latestMonth(lineName?: string): YearMonth | null {
     return (
@@ -141,8 +131,7 @@ export class OfficialMetricRepository {
     );
   }
 
-  // --- Fleet MDBF (systemwide mean distance between failures) ---------------
-
+  /** MDBF: systemwide mean distance between failures. */
   upsertMdbf(metric: FleetMdbfMetric): void {
     this.db
       .prepare(
@@ -154,7 +143,7 @@ export class OfficialMetricRepository {
       .run({ year: metric.year, month: metric.month, mdbf: metric.mdbf });
   }
 
-  /** MDBF rows across an inclusive month range. */
+  /** Month range is inclusive. */
   getMdbfForRange(
     from: { year: number; month: number },
     to: { year: number; month: number },
@@ -165,7 +154,6 @@ export class OfficialMetricRepository {
     );
   }
 
-  /** The most recent month with a published fleet MDBF figure. */
   latestMdbfMonth(): YearMonth | null {
     return this.db.get<YearMonth>("SELECT year, month FROM official_fleet_mdbf ORDER BY year DESC, month DESC LIMIT 1") ?? null;
   }

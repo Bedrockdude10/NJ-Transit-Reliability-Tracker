@@ -1,16 +1,10 @@
 import type { DataGap, FeedHealth } from "@njt/shared";
 import type { Database } from "../database";
 
-/** UTC calendar date (YYYY-MM-DD) of an epoch-ms instant — for daily counters. */
 function utcDateString(ms: number): string {
   return new Date(ms).toISOString().slice(0, 10);
 }
 
-/**
- * Tracks the pipeline's operational health: per-feed last success/failure, daily
- * poll and failure counts, known data gaps, API request budgets, and arbitrary
- * meta (e.g. collection start date). Surfaced read-only by the API.
- */
 export class HealthRepository {
   constructor(private readonly db: Database) {}
 
@@ -52,7 +46,7 @@ export class HealthRepository {
     this.incrementDaily(feedType, ms, 1, 1);
   }
 
-  /** Feed health snapshot, with poll/failure counts for the UTC day of `nowMs`. */
+  /** Counts are for the UTC day of `nowMs`. */
   feedHealth(nowMs: number = Date.now()): FeedHealth[] {
     const today = utcDateString(nowMs);
     return this.db.all<FeedHealth>(
@@ -85,9 +79,8 @@ export class HealthRepository {
   }
 
   /**
-   * Drop gaps that finish at or before `ms`. Uptime is measured against the
-   * collection window, so a gap preceding the window's start isn't lost
-   * coverage — it's time the project never claimed to cover.
+   * Uptime is measured against the collection window, so a gap ending before the
+   * window's start is not lost coverage — it is time never claimed.
    */
   deleteGapsEndingAtOrBefore(ms: number): number {
     const affected =
@@ -101,8 +94,6 @@ export class HealthRepository {
       "SELECT feed_type AS feedType, start_ms AS startMs, end_ms AS endMs FROM data_gaps ORDER BY start_ms",
     );
   }
-
-  // --- Rate-limit budget ----------------------------------------------------
 
   incrementBudget(group: string, count: number, ms: number = Date.now()): void {
     this.db
@@ -123,8 +114,6 @@ export class HealthRepository {
     return row?.count ?? 0;
   }
 
-  // --- Meta -----------------------------------------------------------------
-
   setMeta(key: string, value: string): void {
     this.db
       .prepare("INSERT OR REPLACE INTO pipeline_meta (key, value) VALUES (:k, :v)")
@@ -136,7 +125,7 @@ export class HealthRepository {
     return row?.value ?? null;
   }
 
-  /** Set the collection start date once (first writer wins). */
+  /** First writer wins. */
   ensureCollectionStart(date: string): void {
     if (this.getMeta("collection_start_date") === null) {
       this.setMeta("collection_start_date", date);
@@ -147,21 +136,13 @@ export class HealthRepository {
     return this.getMeta("collection_start_date");
   }
 
-  /**
-   * Uptime as the fraction of the collection window not lost to recorded gaps.
-   * Returns 100 when there is no collection window yet. `start` defaults to
-   * {@link collectionStartDate}; callers that already resolved it (e.g. /health)
-   * can pass it in to avoid a second lookup.
-   */
+  /** Returns 100 when there is no collection window yet. */
   uptimePercent(nowMs: number = Date.now(), start: string | null = this.collectionStartDate()): number {
     if (!start) return 100;
     const startMs = Date.parse(`${start}T00:00:00Z`);
     const windowMs = Math.max(nowMs - startMs, 1);
-    // Count only the part of each gap that falls *inside* the window. A gap can
-    // straddle the start (ingest was down before collection was anchored, and
-    // recovered after), and charging its full duration against a shorter window
-    // understates uptime badly — a 20-day outage preceding a 30-day window read
-    // as 35% when the real figure was 96%.
+    // Clamp each gap to the window: a gap can straddle the start, and charging
+    // its full duration against a shorter window understates uptime badly.
     const lostMs = this.gaps().reduce((sum, g) => {
       const from = Math.max(g.startMs, startMs);
       const to = Math.min(g.endMs, nowMs);

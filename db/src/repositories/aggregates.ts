@@ -15,8 +15,6 @@ import type {
 import type { Database } from "../database";
 import { parseCountMap, parseJson, serializeJson } from "../json";
 
-// --- SQL-aggregated read shapes ---------------------------------------------
-
 export interface HeatmapBucketAgg {
   bucket: number;
   sumDelaySeconds: number;
@@ -37,13 +35,11 @@ export interface StationLineDirAgg {
   sumArrivalDelaySeconds: number;
   observations: number;
 }
-/** One stop's delay totals for a line + direction, across a date range. */
 export interface StationDelayAgg {
   stopId: string;
   sumArrivalDelaySeconds: number;
   observations: number;
 }
-/** One station's totals across all its lines, for ranking. */
 export interface StationRankingAgg {
   stopId: string;
   sumArrivalDelaySeconds: number;
@@ -67,17 +63,12 @@ export interface ConnectionTripleAgg {
   observations: number;
 }
 export interface OtpMonthlyAgg {
-  /** YYYY-MM (the month prefix of the service dates it aggregates). */
+  /** YYYY-MM */
   month: string;
   tripsOperated: number;
-  /** Summed on-time count for the requested threshold key. */
   onTimeCount: number;
 }
 
-/**
- * A full set of recomputed daily aggregate rows for one service date, as the
- * pipeline's aggregator produces it. Consumed by {@link AggregateRepository.replaceServiceDate}.
- */
 export interface ServiceDateAggregates {
   otp: readonly OtpDailyRow[];
   distribution: readonly DelayDistributionDailyRow[];
@@ -89,15 +80,9 @@ export interface ServiceDateAggregates {
   connections: readonly ConnectionDailyRow[];
 }
 
-/**
- * Read/write access to the pre-computed daily aggregate tables. Writers are
- * used by the pipeline's aggregator; readers are used by the API, which sums
- * the small daily rows over a requested range (never the raw event table).
- */
 export class AggregateRepository {
   constructor(private readonly db: Database) {}
 
-  /** Aggregate tables keyed by service_date, cleared together on recompute. */
   private static readonly SERVICE_DATE_TABLES = [
     "otp_aggregates",
     "delay_distribution_aggregates",
@@ -109,10 +94,7 @@ export class AggregateRepository {
     "connection_aggregates",
   ] as const;
 
-  /**
-   * Unwrapped delete of every aggregate row for a service date. Callers must
-   * already be inside a transaction (node:sqlite BEGIN does not nest).
-   */
+  /** Callers must already be inside a transaction — node:sqlite BEGIN does not nest. */
   private deleteServiceDateRows(serviceDate: string): void {
     for (const table of AggregateRepository.SERVICE_DATE_TABLES) {
       this.db.prepare(`DELETE FROM ${table} WHERE service_date = :d`).run({ d: serviceDate });
@@ -121,12 +103,8 @@ export class AggregateRepository {
 
   /**
    * Service dates whose stored aggregates carry a line name outside `known`.
-   *
-   * Aggregates are derived, so this asks "which days were rolled up before the
-   * events were corrected?" — letting a repair resume after a partial failure.
-   * Reading it from the aggregates rather than the events matters: once the
-   * events are relabelled there is nothing left in them to find, and the stale
-   * rollups would otherwise be stranded.
+   * Must read the aggregates, not the events: once events are relabelled there
+   * is nothing left in them to find, and the stale rollups strand.
    */
   serviceDatesWithUnknownLineNames(known: readonly string[]): string[] {
     if (known.length === 0) return [];
@@ -144,16 +122,11 @@ export class AggregateRepository {
     return dates.map((d) => d.service_date);
   }
 
-  /** Delete every aggregate row for a service date, so it can be recomputed. */
   clearServiceDate(serviceDate: string): void {
     this.db.transaction(() => this.deleteServiceDateRows(serviceDate));
   }
 
-  /**
-   * Atomically replace all aggregates for a service date: clear the old rows and
-   * persist the recomputed bundle inside a single transaction, so API readers
-   * never observe a half-cleared day and a failed recompute rolls back cleanly.
-   */
+  /** One transaction, so readers never observe a half-cleared day. */
   replaceServiceDate(serviceDate: string, bundle: ServiceDateAggregates): void {
     this.db.transaction(() => {
       this.deleteServiceDateRows(serviceDate);
@@ -167,8 +140,6 @@ export class AggregateRepository {
       for (const row of bundle.connections) this.upsertConnectionDaily(row);
     });
   }
-
-  // --- OTP -------------------------------------------------------------------
 
   upsertOtpDaily(row: OtpDailyRow): void {
     this.db
@@ -194,7 +165,6 @@ export class AggregateRepository {
       });
   }
 
-  /** Explicit column list for OTP daily reads (B5: no SELECT *). */
   private static readonly OTP_COLUMNS =
     "scope, scope_id, service_date, direction, trips_operated, trips_cancelled, on_time_counts, sum_delay_seconds";
 
@@ -237,11 +207,6 @@ export class AggregateRepository {
       .map(AggregateRepository.toOtpRow);
   }
 
-  /**
-   * OTP daily rows for EVERY scope_id under a scope+direction in one ranged
-   * query. Lets callers that need all lines (e.g. /map) group by scope_id in
-   * memory instead of issuing one {@link getOtpDailyRows} per line (N+1).
-   */
   getOtpDailyRowsForScope(scope: ScopeKind, direction: DirectionFilter, from: string, to: string): OtpDailyRow[] {
     return this.db
       .all<Parameters<typeof AggregateRepository.toOtpRow>[0]>(
@@ -253,11 +218,6 @@ export class AggregateRepository {
       .map(AggregateRepository.toOtpRow);
   }
 
-  /**
-   * OTP daily rows for a scope_id across ALL directions in one ranged query.
-   * Lets callers that need every direction (e.g. /lines/:id/summary) group by
-   * direction in memory instead of one {@link getOtpDailyRows} per direction.
-   */
   getOtpDailyRowsAllDirections(scope: ScopeKind, scopeId: string, from: string, to: string): OtpDailyRow[] {
     return this.db
       .all<Parameters<typeof AggregateRepository.toOtpRow>[0]>(
@@ -269,12 +229,7 @@ export class AggregateRepository {
       .map(AggregateRepository.toOtpRow);
   }
 
-  /**
-   * Monthly OTP rollup for a scope, bucketed in SQL (GROUP BY the YYYY-MM
-   * prefix of service_date) rather than pulling every daily row and grouping in
-   * JS. `thresholdKey` is the on-time threshold whose count to sum (a key of
-   * on_time_counts, e.g. "900"). Ordered by month ascending.
-   */
+  /** `thresholdKey` is a key of on_time_counts, e.g. "900". */
   getOtpMonthly(
     scope: ScopeKind,
     scopeId: string,
@@ -293,8 +248,6 @@ export class AggregateRepository {
       { scope, scopeId, dir: direction, threshold: thresholdKey },
     );
   }
-
-  // --- Delay distribution ----------------------------------------------------
 
   upsertDelayDistributionDaily(row: DelayDistributionDailyRow): void {
     this.db
@@ -326,8 +279,6 @@ export class AggregateRepository {
         counts: parseCountMap(row.counts),
       }));
   }
-
-  // --- Heatmap ---------------------------------------------------------------
 
   upsertHeatmapDaily(row: HeatmapDailyRow): void {
     this.db
@@ -367,8 +318,6 @@ export class AggregateRepository {
       { scope, scopeId, type, from, to },
     );
   }
-
-  // --- Trip daily (worst trips) ----------------------------------------------
 
   upsertTripDaily(row: TripDailyRow): void {
     this.db
@@ -410,8 +359,6 @@ export class AggregateRepository {
     );
   }
 
-  // --- Station daily ---------------------------------------------------------
-
   upsertStationDaily(row: StationDailyRow): void {
     this.db
       .prepare(
@@ -452,13 +399,6 @@ export class AggregateRepository {
     );
   }
 
-  /**
-   * Average arrival delay at every stop a line serves, in one query.
-   *
-   * The per-station view answers "how is this stop doing?"; this answers "where
-   * along the route does the delay come from?" — which is the operator's
-   * question, and needs every stop side by side rather than one at a time.
-   */
   stationDelaysForLine(lineName: string, direction: string, from: string, to: string): StationDelayAgg[] {
     return this.db.all<StationDelayAgg>(
       /* sql */ `
@@ -473,13 +413,6 @@ export class AggregateRepository {
     );
   }
 
-  /**
-   * Every station's delay and amplification totals in one pass.
-   *
-   * The per-station endpoint answers "how is this stop doing?" one stop at a
-   * time; ranking needs them side by side, and doing that as ~160 separate
-   * queries would be an N+1 over a table that already stores the totals.
-   */
   stationRankings(from: string, to: string): StationRankingAgg[] {
     return this.db.all<StationRankingAgg>(
       /* sql */ `
@@ -510,8 +443,6 @@ export class AggregateRepository {
     );
   }
 
-  // --- Station hourly --------------------------------------------------------
-
   upsertStationHourly(row: StationHourlyRow): void {
     this.db
       .prepare(
@@ -537,8 +468,6 @@ export class AggregateRepository {
     );
   }
 
-  // --- Station distribution --------------------------------------------------
-
   upsertStationDistributionDaily(row: StationDistributionDailyRow): void {
     this.db
       .prepare(
@@ -559,8 +488,6 @@ export class AggregateRepository {
       )
       .map((row) => ({ stopId: row.stop_id, serviceDate: row.service_date, counts: parseCountMap(row.counts) }));
   }
-
-  // --- Connections -----------------------------------------------------------
 
   upsertConnectionDaily(row: ConnectionDailyRow): void {
     this.db
@@ -644,11 +571,7 @@ export class AggregateRepository {
       }));
   }
 
-  /**
-   * Highest-frequency transfer triples over a service-date window (PRD success
-   * criterion #4). The window bounds the GROUP BY so cost doesn't grow
-   * unbounded with accumulated history.
-   */
+  /** The window bounds the GROUP BY so cost doesn't grow with accumulated history. */
   topConnectionTriples(limit: number, from: string, to: string): ConnectionTripleAgg[] {
     return this.db.all<ConnectionTripleAgg>(
       /* sql */ `

@@ -38,15 +38,13 @@ function toPosition(row: VehicleRow): VehiclePosition {
 }
 
 /**
- * Live train positions. The GTFS-RT VehiclePositions feed returns a complete
- * snapshot of active vehicles on every poll, so this is a replace-wholesale
- * table rather than an append log: a train that stops reporting disappears
- * instead of lingering on the map at a stale position.
+ * The VehiclePositions feed returns every active vehicle on each poll, so this
+ * table is replaced wholesale rather than appended to — a train that stops
+ * reporting disappears instead of lingering at a stale position.
  */
 export class VehiclePositionRepository {
   constructor(private readonly db: Database) {}
 
-  /** Swap in a whole snapshot, atomically. */
   replaceAll(positions: readonly VehiclePosition[]): void {
     const stmt = this.db.prepare(
       /* sql */ `
@@ -79,7 +77,6 @@ export class VehiclePositionRepository {
     });
   }
 
-  /** Every current position, optionally narrowed to one canonical route. */
   all(routeId?: string): VehiclePosition[] {
     const rows = routeId
       ? this.db.all<VehicleRow>("SELECT * FROM vehicle_positions WHERE route_id = :r ORDER BY vehicle_id", { r: routeId })

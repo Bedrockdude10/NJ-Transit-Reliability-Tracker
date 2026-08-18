@@ -25,13 +25,12 @@ function toAlert(row: AlertRow): ServiceAlert {
     effectType: row.effect_type as EffectType,
     activeFrom: row.active_from,
     activeTo: row.active_to,
-    // The list/log surfaces when an alert was first observed.
     ingestedAtMs: row.first_seen_ms,
   };
 }
 
 export interface AlertQuery {
-  /** Match alerts that affect this route_id. */
+  /** A route_id. */
   route?: string;
   effectType?: string;
   fromMs?: number;
@@ -49,7 +48,7 @@ export interface AlertFrequencyRow {
 export class ServiceAlertRepository {
   constructor(private readonly db: Database) {}
 
-  /** Insert a newly seen alert, or refresh an existing one (keeping first_seen). */
+  /** Refreshing an existing alert keeps its first_seen_ms. */
   upsert(alert: ServiceAlert): void {
     this.db
       .prepare(
@@ -107,7 +106,6 @@ export class ServiceAlertRepository {
     return { where: clauses.length ? `WHERE ${clauses.join(" AND ")}` : "", params };
   }
 
-  /** Paginated alert log, newest first, with a total count for the filter. */
   list(query: AlertQuery): { alerts: ServiceAlert[]; total: number } {
     const { where, params } = this.buildFilter(query);
     const total = this.db.get<{ c: number }>(`SELECT COUNT(*) AS c FROM service_alerts ${where}`, params)?.c ?? 0;
@@ -122,7 +120,7 @@ export class ServiceAlertRepository {
     return { alerts, total };
   }
 
-  /** Per-route, per-effect alert counts over a time window (epoch ms). */
+  /** Window in epoch ms. */
   frequency(fromMs: number, toMs: number): AlertFrequencyRow[] {
     return this.db.all<AlertFrequencyRow>(
       /* sql */ `

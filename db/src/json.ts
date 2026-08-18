@@ -1,5 +1,3 @@
-/** Tiny helpers for JSON TEXT columns, typed for the maps we store. */
-
 export type CountMap = Record<string, number>;
 
 export function serializeJson(value: unknown): string {

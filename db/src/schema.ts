@@ -1,12 +1,3 @@
-/**
- * Database schema as an ordered list of migrations. Each migration runs once,
- * tracked in `schema_migrations`. To evolve the schema, append a new migration
- * — never edit an applied one.
- *
- * Storage conventions: instants are INTEGER epoch seconds, except `*_ms`
- * columns which are epoch milliseconds. Booleans are INTEGER 0/1. Map-valued
- * aggregate fields are stored as JSON TEXT.
- */
 
 export interface Migration {
   id: string;
