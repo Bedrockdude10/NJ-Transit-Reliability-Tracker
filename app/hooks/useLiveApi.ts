@@ -8,27 +8,17 @@ export interface LiveResult<T> extends ApiResult<T> {
 }
 
 /**
- * Poll an endpoint on an interval, for views that must stay current — the
- * departure board, live train positions.
- *
- * This is now {@link useApi} plus a refetch interval. It used to be a separate
- * 80-line hook with its own cancellation ref, timer and visibility listener,
- * because the rule it enforced — a failed refresh must never blank a board a
- * rider is reading — looked incompatible with throwing errors to a boundary.
- *
- * It isn't. The `throwOnError` predicate in `query-client.ts` only throws when
- * there is nothing on screen to keep, so a failed poll leaves the times in
- * place and surfaces `error` beside them. What was one screen's special case
- * is now how every screen behaves, and the difference here is a single option.
+ * {@link useApi} plus a refetch interval, for views that must stay current. A
+ * failed poll leaves the times on screen and surfaces `error` beside them —
+ * see `throwOnError` in `query-client.ts`.
  */
 export function useLiveApi<T>(query: ApiQuery<T>, intervalMs: number): LiveResult<T> {
   const result = useSuspenseQuery({
     queryKey: query.key,
     queryFn: query.run,
     refetchInterval: intervalMs,
-    // Stop polling while the tab is hidden, and catch up the moment it returns
-    // rather than waiting out the remainder of an interval with stale times on
-    // screen. Both are defaults; they are named because they are load-bearing.
+    // Defaults, named because they are load-bearing: pause while hidden, and
+    // catch up on return rather than waiting out the interval with stale times.
     refetchIntervalInBackground: false,
     refetchOnWindowFocus: true,
     // A live view only ever wants the current answer, never a cached one.

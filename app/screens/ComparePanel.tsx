@@ -13,9 +13,8 @@ import { Card, Loading, Muted, PageTitle, SectionTitle } from "../components/ui"
 
 const MAX_SELECTED = 5;
 
-// Remember the user's selection across in-session navigations (resets on full
-// reload). `null` means "untouched — show the default"; an array (including [])
-// is an explicit choice that sticks, so clearing it no longer springs back.
+// Survives in-session navigation, not a reload. `null` is "untouched, show the
+// default"; any array — including [] — is an explicit choice that sticks.
 let remembered: string[] | null = null;
 
 export function ComparePanel() {
@@ -36,7 +35,7 @@ function LineComparison() {
   const { data: list } = useApi(api.lines());
   const lines = list.lines;
   const cc = useChartColors();
-  // Fallback palette (concrete, for SVG) for lines NJT publishes no color for.
+  // Concrete (SVG-safe) fallback for lines NJT publishes no color for.
   const palette = useMemo(() => [cc.accent, cc.njt, cc.good, cc.warn, cc.bad], [cc]);
 
   const [selected, setSelectedState] = useState<string[] | null>(remembered);
@@ -45,8 +44,7 @@ function LineComparison() {
     setSelectedState(next);
   }, []);
 
-  // Neutral default: the first two lines with NJT data, alphabetically — not an
-  // editorial "worst performers" pairing the user has to keep deselecting.
+  // Alphabetical, not "worst performers": a default the user need not deselect.
   const defaultIds = useMemo(
     () =>
       [...lines]

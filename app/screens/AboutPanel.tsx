@@ -3,7 +3,6 @@ import { StyleSheet, Text, View } from "react-native";
 import { Card, PageTitle, SectionTitle } from "../components/ui";
 import { theme } from "../lib/theme";
 
-/** A line of body copy with an optional inline bold lead-in. */
 function P({ lead, children }: { lead?: string; children: ReactNode }) {
   return (
     <Text style={styles.body}>
@@ -13,11 +12,7 @@ function P({ lead, children }: { lead?: string; children: ReactNode }) {
   );
 }
 
-/**
- * Methodology / About — a static explainer of what each metric means, where the
- * data comes from, and what's official vs. independently measured. No API calls;
- * pure content so the page renders even when the backend is down.
- */
+/** No API calls, so this renders even when the backend is down. */
 export function AboutPanel() {
   return (
     <>

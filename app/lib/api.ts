@@ -35,7 +35,7 @@ export interface DateRange {
 
 type Params = Record<string, string | number | undefined>;
 
-/** Build a URL with a query string. Avoids the `URL` global for RN compatibility. */
+/** Avoids the `URL` global, which React Native does not implement fully. */
 export function buildUrl(path: string, params: Params = {}): string {
   const query = Object.entries(params)
     .filter(([, v]) => v !== undefined && v !== "")
@@ -45,13 +45,9 @@ export function buildUrl(path: string, params: Params = {}): string {
 }
 
 /**
- * A response that did not match the contract in `@njt/shared`.
- *
- * The API and the app deploy independently — Fly and Cloudflare Pages — so they
- * can briefly be running different versions of that contract. Without this the
- * mismatch arrives as `undefined` deep inside a component and renders as an
- * empty panel; with it, the screen's existing error state says what is wrong
- * and which field caused it.
+ * A response that did not match the contract in `@njt/shared`. Named so a
+ * version skew surfaces as an error naming the field, not as `undefined` deep
+ * inside a component rendering an empty panel.
  */
 export class ApiContractError extends Error {
   constructor(
@@ -65,17 +61,9 @@ export class ApiContractError extends Error {
   }
 }
 
-/**
- * A request that has not been made yet: its cache key and how to run it.
- *
- * Methods below return one of these rather than a `Promise`, so the key is
- * always the URL that will actually be fetched. The hooks used to take a
- * hand-written dependency array instead, and two of them already collided —
- * `systemSummary` and `lightRailSummary` were both keyed `[from, to]`. Deriving
- * the key from the request makes that class of mistake unrepresentable.
- */
+/** A request that has not been made yet: its cache key and how to run it. */
 export interface ApiQuery<T> {
-  /** TanStack Query key. The URL, so distinct requests can never collide. */
+  /** The URL, so distinct requests can never collide. */
   readonly key: readonly [string];
   readonly run: () => Promise<T>;
 }
@@ -84,28 +72,22 @@ async function fetchJson<S extends z.ZodType>(schema: S, url: string, path: stri
   const res = await fetch(url);
   if (!res.ok) throw new Error(`API ${res.status} for ${path}`);
   const parsed = schema.safeParse(await res.json());
-  // Zod strips unknown keys rather than rejecting them, so an API that *adds* a
-  // field stays compatible. Only a removal or a changed type fails here — and
-  // those would have broken the render anyway, silently.
+  // Zod strips unknown keys, so an API that *adds* a field stays compatible;
+  // only a removal or changed type fails here.
   if (!parsed.success) throw new ApiContractError(path, parsed.error.issues);
   return parsed.data;
 }
 
 /**
- * Describe a GET. Every request carries its response schema: taking it as an
- * argument rather than a type parameter is the point, since a type parameter
- * can be supplied and still be a lie, whereas omitting the argument will not
- * compile.
- *
- * Deduplication, caching and retries are TanStack Query's job now — this layer
- * only says what to fetch and how to check it.
+ * Describe a GET. The schema is an argument, not a type parameter: a type
+ * parameter can be supplied and still be a lie, whereas omitting the argument
+ * will not compile.
  */
 function get<S extends z.ZodType>(schema: S, path: string, params?: Params): ApiQuery<z.infer<S>> {
   const url = buildUrl(path, params);
   return { key: [url], run: () => fetchJson(schema, url, path) };
 }
 
-/** Typed client for the backend API. One method per endpoint. */
 export const api = {
   health: () => get(healthResponseSchema, "/health"),
   systemSummary: (r: DateRange) => get(systemSummaryResponseSchema, "/system/summary", { ...r }),
@@ -143,11 +125,7 @@ export const api = {
   alerts: (q: { line?: string; effect_type?: string; page?: number; pageSize?: number } & DateRange) =>
     get(alertListResponseSchema, "/alerts", { ...q }),
   alertFrequency: (r: DateRange) => get(alertFrequencyResponseSchema, "/alerts/frequency", { ...r }),
-  /**
-   * Model predictions for a service date, or an explicit statement that there
-   * are none. Omit `date` to get the most recently predicted day, which is the
-   * useful default — today is usually still unpredicted.
-   */
+  /** Omit `date` for the most recently predicted day — today is usually unpredicted. */
   predictions: (date?: string, line?: string) =>
     get(predictionsResponseSchema, "/predictions", { date, line }),
   exportUrl: (entity: "system" | "line" | "station", r: DateRange, id?: string) =>

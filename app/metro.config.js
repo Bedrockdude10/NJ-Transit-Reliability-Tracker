@@ -1,6 +1,5 @@
-// Metro config for the monorepo: watch the workspace root so Metro can resolve
-// and transform the symlinked `@njt/shared` TypeScript source, and look up
-// modules in both the app and the hoisted root node_modules.
+// Watches the workspace root so Metro transforms the symlinked `@njt/shared`
+// source, and resolves from both app and hoisted root node_modules.
 const { getDefaultConfig } = require("expo/metro-config");
 const path = require("path");
 

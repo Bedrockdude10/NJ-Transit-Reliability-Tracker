@@ -1,12 +1,7 @@
 /**
- * Emptiness detection + live-collection framing for INDEPENDENT (measured)
- * metrics. Pure functions — no React Native imports — so they're unit-tested by
- * Vitest and reused by every screen that renders measured data.
- *
- * The independent metrics come from the live GTFS-Realtime feed and are honestly
- * empty until data accrues. These helpers distinguish "no data yet" from a real
- * zero so screens can render an explicit empty state instead of a misleading 0%.
- * They never apply to the OFFICIAL NJT figures, which are real and populated.
+ * Distinguishes "no data yet" from a real zero, so a screen renders an empty
+ * state rather than a misleading 0%. Applies to the measured metrics only —
+ * never to the official NJT figures, which are always populated.
  */
 
 import type {
@@ -18,22 +13,19 @@ import type {
 } from "@njt/shared";
 import { formatDay } from "./format";
 
-/** True when the live feed has recorded at least one operated trip for the range. */
 export function hasMeasuredOtp(summary: OtpSummary | null | undefined): boolean {
   return !!summary && summary.tripsOperated > 0;
 }
 
-/** True when a delay distribution has any observed trips (not just empty buckets). */
+/** Observed trips, not merely non-empty buckets. */
 export function hasDistributionData(distribution: DistributionBucketResult[] | null | undefined): boolean {
   return !!distribution && distribution.some((b) => b.count > 0);
 }
 
-/** True when a heatmap has any observations behind its buckets. */
 export function hasHeatmapData(buckets: HeatmapBucketResult[] | null | undefined): boolean {
   return !!buckets && buckets.some((b) => b.observations > 0);
 }
 
-/** True when a station summary has any measured observations across its views. */
 export function hasStationData(summary: StationSummaryResponse | null | undefined): boolean {
   if (!summary) return false;
   return (
@@ -44,26 +36,17 @@ export function hasStationData(summary: StationSummaryResponse | null | undefine
   );
 }
 
-/** True when a connection has any observed transfer attempts. */
 export function hasConnectionData(conn: ConnectionResponse | null | undefined): boolean {
   return !!conn && conn.observations > 0;
 }
 
 export interface MeasurementStatus {
-  /** Whether the live feed has started collecting (a collection-start date exists). */
   live: boolean;
-  /** Short pill label: "LIVE" once collecting, "NO DATA YET" before. */
   badge: string;
-  /** Full-sentence framing for banners/footers. */
   label: string;
 }
 
-/**
- * Honest live-collection framing derived from the health endpoint's
- * `collectionStartDate` (a `YYYY-MM-DD`, or null before any data accrues).
- * Never invents numbers: "Live · measuring since <date>" when collecting,
- * otherwise says measurement hasn't started yet.
- */
+/** `collectionStartDate` is `YYYY-MM-DD`, or null before any data accrues. */
 export function measurementStatus(collectionStartDate: string | null | undefined): MeasurementStatus {
   if (!collectionStartDate) {
     return {

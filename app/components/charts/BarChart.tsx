@@ -16,12 +16,7 @@ export interface ReferenceLine {
   color: string;
 }
 
-/**
- * Vertical bar chart (react-native-svg, web + native). Width is measured from
- * the container so it fills its card. Draws faint gridlines, rounded bars,
- * value labels above each bar, and an optional horizontal `referenceLine`
- * (e.g. NJT's reported OTP) on the same axis as the bars.
- */
+/** Width is measured from the container, so the chart fills its card. */
 export function BarChart({
   data,
   height = 180,
@@ -50,7 +45,7 @@ export function BarChart({
     { width, height: chartHeight, gap: 8, maxValue: max },
   );
 
-  // y of a value on the plot (accounting for the value-label band at the top).
+  // Accounts for the value-label band at the top.
   const yFor = (value: number) => valueSpace + chartHeight * (1 - Math.min(value, max) / max);
   const refY = referenceLine ? yFor(referenceLine.value) : 0;
 

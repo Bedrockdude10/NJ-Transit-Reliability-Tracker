@@ -1,10 +1,6 @@
-/**
- * Pure chart geometry — scales, bar/line layout, smoothing, axis ticks, gauge
- * arcs, and heat colors. Kept free of React Native so it can be unit-tested
- * directly; the SVG components render these results.
- */
+/** Pure chart geometry. No React Native imports, so it is unit-testable. */
 
-/** Round a value up to a "nice" axis maximum (1, 2, 5 × 10ⁿ). */
+/** Round up to a "nice" axis maximum (1, 2, 5 × 10ⁿ). */
 export function niceMax(value: number): number {
   if (value <= 0) return 1;
   const pow = 10 ** Math.floor(Math.log10(value));
@@ -13,7 +9,7 @@ export function niceMax(value: number): number {
   return nice * pow;
 }
 
-/** Evenly spaced tick values from 0..max inclusive (count = number of gaps). */
+/** `count` is the number of gaps, not of ticks. */
 export function axisTicks(max: number, count = 4): number[] {
   const step = max / count;
   return Array.from({ length: count + 1 }, (_, i) => Math.round(step * i));
@@ -34,7 +30,6 @@ export interface BarLayoutOptions {
   maxValue?: number;
 }
 
-/** Lay out equal-width bars across `width`, scaled to `maxValue` (or a nice max). */
 export function barLayout(values: readonly number[], options: BarLayoutOptions): Bar[] {
   const { width, height } = options;
   const gap = options.gap ?? 4;
@@ -59,7 +54,7 @@ export interface LineLayoutOptions {
   maxValue?: number;
 }
 
-/** Evenly space `values` across `width`, scaling y into `height` (y grows down). */
+/** y grows down. */
 export function linePoints(values: readonly number[], options: LineLayoutOptions): Point[] {
   const { width, height } = options;
   const min = options.minValue ?? 0;
@@ -72,16 +67,11 @@ export function linePoints(values: readonly number[], options: LineLayoutOptions
   }));
 }
 
-/** SVG path `d` connecting points with straight segments. */
 export function linePath(points: readonly Point[]): string {
   return points.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(2)},${p.y.toFixed(2)}`).join(" ");
 }
 
-/**
- * Smooth SVG path through points using a Catmull-Rom → cubic-bézier conversion.
- * Gives charts a polished curve without overshooting wildly. Falls back to a
- * straight path for < 3 points.
- */
+/** Catmull-Rom → cubic bézier. Falls back to a straight path under 3 points. */
 export function smoothPath(points: readonly Point[], tension = 0.5): string {
   if (points.length < 3) return linePath(points);
   const p = points;
@@ -101,7 +91,6 @@ export function smoothPath(points: readonly Point[], tension = 0.5): string {
   return d;
 }
 
-/** Closed area path under a line (line → down to baseline → back to start). */
 export function areaPath(points: readonly Point[], baselineY: number, smooth = true): string {
   if (points.length === 0) return "";
   const top = smooth ? smoothPath(points) : linePath(points);
@@ -118,11 +107,7 @@ function lerpChannel(a: number, b: number, t: number): number {
   return Math.round(a + (b - a) * t);
 }
 
-/**
- * Reliability heat color for a delay value: low delay → green, mid → amber,
- * high → red. `t = value / max`. Tuned to read on the dark theme with dark
- * text on top. Returns an `rgb(...)` string.
- */
+/** Heat color for a delay: green → amber → red. Tuned for dark text on top. */
 export function heatColor(value: number, max: number): string {
   const t = clamp01(max > 0 ? value / max : 0);
   const green = [52, 211, 153];
@@ -132,16 +117,13 @@ export function heatColor(value: number, max: number): string {
   return `rgb(${lerpChannel(from[0]!, to[0]!, local)}, ${lerpChannel(from[1]!, to[1]!, local)}, ${lerpChannel(from[2]!, to[2]!, local)})`;
 }
 
-/** Convert a polar coordinate (degrees, 0° = 12 o'clock, clockwise) to x/y. */
+/** Degrees, 0° = 12 o'clock, clockwise. */
 export function polarToCartesian(cx: number, cy: number, r: number, angleDeg: number): Point {
   const a = ((angleDeg - 90) * Math.PI) / 180;
   return { x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) };
 }
 
-/**
- * SVG arc path between two angles (degrees) on a circle. Used for the radial
- * OTP gauge. Sweeps clockwise.
- */
+/** SVG arc between two angles in degrees. Sweeps clockwise. */
 export function gaugeArc(cx: number, cy: number, r: number, startAngle: number, endAngle: number): string {
   const start = polarToCartesian(cx, cy, r, endAngle);
   const end = polarToCartesian(cx, cy, r, startAngle);

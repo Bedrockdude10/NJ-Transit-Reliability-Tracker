@@ -16,12 +16,7 @@ const Y_AXIS_W = 30;
 const PAD_TOP = 10;
 const PAD_BOTTOM = 8;
 
-/**
- * Multi-series line chart on a fixed axis (0–100 by default, for OTP). Renders
- * gridlines with y-axis labels, a smooth curve per series, a soft gradient area
- * under the primary series, and a labeled dot at each series' last value. The
- * legend sits below.
- */
+/** Multi-series line chart on a fixed axis, 0–100 by default for OTP. */
 export function LineChart({
   series,
   height = 200,

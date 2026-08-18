@@ -14,9 +14,7 @@ import { QueryBoundary } from "../components/QueryBoundary";
 import { Card, EmptyState, ErrorView, Loading, Muted, PageTitle, Row, SectionTitle, StatTile } from "../components/ui";
 
 export function CommutePanel() {
-  // The selection lives in the URL, not in component state: a commute you
-  // cannot bookmark or send to someone is not really "yours". This also makes
-  // back/forward behave, and survives a reload.
+  // In the URL, not component state, so a commute is bookmarkable and survives reload.
   const router = useRouter();
   const params = useLocalSearchParams<{ origin?: string; destination?: string; window?: string }>();
   const origin = params.origin ?? null;

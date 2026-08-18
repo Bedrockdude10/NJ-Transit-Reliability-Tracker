@@ -4,14 +4,9 @@ import Svg, { Rect } from "react-native-svg";
 import { theme } from "../lib/theme";
 
 /**
- * Five destinations, not twelve.
- *
- * The bar used to carry one button per screen, which overflowed into a
- * sideways scroll and gave every panel equal weight — a reader had no way to
- * tell that "Lines", "Stations" and "Map" are three views of one subject. Each
- * entry here is a question someone arrives with; the panels that answer it are
- * tabs inside the page (see `TabbedPage`). The old paths still resolve, as
- * redirects onto the right tab.
+ * Five destinations. Each entry is a question someone arrives with; the panels
+ * answering it are tabs inside the page (`TabbedPage`). Old paths still resolve,
+ * as redirects onto the right tab.
  */
 const LINKS = [
   { href: "/", label: "Overview" },
@@ -25,11 +20,7 @@ function isActive(pathname: string, href: string): boolean {
   return href === "/" ? pathname === "/" : pathname.startsWith(href);
 }
 
-/**
- * Brand mark: ascending bars in an accent badge (a reliability/data motif).
- * Fixed brand colors (not theme vars) — react-native-svg can't resolve CSS
- * variables in attributes, and a logo should read consistently in both schemes.
- */
+/** Fixed brand colors, not theme vars: react-native-svg cannot resolve `var()`. */
 function BrandMark() {
   return (
     <Svg width={28} height={28} viewBox="0 0 28 28">

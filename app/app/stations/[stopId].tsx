@@ -69,8 +69,7 @@ function CollectionBanner() {
 }
 
 function LiveBoard({ id }: { id: string }) {
-  // The board polls; the countdown ticks. Keeping them on separate clocks means
-  // "3 min" counts down every second without re-fetching every second.
+  // Separate clocks: "3 min" ticks every second without refetching every second.
   const { data, error, updatedAtMs } = useLiveApi(api.stationDepartures(id), DEPARTURES_REFRESH_MS);
   const now = useNow();
 

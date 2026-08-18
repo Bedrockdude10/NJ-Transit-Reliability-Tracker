@@ -8,14 +8,7 @@ export interface PickableStation {
   lines: string[];
 }
 
-/**
- * Type-to-filter station chooser.
- *
- * NJ Transit has ~160 stations, which is too many for a dropdown and too few to
- * need a remote search, so the whole list is filtered client-side. The current
- * choice stays visible while searching — picking a commute means comparing two
- * ends, and losing sight of one while choosing the other makes that harder.
- */
+/** ~160 stations: few enough to filter client-side, too many for a dropdown. */
 export function StationPicker({
   label,
   stations,
@@ -27,7 +20,7 @@ export function StationPicker({
   stations: readonly PickableStation[];
   value: string | null;
   onChange: (stopId: string) => void;
-  /** A stop to omit — you cannot travel from a station to itself. */
+  /** A stop to omit, e.g. the other end of the commute. */
   exclude?: string | null;
 }) {
   const [query, setQuery] = useState("");

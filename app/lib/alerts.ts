@@ -1,15 +1,12 @@
 import type { AlertFrequencyResponse } from "@njt/shared";
 
 /**
- * GTFS-RT alert `effect` is optional, and NJT never populates it — every alert
- * decodes to "unknown". A fixed list of effect filters therefore offered seven
- * chips that all matched nothing, and every alert wore an "Unknown" badge.
- *
- * These helpers drive the filter off what the data actually contains, so the
- * UI stays honest now and lights up on its own if NJT starts sending effects.
+ * GTFS-RT alert `effect` is optional and NJT never populates it — every alert
+ * decodes to "unknown". So the filter is driven off what the data contains, and
+ * lights up on its own if NJT ever starts sending effects.
  */
 
-/** Effect types that actually occur in the period, most frequent first. */
+/** Most frequent first. */
 export function availableEffects(freq: AlertFrequencyResponse | null | undefined): string[] {
   if (!freq) return [];
   const totals = new Map<string, number>();
@@ -24,7 +21,6 @@ export function availableEffects(freq: AlertFrequencyResponse | null | undefined
     .map(([effect]) => effect);
 }
 
-/** Whether an effect value carries information worth showing to a reader. */
 export function isMeaningfulEffect(effect: string | null | undefined): boolean {
   return !!effect && effect !== "unknown";
 }

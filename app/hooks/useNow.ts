@@ -1,13 +1,8 @@
 import { useEffect, useState } from "react";
 
 /**
- * A clock that re-renders on an interval, for countdowns that must keep moving
- * between data refreshes. A departure board polls every 20s but its "3 min"
- * should tick every second — deriving the countdown from this rather than from
- * the response keeps the two concerns separate.
- *
- * Pauses while the tab is hidden so a backgrounded board isn't re-rendering
- * once a second all night.
+ * A clock that re-renders on an interval, so a countdown ticks every second
+ * without refetching. Pauses while the tab is hidden.
  */
 export function useNow(intervalMs = 1000): number {
   const [now, setNow] = useState(() => Date.now());

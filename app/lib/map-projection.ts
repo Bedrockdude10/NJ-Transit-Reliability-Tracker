@@ -1,17 +1,11 @@
-/**
- * Pure map geometry for `SystemMap` — lat/lon → screen projection plus the
- * pan/zoom viewport math and segment hit-testing. Kept free of React Native so
- * the SVG component can `useMemo` the projection (it depends only on the
- * stations + viewport size, not on every pan/zoom frame) and so the math is
- * unit-testable directly.
- */
+/** Pure map geometry for `SystemMap`. No React Native imports, so it is testable. */
 
 export interface Pt {
   x: number;
   y: number;
 }
 
-/** Pan/zoom viewport: content is drawn as `translate(tx ty) scale(scale)`. */
+/** Content is drawn as `translate(tx ty) scale(scale)`. */
 export interface ViewBox {
   scale: number;
   tx: number;
@@ -21,10 +15,9 @@ export interface ViewBox {
 export const MAP_MIN_SCALE = 1;
 export const MAP_MAX_SCALE = 8;
 
-/** `[lon, lat]` pair, matching `NJ_STATE_OUTLINE`'s ordering. */
+/** `[lon, lat]`, matching `NJ_STATE_OUTLINE`'s ordering. */
 export type LonLat = readonly [number, number];
 
-/** Minimal station shape the projection needs (structurally a `MapStation`). */
 export interface ProjectableStation {
   stopId: string;
   lat: number;
@@ -32,15 +25,11 @@ export interface ProjectableStation {
 }
 
 export interface Projection {
-  /** Project geographic lat/lon into base (unzoomed) screen coordinates. */
   project: (lat: number, lon: number) => Pt;
-  /** Station stopId → projected point. */
   coord: Map<string, Pt>;
-  /** SVG path `d` for the state outline (closed). */
   outlineD: string;
 }
 
-/** Distance from point p to segment a–b. */
 export function distToSegment(p: Pt, a: Pt, b: Pt): number {
   const dx = b.x - a.x;
   const dy = b.y - a.y;
@@ -49,7 +38,7 @@ export function distToSegment(p: Pt, a: Pt, b: Pt): number {
   return Math.hypot(p.x - (a.x + t * dx), p.y - (a.y + t * dy));
 }
 
-/** Keep the (scaled) content covering the viewport; lock to origin at 1×. */
+/** Keeps scaled content covering the viewport; locks to origin at 1×. */
 export function clampView(v: ViewBox, w: number, h: number): ViewBox {
   const scale = Math.max(MAP_MIN_SCALE, Math.min(MAP_MAX_SCALE, v.scale));
   if (scale <= 1.0001) return { scale: 1, tx: 0, ty: 0 };
@@ -60,7 +49,7 @@ export function clampView(v: ViewBox, w: number, h: number): ViewBox {
   };
 }
 
-/** Zoom by `factor` keeping the point `focal` (screen space) fixed. */
+/** `focal` is in screen space and stays fixed. */
 export function applyZoom(v: ViewBox, focal: Pt, factor: number, w: number, h: number): ViewBox {
   const scale = Math.max(MAP_MIN_SCALE, Math.min(MAP_MAX_SCALE, v.scale * factor));
   const baseX = (focal.x - v.tx) / v.scale;
@@ -69,9 +58,8 @@ export function applyZoom(v: ViewBox, focal: Pt, factor: number, w: number, h: n
 }
 
 /**
- * Build the base (unzoomed) projection over the union of station coordinates and
- * the state outline, with a cosine-latitude correction so the map isn't stretched
- * horizontally. Returns the projector, a stopId→point map, and the outline path.
+ * Fits the union of station coordinates and the state outline, with a
+ * cosine-latitude correction so the map isn't stretched horizontally.
  */
 export function buildProjection(
   stations: readonly ProjectableStation[],

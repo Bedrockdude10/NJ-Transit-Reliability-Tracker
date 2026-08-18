@@ -17,23 +17,15 @@ type Selection =
 
 const TOOLTIP_WIDTH = 230;
 
-/**
- * Colour a live train by how it is running, not by its line: on a map whose
- * lines are already coloured, a train's own colour is only worth spending on
- * the thing you cannot otherwise see.
- */
+/** Live trains are coloured by lateness; the lines already carry line colour. */
 function vehicleColor(v: MapVehicle, c: ReturnType<typeof useChartColors>): string {
   if (v.status === "stopped_at") return c.accent;
   return c.text;
 }
 
 /**
- * Geographic schematic of the rail network (react-native-svg, web + native).
- * Station lat/lon are projected with a cosine-latitude correction over the NJ
- * outline. Pan + zoom (mouse wheel / drag on web, plus on-screen controls) are
- * applied as an SVG group transform; tapping hit-tests in base coordinates
- * (inverting the transform) and opens an in-place tooltip with deep-link.
- * Live train positions are overlaid on top when supplied.
+ * Geographic schematic of the rail network. Pan/zoom is an SVG group transform;
+ * taps hit-test in base coordinates by inverting that transform.
  */
 export function SystemMap({
   stations,
@@ -45,7 +37,7 @@ export function SystemMap({
   stations: MapStation[];
   lines: MapLine[];
   colorMode: MapColorMode;
-  /** Live positions to overlay. Already filtered for staleness by the caller. */
+  /** Already filtered for staleness by the caller. */
   vehicles?: MapVehicle[];
   height?: number;
 }) {
@@ -58,9 +50,7 @@ export function SystemMap({
 
   const onLayout = (e: LayoutChangeEvent) => setWidth(e.nativeEvent.layout.width);
 
-  // --- projection (base, unzoomed coordinates) -----------------------------
-  // Pure and depends only on the stations + viewport size, so it's memoized
-  // rather than rebuilt on every pan/zoom frame.
+  // Depends only on stations + viewport size, so it is not rebuilt per pan/zoom frame.
   const { coord, outlineD, project } = useMemo(
     () => buildProjection(stations, NJ_STATE_OUTLINE, width, height),
     [stations, width, height],
@@ -74,7 +64,6 @@ export function SystemMap({
     return pts.length < 2 ? "" : pts.map((p, i) => `${i === 0 ? "M" : "L"}${p.x.toFixed(1)} ${p.y.toFixed(1)}`).join(" ");
   };
 
-  // --- hit testing (screen point → base coords) ----------------------------
   // Refs keep the latest state available to the once-attached DOM listeners.
   const itx = useRef<{ view: ViewBox; coord: Map<string, Pt>; stations: MapStation[]; lines: MapLine[]; lp: (l: MapLine) => Pt[] }>({
     view,
@@ -117,7 +106,6 @@ export function SystemMap({
     setSelected(null);
   };
 
-  // --- web pan/zoom via native DOM events ----------------------------------
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const el = containerRef.current as unknown as HTMLElement | null;
@@ -278,7 +266,6 @@ export function SystemMap({
   );
 }
 
-/** Absolutely-positioned info card anchored near the tapped point, clamped on-screen. */
 function MapTooltip({
   selection,
   lines,

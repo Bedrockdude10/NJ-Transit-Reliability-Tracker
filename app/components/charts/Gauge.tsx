@@ -7,11 +7,7 @@ import { useChartColors } from "../../lib/useChartColors";
 const START = 135; // bottom-left
 const SWEEP = 270; // leaves a 90° gap at the bottom
 
-/**
- * Radial gauge for a 0–100 value (e.g. OTP %). Renders a faint full track and a
- * colored value arc, with the value + caption centered. Color defaults to the
- * supplied `color` (typically `otpColor(value)`).
- */
+/** Radial gauge for a 0–100 value. */
 export function Gauge({
   value,
   size = 168,

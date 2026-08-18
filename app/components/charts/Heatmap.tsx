@@ -8,11 +8,7 @@ export interface HeatCell {
   observations: number;
 }
 
-/**
- * Wrapping grid of colored cells (hour-of-day or day-of-week). Color encodes
- * average delay on a green→amber→red ramp; cells with no observations are
- * shown muted. A small legend maps the ramp to its min/max values.
- */
+/** Cells with no observations are muted, not coloured at the ramp's low end. */
 export function Heatmap({ cells, unit = "s" }: { cells: HeatCell[]; unit?: string }) {
   const withData = cells.filter((c) => c.observations > 0);
   const max = Math.max(1, ...cells.map((c) => c.value));

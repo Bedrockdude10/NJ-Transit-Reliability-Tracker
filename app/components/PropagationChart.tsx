@@ -5,12 +5,8 @@ import { theme } from "../lib/theme";
 import { Muted } from "./ui";
 
 /**
- * Delay along a route, drawn as a horizontal bar per stop.
- *
- * A line chart would imply delay varies continuously between stops; it doesn't
- * — it is only ever measured *at* stops. Bars keep each stop a discrete
- * reading, and the per-segment change is shown as its own signed number so the
- * question "where did this come from?" is answered by looking down one column.
+ * Bars, not a line: delay is only ever measured *at* stops, and a line would
+ * imply it varies continuously between them.
  */
 export function PropagationChart({ stops }: { stops: readonly PropagationStop[] }) {
   const measured = stops.filter((s) => s.avgDelaySeconds !== null);
@@ -27,8 +23,7 @@ export function PropagationChart({ stops }: { stops: readonly PropagationStop[] 
         const width = avg === null ? 0 : Math.min(100, (Math.abs(avg) / max) * 100);
         const early = avg !== null && avg < 0;
         const delta = s.deltaSeconds;
-        // formatDelayShort collapses anything under 30s to "0"; signing that
-        // would print "−0", which reads as a measurement rather than a rounding.
+        // formatDelayShort collapses under 30s to "0"; signing it would print "−0".
         const deltaText =
           delta === null
             ? ""

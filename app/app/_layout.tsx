@@ -9,16 +9,13 @@ import { createQueryClient } from "../lib/query-client";
 import { theme } from "../lib/theme";
 import { ensureWebTheme } from "../lib/themeCss";
 
-// Inject theme CSS variables + fonts at import time. The static export uses
-// `+html.tsx`, but the dev server does not — this makes both work (and is a
-// no-op when `+html.tsx` already injected the same <style id>).
+// The dev server does not apply `+html.tsx`. No-op when it already injected the
+// same <style id>.
 ensureWebTheme();
 
-// One client for the app's lifetime. Created at module scope rather than inside
-// the component so a re-render never discards the cache.
+// Module scope, so a re-render never discards the cache.
 const queryClient = createQueryClient();
 
-/** Root layout: persistent nav + footer wrapping every deep-linkable screen. */
 export default function RootLayout() {
   return (
     <QueryClientProvider client={queryClient}>

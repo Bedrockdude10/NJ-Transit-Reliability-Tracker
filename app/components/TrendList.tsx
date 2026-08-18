@@ -6,12 +6,8 @@ import { theme } from "../lib/theme";
 import { EmptyState, Muted } from "./ui";
 
 /**
- * Lines ordered by how much their on-time rate moved.
- *
- * Only changes the underlying test could separate from chance are coloured;
- * everything else reads as unchanged, however large the raw swing looks. That
- * restraint is the feature — a list that cried wolf on every quiet line would
- * be worse than no list.
+ * Lines ordered by how much their on-time rate moved. Only changes the test
+ * separates from chance are coloured, however large the raw swing looks.
  */
 export function TrendList({ trends }: { trends: readonly LineTrend[] }) {
   const comparable = trends.filter((t) => t.enoughData);

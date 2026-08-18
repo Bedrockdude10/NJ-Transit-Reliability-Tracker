@@ -1,12 +1,8 @@
 import { Redirect, useLocalSearchParams } from "expo-router";
 
 /**
- * Redirect an old single-purpose route onto its tab of a grouped page.
- *
- * The twelve top-level routes became five, but links to the old ones are in
- * bookmarks, in the sitemap and in other people's pages — so each old path
- * stays as a redirect rather than a 404. Existing query params ride along, so
- * a shared `/commute?origin=…&window=90d` still lands on the same view.
+ * Redirect an old single-purpose route onto its tab of a grouped page, so
+ * bookmarks and sitemap links do not 404. Query params ride along.
  */
 export function RedirectTo({ pathname, tab }: { pathname: string; tab: string }) {
   const params = useLocalSearchParams();

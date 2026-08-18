@@ -1,26 +1,21 @@
-/**
- * Pure logic for the line comparison view. Aligns several lines' real NJT
- * monthly OTP onto a shared month axis so they can be charted and tabulated
- * side by side. No React Native imports — unit-tested directly.
- */
+/** Aligns several lines' NJT monthly OTP onto a shared month axis. */
 
 import type { LineMonthlyResponse } from "@njt/shared";
 
 export interface ComparisonSeries {
   id: string;
   name: string;
-  /** NJT route color (hex, no leading #), or null. */
+  /** Hex, no leading `#`. */
   color: string | null;
-  /** NJT 6-min OTP aligned to `months`; null where that line published none. */
+  /** Aligned to `months`; null where that line published none. */
   values: (number | null)[];
   latestMonth: string | null;
   latestOtpPercent: number | null;
-  /** Mean of the line's published OTP over the shared range (null if none). */
   avgOtpPercent: number | null;
 }
 
 export interface Comparison {
-  /** Union of every selected line's published months, ascending (`YYYY-MM`). */
+  /** Union of every selected line's published months, ascending. */
   months: string[];
   series: ComparisonSeries[];
 }
@@ -37,7 +32,6 @@ function mean(values: number[]): number | null {
   return Math.round((values.reduce((a, b) => a + b, 0) / values.length) * 10) / 10;
 }
 
-/** Build the aligned month axis + per-line series from each line's monthly rows. */
 export function buildComparison(inputs: readonly CompareInput[]): Comparison {
   const monthSet = new Set<string>();
   for (const input of inputs) {
@@ -70,9 +64,8 @@ export function buildComparison(inputs: readonly CompareInput[]): Comparison {
 }
 
 /**
- * Replace nulls with the last known value (and lead with the first known) so a
- * sparse series can be drawn as a continuous line. Returns [] if all null.
- * Charts use this; tables should show the raw `values` (with their gaps).
+ * Carry the last known value forward so a sparse series draws as a continuous
+ * line. For charts only — tables must show the raw `values`, with their gaps.
  */
 export function fillForward(values: readonly (number | null)[]): number[] {
   const firstKnown = values.find((v) => v !== null);

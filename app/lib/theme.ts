@@ -1,14 +1,8 @@
 /**
- * Design tokens. Colors are exposed as **CSS variables** (`var(--njt-<key>)`)
- * so the entire HTML/React-Native-Web surface re-themes for light/dark via
- * `prefers-color-scheme` with no per-component work — the concrete values live
- * in `palette.ts` and are emitted in `app/app/+html.tsx`.
- *
- * SVG components can't resolve CSS variables in presentation attributes, so they
- * read concrete colors for the active scheme via `useChartColors()` and use
- * `otpColorAt()` / `otpColorSoftAt()` instead of the `var()` helpers below.
- *
- * Spacing, radii, type, and elevation are scheme-independent.
+ * Design tokens. Colors are CSS variables (`var(--njt-<key>)`), emitted in
+ * `app/app/+html.tsx` from `palette.ts`, so light/dark needs no per-component
+ * work. SVG cannot resolve `var()` in presentation attributes, so SVG uses
+ * `useChartColors()` with the `*At` helpers instead.
  */
 import { OTP_FAIR_THRESHOLD_PERCENT, OTP_GOOD_THRESHOLD_PERCENT } from "@njt/shared";
 import { DARK, type ColorKey, type Palette } from "./palette";
@@ -38,18 +32,14 @@ export const theme = {
   },
 } as const;
 
-// --- OTP → color -------------------------------------------------------------
-// `var()` variants for the HTML/RNW world (auto-themed). The `*At` variants take
-// a concrete palette (from useChartColors) for SVG, where var() doesn't resolve.
-
-/** Pick a CSS-variable color for an OTP percentage (higher is better). */
+/** CSS-variable color for an OTP percentage (higher is better). */
 export function otpColor(percent: number): string {
   if (percent >= OTP_GOOD_THRESHOLD_PERCENT) return theme.colors.good;
   if (percent >= OTP_FAIR_THRESHOLD_PERCENT) return theme.colors.warn;
   return theme.colors.bad;
 }
 
-/** Translucent CSS-variable tint matching otpColor. */
+/** Translucent tint matching otpColor. */
 export function otpColorSoft(percent: number): string {
   if (percent >= OTP_GOOD_THRESHOLD_PERCENT) return theme.colors.goodSoft;
   if (percent >= OTP_FAIR_THRESHOLD_PERCENT) return theme.colors.warnSoft;

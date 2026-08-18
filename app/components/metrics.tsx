@@ -7,12 +7,9 @@ import { BarChart, type BarDatum } from "./charts/BarChart";
 import { EmptyState, Muted } from "./ui";
 
 /**
- * The core comparison: independent OTP at strict thresholds next to NJT's own
- * loose 6-minute figure. The visible gap is the point of the project.
- *
- * `measured` gates the independent bars: when the live feed has recorded no
- * trips for the range, we show an explicit "No data yet" state instead of a
- * misleading row of 0% bars.
+ * Independent OTP at strict thresholds next to NJT's loose 6-minute figure.
+ * `measured` gates the independent bars — with no trips recorded they would
+ * otherwise render as a misleading row of 0%.
  */
 export function OtpComparison({
   thresholds,
@@ -53,8 +50,7 @@ export function OtpComparison({
   );
 }
 
-// Compact axis labels are SSOT in @njt/shared (DELAY_BUCKETS[].shortLabel);
-// map full bucket label -> short label rather than re-inlining the pairs.
+// Short labels are SSOT in @njt/shared (DELAY_BUCKETS[].shortLabel) — map, don't re-inline.
 const SHORT: Record<string, string> = Object.fromEntries(DELAY_BUCKETS.map((b) => [b.label, b.shortLabel]));
 
 export function DelayHistogram({ distribution }: { distribution: DistributionBucketResult[] }) {
@@ -85,8 +81,7 @@ export function GapCallout({
   njtPercent: number | null;
   measured?: boolean;
 }) {
-  // The gap is only meaningful once we have an independent measurement to
-  // compare against NJT's figure — otherwise `strictPercent` is a hollow 0%.
+  // Without an independent measurement `strictPercent` is a hollow 0%, not a gap.
   if (njtPercent === null || !measured) return null;
   const gap = Math.round((njtPercent - strictPercent) * 10) / 10;
   return (

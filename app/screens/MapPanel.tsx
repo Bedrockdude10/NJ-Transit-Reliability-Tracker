@@ -62,8 +62,7 @@ function NetworkMap({
   const vehicles = useLiveApi(api.mapVehicles(), VEHICLES_REFRESH_MS);
   const now = useNow(5_000);
 
-  // The feed leaves departed trains in place, so anything stale is withheld
-  // rather than drawn as if it were where the train is now.
+  // The feed leaves departed trains in place, so stale positions are withheld.
   const { live, hiddenStale } = useMemo(() => splitLiveVehicles(vehicles.data.vehicles), [vehicles.data]);
   const shown = showLive ? live : [];
 

@@ -7,10 +7,7 @@ import { useApi } from "../hooks/useApi";
 import { QueryBoundary } from "./QueryBoundary";
 import { StatusDot } from "./ui";
 
-/**
- * Persistent footer on every screen: a live-collection indicator, last ingest
- * time, and the required disclaimer (PRD compliance).
- */
+/** The disclaimer here is required by the PRD. */
 export function DisclaimerFooter() {
   return (
     <View style={styles.footer}>

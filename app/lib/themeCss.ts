@@ -1,12 +1,7 @@
 /**
- * The document-level CSS that powers theming: color tokens as CSS variables
- * (dark in `:root`, light via `prefers-color-scheme`) plus base typography and
- * chrome. Built from `palette.ts` so it's the single source of truth.
- *
- * This is injected two ways so it works everywhere:
- *  - `app/app/+html.tsx` emits it in the static export (production, no flash).
- *  - `ensureWebTheme()` injects it at runtime for the Expo dev server, which
- *    does NOT apply `+html.tsx`. The `id` guard prevents double-injection.
+ * Document-level theming CSS, built from `palette.ts`. Injected twice, because
+ * the Expo dev server does not apply `+html.tsx`: the static export emits it,
+ * and `ensureWebTheme()` adds it at runtime under an `id` guard.
  */
 import { DARK, LIGHT, type Palette } from "./palette";
 
@@ -43,7 +38,7 @@ export function buildThemeCss(): string {
 
 export const STYLE_ELEMENT_ID = STYLE_ID;
 
-/** Inject the theme CSS + web fonts at runtime (dev server). No-op off web or if already present. */
+/** For the dev server. No-op off web, or if already present. */
 export function ensureWebTheme(): void {
   if (typeof document === "undefined") return;
   if (!document.getElementById(STYLE_ID)) {

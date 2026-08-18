@@ -6,23 +6,10 @@ import { ErrorView, SkeletonCard } from "./ui";
 /**
  * The one place a screen's data can be pending or broken.
  *
- * Every screen used to re-decide this for itself — 33 hand-written
- * `loading ? … : error ? … : data ? …` ladders across 13 screens, each picking
- * its own spinner and its own answer to "does an error replace the data or sit
- * beside it?". That inconsistency is most of why the app felt assembled rather
- * than designed. React already has the two primitives for it, so this is a
- * wiring component rather than an invention: `Suspense` owns "nothing to show
- * yet" and an error boundary owns "this failed".
- *
- * Which of the two an error reaches is decided by the `throwOnError` predicate
- * in `query-client.ts`: a failure with data already on screen never gets here,
- * so a departure board keeps its times through a blip and reports the problem
- * inline instead.
- *
- * `QueryErrorResetBoundary` is what makes Retry work. Without it the boundary
- * would re-render the same failed query straight back into an error, because
- * the query itself is still in an error state — resetting it is what gives the
- * retry something new to do.
+ * Whether an error arrives here at all is decided by `throwOnError` in
+ * `query-client.ts`: a failure with data already on screen is reported inline
+ * instead. `QueryErrorResetBoundary` is required for Retry to do anything —
+ * without the reset the still-errored query re-renders straight back to an error.
  */
 export function QueryBoundary({
   children,
@@ -32,11 +19,7 @@ export function QueryBoundary({
   children: React.ReactNode;
   /** Shown while the data is first loading. Defaults to a skeleton card. */
   pending?: React.ReactNode;
-  /**
-   * Replaces the default error card. For places where a full-width "Couldn't
-   * load data" panel would be wrong — the footer's status line, say, where the
-   * failure is incidental and the surrounding text still has to render.
-   */
+  /** Replaces the default error card, where a full-width panel would be wrong. */
   failed?: (message: string, retry: () => void) => React.ReactNode;
 }) {
   return (

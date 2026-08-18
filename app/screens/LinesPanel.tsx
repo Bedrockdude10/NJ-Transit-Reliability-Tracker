@@ -19,14 +19,11 @@ export function LinesPanel() {
   );
 }
 
-/**
- * Split from the screen so the boundary above can catch it: a component that
- * suspends must be a *child* of the Suspense that covers it, never its sibling.
- */
+/** Split out because a component that suspends must be a *child* of its Suspense. */
 function LineRanking() {
   const { data } = useApi(api.lines());
 
-  // Rank by NJT's reported OTP, least reliable first; lines without data last.
+  // Least reliable first; lines without data last.
   const lines = [...data.lines].sort((a, b) => {
     if (a.njtOtpPercent === null) return 1;
     if (b.njtOtpPercent === null) return -1;

@@ -1,8 +1,6 @@
 /**
- * Reliability letter grades — a digestible A–F summary of an on-time
- * percentage. NJT's 6-minute OTP is generous, so the bands are deliberately
- * demanding: a "B" still means roughly 1 in 10 trains misses even the loose
- * cutoff. Pure + tested; presentation maps the grade to a color via otpColor.
+ * A–F bands for an on-time percentage. Deliberately demanding, since NJT's
+ * 6-minute OTP is generous: a "B" is ~1 in 10 trains missing even that cutoff.
  */
 import { theme } from "./theme";
 
@@ -31,7 +29,6 @@ const COLORS: Record<Grade, { color: string; tint: string }> = {
   F: { color: theme.colors.bad, tint: theme.colors.badSoft },
 };
 
-/** Map an OTP percentage (0–100) to a letter grade with its display colors. */
 export function reliabilityGrade(otpPercent: number): GradeResult {
   const grade = BANDS.find((b) => otpPercent >= b.min)?.grade ?? "F";
   return { grade, ...COLORS[grade] };

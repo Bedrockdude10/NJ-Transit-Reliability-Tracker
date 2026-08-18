@@ -1,6 +1,5 @@
-// jest-expo runs component/render tests (files named *.test.tsx). Pure logic in
-// lib/ is covered by the root Vitest workspace (*.test.ts), so jest only matches
-// .test.tsx here to avoid double-running.
+// Only *.test.tsx: lib/ *.test.ts belongs to the root Vitest workspace, and
+// matching both would double-run it.
 module.exports = {
   preset: "jest-expo",
   testMatch: ["**/?(*.)+(test).tsx"],

@@ -23,12 +23,9 @@ import { PropagationChart } from "../../components/PropagationChart";
 type Range = Required<DateRange>;
 
 /**
- * Line detail, as independently-loading sections.
- *
- * Six queries feed this screen. Stacked in one component each `useSuspenseQuery`
- * would suspend before the next ran, serialising them into six round trips;
- * as sibling boundaries they go out together. Sections that read the same
- * endpoint (`lineSummary` appears in four) are deduplicated to one request.
+ * Line detail, as independently-loading sections: six queries as sibling
+ * boundaries go out together, where stacking them in one component would
+ * serialise into six round trips.
  */
 export default function LineDetail() {
   const { lineId } = useLocalSearchParams<{ lineId: string }>();
@@ -59,7 +56,6 @@ export default function LineDetail() {
   );
 }
 
-/** Real, long-run NJT OTP history (chronological), from the monthly endpoint. */
 function useNjtMonthly(id: string) {
   const { data } = useApi(api.lineMonthly(id));
   return useMemo(() => data.rows.filter((r) => r.njtOtpPercent !== null).reverse(), [data]);
@@ -109,7 +105,6 @@ function LineMeasurements({ id, range }: { id: string; range: Range }) {
   const { data } = useApi(api.lineSummary(id, range));
   const collectionStartDate = useCollectionStart();
   const measured = hasMeasuredOtp(data.overall);
-  // Directional ≤15m OTP — computed once instead of a repeated .find() per StatTile.
   const inbound15 = data.inbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;
   const outbound15 = data.outbound.thresholds.find((t) => t.thresholdSeconds === 900)?.otpPercent ?? 0;
 

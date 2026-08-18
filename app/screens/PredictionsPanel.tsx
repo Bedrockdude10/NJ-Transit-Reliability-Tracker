@@ -16,16 +16,8 @@ import { QueryBoundary } from "../components/QueryBoundary";
 import { Table } from "../components/Table";
 import { Card, Muted, PageTitle, Row, SectionTitle, StatTile } from "../components/ui";
 
-/**
- * `/predictions` — what a model expects, and how wrong it has been.
- *
- * The only screen on the site showing numbers that were not observed. It is
- * arranged so that fact is unavoidable: the model and run are named, the headline
- * figure is the model's error rather than its forecast, and a date with no
- * predictions says so plainly instead of rendering an empty table.
- */
+/** The only screen showing numbers that were not observed. */
 export function PredictionsPanel() {
-  // In the URL so a specific day, or one line, can be linked and returned to.
   const { date, line } = useLocalSearchParams<{ date?: string; line?: string }>();
 
   return (
@@ -96,7 +88,7 @@ function PredictionPanel({ date, line }: { date?: string; line?: string }) {
 }
 
 function LineGroup({ lineName, legs }: { lineName: string; legs: PredictedDelay[] }) {
-  // Null until the model publishes intervals, which is most days.
+  // Null unless the model published intervals, which is not most days.
   const ranges = intervalNote(legs);
 
   return (

@@ -10,7 +10,7 @@ export interface Column {
 
 export type TableRow = Record<string, string | number>;
 
-/** Minimal responsive table. Cells are pre-formatted strings/numbers. */
+/** Cells are pre-formatted — this does no formatting. */
 export function Table({ columns, rows }: { columns: Column[]; rows: TableRow[] }) {
   return (
     <View style={styles.table}>

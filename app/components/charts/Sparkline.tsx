@@ -3,10 +3,7 @@ import { useId } from "react";
 import { areaPath, linePoints, smoothPath } from "../../lib/charts";
 import { useChartColors } from "../../lib/useChartColors";
 
-/**
- * Tiny inline trend line (no axes), for KPI tiles and list rows. Scales to its
- * own min/max so the shape is visible regardless of absolute range.
- */
+/** Scales to its own min/max, so the shape shows regardless of absolute range. */
 export function Sparkline({
   values,
   width = 96,

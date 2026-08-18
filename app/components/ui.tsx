@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View, type ViewStyle } from "react-native";
 import { theme } from "../lib/theme";
 
-/** Page scaffold: scrollable, centered, comfortable max width and rhythm. */
 export function Screen({ children }: { children: ReactNode }) {
   return (
     <ScrollView style={styles.screen} contentContainerStyle={styles.screenContent}>
@@ -11,11 +10,7 @@ export function Screen({ children }: { children: ReactNode }) {
   );
 }
 
-/**
- * Surface container. Pass `title`/`subtitle`/`right` to render a standardized
- * header row (replacing ad-hoc SectionTitle usage); otherwise it's a plain
- * padded surface. `tint` swaps the background for a semantic callout look.
- */
+/** Surface container. `title`/`subtitle`/`right` add a header row; `tint` makes it a callout. */
 export function Card({
   children,
   style,
@@ -51,7 +46,7 @@ export function SectionTitle({ children }: { children: ReactNode }) {
   return <Text style={styles.sectionTitle}>{children}</Text>;
 }
 
-/** A small uppercase label used to head a sub-section inside a card. */
+/** Heads a sub-section inside a card. */
 export function Eyebrow({ children }: { children: ReactNode }) {
   return <Text style={styles.eyebrow}>{children}</Text>;
 }
@@ -65,11 +60,7 @@ export function PageTitle({ title, subtitle }: { title: string; subtitle?: strin
   );
 }
 
-/**
- * KPI tile: big tabular value with an uppercase label, optional hint and a
- * colored accent strip down the left edge. `color` tints the value; `accent`
- * (defaults to `color`) tints the strip.
- */
+/** KPI tile. `color` tints the value; `accent` (default: `color`) tints the left strip. */
 export function StatTile({
   label,
   value,
@@ -102,7 +93,6 @@ export function Row({ children, wrap = true }: { children: ReactNode; wrap?: boo
   return <View style={[styles.row, wrap ? styles.wrap : null]}>{children}</View>;
 }
 
-/** Small colored status dot (e.g. live/idle indicators, reliability tiers). */
 export function StatusDot({ color, pulse = false }: { color: string; pulse?: boolean }) {
   return (
     <View style={[styles.dot, { backgroundColor: color }, pulse ? styles.dotPulse : null]}>
@@ -111,7 +101,7 @@ export function StatusDot({ color, pulse = false }: { color: string; pulse?: boo
   );
 }
 
-/** Pill badge. `tint` sets the background; `color` sets the text/dot. */
+/** `tint` sets the background; `color` sets the text/dot. */
 export function Badge({ text, color = theme.colors.textMuted, tint = theme.colors.surfaceAlt }: { text: string; color?: string; tint?: string }) {
   return (
     <View style={[styles.badge, { backgroundColor: tint }]}>
@@ -129,12 +119,10 @@ export function Loading({ label = "Loading…" }: { label?: string }) {
   );
 }
 
-/** Shimmerless skeleton block for content-shaped loading states. */
 export function Skeleton({ height = 16, width = "100%", radius = theme.radii.sm }: { height?: number; width?: number | string; radius?: number }) {
   return <View style={[styles.skeleton, { height, width: width as number, borderRadius: radius }]} />;
 }
 
-/** A card-shaped skeleton placeholder (used while a section's data loads). */
 export function SkeletonCard({ lines = 3 }: { lines?: number }) {
   return (
     <View style={styles.card}>
@@ -160,7 +148,6 @@ export function ErrorView({ message, onRetry }: { message: string; onRetry?: () 
   );
 }
 
-/** Friendly empty state for sections with no data yet. */
 export function EmptyState({ title, hint }: { title: string; hint?: string }) {
   return (
     <View style={styles.empty}>
@@ -174,7 +161,7 @@ export function Muted({ children }: { children: ReactNode }) {
   return <Text style={styles.muted}>{children}</Text>;
 }
 
-/** Pill-style segmented control (generalizes the old WindowPicker styling). */
+/** Pill-style segmented control. */
 export function SegmentedControl<T extends string>({
   options,
   value,

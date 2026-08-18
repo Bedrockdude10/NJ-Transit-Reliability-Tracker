@@ -4,7 +4,6 @@ import { reliabilityGrade } from "../lib/grade";
 import { measurementStatus } from "../lib/measurement";
 import { theme } from "../lib/theme";
 
-/** Letter-grade chip for an OTP percentage (A–F), tinted by grade. */
 export function GradeBadge({ otpPercent, size = 46 }: { otpPercent: number; size?: number }) {
   const { grade, color, tint } = reliabilityGrade(otpPercent);
   return (
@@ -14,11 +13,7 @@ export function GradeBadge({ otpPercent, size = 46 }: { otpPercent: number; size
   );
 }
 
-/**
- * Directional change indicator. `delta` is the signed change; by default a
- * positive delta reads as good (green ▲). Set `goodWhenUp={false}` for metrics
- * where higher is worse (e.g. delay).
- */
+/** Set `goodWhenUp={false}` for metrics where higher is worse, e.g. delay. */
 export function TrendBadge({
   delta,
   unit = "pts",
@@ -43,12 +38,7 @@ export function TrendBadge({
   );
 }
 
-/**
- * Live-collection pill — marks an INDEPENDENT (measured) metric as sourced from
- * the live GTFS-Realtime feed. Green "◆ LIVE" once collection has started (a
- * `collectionStartDate` exists), muted "◇ NO DATA YET" before. Pass via a Card's
- * `right` slot or inline beside a section title.
- */
+/** Marks a metric as measured from the live feed. Goes in a Card's `right` slot. */
 export function LiveBadge({ collectionStartDate }: { collectionStartDate: string | null | undefined }) {
   const { live, badge } = measurementStatus(collectionStartDate);
   return (
@@ -60,11 +50,7 @@ export function LiveBadge({ collectionStartDate }: { collectionStartDate: string
   );
 }
 
-/**
- * Full-width banner for screens whose data comes from the live feed. States the
- * honest collection status ("measuring since <date>" or "not started yet") and
- * takes optional `children` to note what's real regardless (e.g. GTFS names).
- */
+/** `children` notes what is real regardless of collection status, e.g. GTFS names. */
 export function LiveBanner({
   collectionStartDate,
   children,

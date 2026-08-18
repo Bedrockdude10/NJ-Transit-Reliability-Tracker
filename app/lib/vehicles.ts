@@ -1,12 +1,9 @@
 import type { MapVehicle } from "@njt/shared";
 
 /**
- * Display rules for live train positions.
- *
- * NJ Transit's VehiclePositions feed leaves entries in place after a train
- * stops reporting — production has carried readings nearly eight hours old.
- * Drawing those as current would put phantom trains on the map, so the map
- * filters by age and says how many it hid rather than quietly dropping them.
+ * NJT's VehiclePositions feed leaves entries in place after a train stops
+ * reporting — production has carried readings nearly eight hours old. So the map
+ * filters by age, and says how many it hid rather than dropping them silently.
  */
 
 /** Past this, a position is history rather than "where the train is now". */
@@ -23,7 +20,6 @@ export interface LiveVehicleSplit {
   hiddenStale: number;
 }
 
-/** Split a feed snapshot into what may be drawn and a count of what was not. */
 export function splitLiveVehicles(vehicles: readonly MapVehicle[] | undefined): LiveVehicleSplit {
   if (!vehicles) return { live: [], hiddenStale: 0 };
   const live: MapVehicle[] = [];
@@ -35,7 +31,7 @@ export function splitLiveVehicles(vehicles: readonly MapVehicle[] | undefined): 
   return { live, hiddenStale };
 }
 
-/** Human note for the map footer; null when there is nothing to disclose. */
+/** Null when there is nothing to disclose. */
 export function staleVehicleNote(hiddenStale: number): string | null {
   if (hiddenStale <= 0) return null;
   const plural = hiddenStale === 1 ? "train" : "trains";

@@ -4,19 +4,13 @@ import { DARK, LIGHT } from "../lib/palette";
 import { buildThemeCss, FONT_HREF, STYLE_ELEMENT_ID } from "../lib/themeCss";
 
 /**
- * Web-only HTML shell wrapping every statically-rendered page. This is where
- * document-level <head> content lives: the title, description, Open Graph /
- * Twitter card tags, the color tokens, and base CSS.
- *
- * Theming: the palette is emitted as CSS variables (`--njt-<key>`). `:root`
- * holds the dark scheme; a `prefers-color-scheme: light` media query swaps in
- * the light scheme. Because React Native Web styles reference these variables
- * (`var(--njt-...)`), the whole app re-themes with the OS setting and no JS.
+ * Web-only HTML shell for every statically-rendered page: document `<head>`,
+ * the color tokens and base CSS. `:root` is dark; `prefers-color-scheme: light`
+ * swaps the light scheme, so the app re-themes with no JS.
  */
 
-// Public origin used to build absolute Open Graph / Twitter card URLs. Defaults
-// to the live Worker URL so social previews work without extra config; override
-// with the EXPO_PUBLIC_SITE_URL build var when a custom domain is added.
+// Open Graph needs absolute URLs. Defaults to the live Worker URL; override with
+// EXPO_PUBLIC_SITE_URL for a custom domain.
 const DEFAULT_SITE_URL = "https://nj-transit-reliability-tracker.dannyrollo4.workers.dev";
 const SITE_URL = (process.env.EXPO_PUBLIC_SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
 const TITLE = "NJ Transit Reliability Tracker";

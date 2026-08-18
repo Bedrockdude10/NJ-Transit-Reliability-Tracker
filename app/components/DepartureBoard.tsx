@@ -5,11 +5,8 @@ import { theme } from "../lib/theme";
 import { Badge, EmptyState, Muted, StatusDot } from "./ui";
 
 /**
- * A live platform board: what is coming, where it goes, and how late it is.
- *
- * The countdown is recomputed from `nowMs` on every render rather than taken
- * from the response, so the minutes tick down smoothly between polls instead of
- * freezing until the next refresh lands.
+ * A live platform board. The countdown is recomputed from `nowMs` rather than
+ * taken from the response, so minutes tick down between polls.
  */
 
 const STATUS_LABEL: Record<DepartureStatus, string> = {
@@ -103,7 +100,6 @@ export function DepartureBoard({
   );
 }
 
-/** Small header showing how current the board is. */
 export function BoardFreshness({ updatedAtMs, nowMs }: { updatedAtMs: number | null; nowMs: number }) {
   if (updatedAtMs === null) return null;
   const seconds = Math.max(0, Math.round((nowMs - updatedAtMs) / 1000));
@@ -118,7 +114,6 @@ export function BoardFreshness({ updatedAtMs, nowMs }: { updatedAtMs: number | n
   );
 }
 
-/** Legend explaining that a live board is predictions, not promises. */
 export function BoardDisclaimer() {
   return (
     <Muted>

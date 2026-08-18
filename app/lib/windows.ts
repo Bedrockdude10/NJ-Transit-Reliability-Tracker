@@ -1,11 +1,7 @@
 import { addDays, toLocalDateString } from "@njt/shared";
 import type { DateRange } from "./api";
 
-/**
- * Preset time windows for the date selector. "All" reaches back far enough to
- * cover NJT's published history (2017→); the API simply returns whatever data
- * exists within the resulting range.
- */
+/** "All" reaches back to 2017, where NJT's published history starts. */
 export const WINDOWS = [
   { key: "7d", days: 7, label: "7d" },
   { key: "30d", days: 30, label: "30d" },
@@ -17,15 +13,13 @@ export const WINDOWS = [
 export type WindowKey = (typeof WINDOWS)[number]["key"];
 
 /**
- * Resolve a window key that arrived from outside the app — a URL, a bookmark,
- * someone else's shared link — to a known preset. Anything unrecognised falls
- * back rather than leaving the screen in a state the picker can't represent.
+ * Resolve a key that arrived from a URL or bookmark. Anything unrecognised falls
+ * back, so the picker can always represent the state.
  */
 export function parseWindowKey(value: string | undefined, fallback: WindowKey = "30d"): WindowKey {
   return WINDOWS.some((w) => w.key === value) ? (value as WindowKey) : fallback;
 }
 
-/** Days for a window key. */
 export function windowDays(key: WindowKey): number {
   return WINDOWS.find((w) => w.key === key)?.days ?? 30;
 }

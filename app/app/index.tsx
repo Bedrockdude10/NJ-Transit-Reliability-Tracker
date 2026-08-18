@@ -22,18 +22,9 @@ import { Card, EmptyState, Eyebrow, PageTitle, Row, SkeletonCard, StatTile, Scre
 type Range = Required<DateRange>;
 
 /**
- * The dashboard, as independently-loading panels.
- *
- * Each panel sits under its own boundary rather than one wrapping the screen,
- * for two reasons. Siblings render in the same pass, so their queries go out
- * together — where several `useSuspenseQuery` calls stacked in a single
- * component would suspend on the first and serialise into a request waterfall.
- * And a slow or failed panel then degrades only itself, instead of taking the
- * whole dashboard down with it, which is what the old single `summary.error`
- * gate did.
- *
- * Panels that share a query key (several read `systemSummary`) are deduplicated
- * by TanStack into one request.
+ * The dashboard, as independently-loading panels: siblings under their own
+ * boundaries fetch in parallel, where stacked `useSuspenseQuery` calls in one
+ * component would serialise into a waterfall.
  */
 export default function SystemOverview() {
   const { key: windowKey, range, select: selectWindow } = useWindow("30d");
@@ -89,7 +80,7 @@ export default function SystemOverview() {
   );
 }
 
-/** Collection start, for the LIVE badge. Its own query, deduped across panels. */
+/** Its own query, deduped against the other panels by key. */
 function useCollectionStart(): string | null {
   return useApi(api.health()).data.collectionStartDate;
 }
@@ -140,12 +131,7 @@ function HeadlinePanel({ range }: { range: Range }) {
   );
 }
 
-/**
- * NJT's own published monthly figures, in their own card with the period they
- * cover in the subtitle: these are the only numbers on this screen that are not
- * current, and an unheaded row of tiles followed by a floating caption made
- * that read as if the live measurements above were stale too.
- */
+/** NJT's published monthly figures — the only numbers here that are not current. */
 function OfficialFiguresPanel({ range }: { range: Range }) {
   const { data: s } = useApi(api.systemSummary(range));
   return (

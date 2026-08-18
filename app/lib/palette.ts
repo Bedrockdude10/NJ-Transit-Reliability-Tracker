@@ -1,12 +1,6 @@
 /**
- * Concrete color palettes for dark and light schemes — the source of truth for
- * theming. The HTML/RNW world consumes these as CSS variables (emitted in
- * `+html.tsx`, swapped by `prefers-color-scheme`), so `StyleSheet`s stay static
- * and re-theme automatically. SVG components (which can't read CSS variables in
- * attributes) get concrete values for the current scheme via `useChartColors`.
- *
- * Color keys here MUST match `theme.colors` (which references them as
- * `var(--njt-<key>)`).
+ * Concrete palettes, the source of truth for theming. Keys here MUST match
+ * `theme.colors`, which references them as `var(--njt-<key>)`.
  */
 
 export type ColorKey =
@@ -29,7 +23,6 @@ export const DARK: Palette = {
   textFaint: "#6b7c9c",
   gridLine: "#212c49",
   track: "#1c2540",
-  // Brand + reliability ramp — vivid, tuned for the dark canvas.
   accent: "#3dc1ff",
   accentSoft: "rgba(61,193,255,0.14)",
   njt: "#facc15",
@@ -54,7 +47,7 @@ export const LIGHT: Palette = {
   textFaint: "#8492a8",
   gridLine: "#e7ecf4",
   track: "#e9eef5",
-  // Darker brand + reliability ramp so values stay legible on light surfaces.
+  // Darker ramp, so values stay legible on light surfaces.
   accent: "#0284c7",
   accentSoft: "rgba(2,132,199,0.12)",
   njt: "#a16207",
