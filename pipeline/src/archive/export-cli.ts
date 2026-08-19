@@ -1,6 +1,6 @@
 import { createRepositories, openDatabase } from "@njt/db";
 import { consoleLogger } from "@njt/shared/logger";
-import { exportEvents } from "./export-events";
+import { datesToExport, exportEvents } from "./export-events";
 import { storeFromEnv } from "./object-store";
 import { withLock } from "./run-lock";
 
@@ -9,6 +9,7 @@ import { withLock } from "./run-lock";
  *
  *   npm run export:events                      # every service date
  *   npm run export:events -- --from 2026-08-01 # from a date onwards
+ *   npm run export:events -- --recent 2        # the newest two, for a frequent run
  *
  * Re-running a date replaces its object, so this is safe to schedule and safe to
  * rerun after a backfill.
@@ -24,12 +25,14 @@ const db = openDatabase(dbPath);
 db.exec("PRAGMA busy_timeout = 60000;");
 const repos = createRepositories(db);
 
-const from = flag("from");
-const all = repos.events.serviceDates();
-const serviceDates = from ? all.filter((date) => date >= from) : all;
+const recent = flag("recent");
+const serviceDates = datesToExport(repos.events.serviceDates(), {
+  from: flag("from"),
+  recent: recent === undefined ? undefined : Number(recent),
+});
 
 if (serviceDates.length === 0) {
-  consoleLogger.warn("nothing to export", { dbPath, from });
+  consoleLogger.warn("nothing to export", { dbPath });
   process.exit(0);
 }
 

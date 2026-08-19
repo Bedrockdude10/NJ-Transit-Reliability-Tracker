@@ -6,6 +6,7 @@ import { CONTRACT_VERSION, type TripStopEvent } from "@njt/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import {
   exportEvents,
+  datesToExport,
   exportedFields,
   manifestKey,
   partitionKey,
@@ -220,5 +221,38 @@ describe("the objects", () => {
     await expect(
       exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client: liar as never }),
     ).rejects.toThrow(/different digest/u);
+  });
+});
+
+describe("datesToExport", () => {
+  const ALL = ["2026-08-12", "2026-08-13", "2026-08-14", "2026-08-15", "2026-08-16"];
+
+  it("takes everything when nothing narrows it, for a backfill", () => {
+    expect(datesToExport(ALL, {})).toEqual(ALL);
+  });
+
+  it("takes a date onwards, for re-publishing after a repair", () => {
+    expect(datesToExport(ALL, { from: "2026-08-15" })).toEqual(["2026-08-15", "2026-08-16"]);
+  });
+
+  it("takes only the most recent days, which is what an hourly run wants", () => {
+    // The whole archive is ~35 partitions, each gzipped whole in memory to hash
+    // it. Re-publishing all of them every hour is what kept this daily.
+    expect(datesToExport(ALL, { recent: 2 })).toEqual(["2026-08-15", "2026-08-16"]);
+  });
+
+  it("does not fall over when asked for more days than exist", () => {
+    expect(datesToExport(["2026-08-16"], { recent: 5 })).toEqual(["2026-08-16"]);
+  });
+
+  it("applies `from` before `recent`, so the narrower of the two wins", () => {
+    expect(datesToExport(ALL, { from: "2026-08-13", recent: 2 })).toEqual([
+      "2026-08-15",
+      "2026-08-16",
+    ]);
+  });
+
+  it("has nothing to export from an empty archive", () => {
+    expect(datesToExport([], { recent: 2 })).toEqual([]);
   });
 });

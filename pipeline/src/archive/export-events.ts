@@ -37,6 +37,26 @@ export function sqliteColumn(field: string): string {
   return field.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`);
 }
 
+/** Which service dates a run should publish. */
+export interface ExportWindow {
+  /** Publish this date onwards. */
+  from?: string | undefined;
+  /** Publish only the last N dates, whatever they are. */
+  recent?: number | undefined;
+}
+
+/**
+ * The archive is ~35 partitions and each is gzipped whole in memory so it can be
+ * hashed, on a 512 MB machine that must not be disturbed. Re-publishing all of
+ * them is right after a repair and wrong every hour, so a frequent run narrows to
+ * the newest few and only those are rebuilt.
+ */
+export function datesToExport(all: readonly string[], window: ExportWindow): string[] {
+  const from = window.from;
+  const scoped = from ? all.filter((date) => date >= from) : [...all];
+  return window.recent === undefined ? scoped : scoped.slice(-window.recent);
+}
+
 /** Object key for a service date, from the shared dataset descriptor. */
 export function partitionKey(serviceDate: string): string {
   return datasetKey("events", serviceDate);

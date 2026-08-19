@@ -133,8 +133,15 @@ const COPY_BUNDLE = "dist/archive-copy.mjs";
 const EXPORT_BUNDLE = "dist/events-export.mjs";
 const PREDICTIONS_BUNDLE = "dist/predictions-import.mjs";
 
-/** Daily: a service date still being written to would be published partial. */
-const EXPORT_INTERVAL_MS = 24 * 60 * 60 * 1000;
+/**
+ * Hourly, and only the newest days: live scoring needs today's partition while it
+ * is still being written, so publishing it partial is now the point rather than
+ * the hazard. The consumer is what must not *train* on a day still in progress.
+ */
+const EXPORT_INTERVAL_MS = 60 * 60 * 1000;
+
+/** Today and yesterday. The rest of the archive only changes after a repair. */
+const EXPORT_RECENT_DAYS = 2;
 
 /** Leave the last two hours in SQLite — the ones a replay is most likely to want. */
 const COPY_RETAIN_HOURS = 2;
@@ -247,9 +254,10 @@ function scheduleEventsExport() {
   const run = () => {
     if (running || shuttingDown) return;
     running = true;
+    const recent = ["--recent", String(EXPORT_RECENT_DAYS)];
     const [bin, args] = existsSync(EXPORT_BUNDLE)
-      ? ["node", [EXPORT_BUNDLE]]
-      : ["npm", ["run", "export:events", "--"]];
+      ? ["node", [EXPORT_BUNDLE, ...recent]]
+      : ["npm", ["run", "export:events", "--", ...recent]];
     const child = spawn(bin, args, { stdio: "inherit", env: process.env });
     child.on("error", (error) => {
       running = false;
@@ -264,7 +272,10 @@ function scheduleEventsExport() {
   setInterval(run, EXPORT_INTERVAL_MS).unref();
   // Offset from the copy's first run so the two do not contend at boot.
   setTimeout(run, 15 * 60 * 1000).unref();
-  log("events export scheduled", { everyHours: EXPORT_INTERVAL_MS / 3_600_000 });
+  log("events export scheduled", {
+    everyHours: EXPORT_INTERVAL_MS / 3_600_000,
+    recentDays: EXPORT_RECENT_DAYS,
+  });
 }
 
 /** Hourly, not daily: the modelling repo republishes a service date as actuals arrive. */
