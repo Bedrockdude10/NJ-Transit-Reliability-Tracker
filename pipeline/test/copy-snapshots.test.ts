@@ -7,7 +7,8 @@ import { createRepositories, openDatabase, type Database, type Repositories } fr
 import { FEED_TYPES } from "@njt/shared";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { copySnapshots, copyableHours, hourStart, snapshotKey } from "../src/archive/copy-snapshots";
-import { createClient, type ObjectStore } from "../src/archive/object-store";
+import type { ObjectStore } from "../src/archive/object-store";
+import { createClient } from "../src/archive/s3-client";
 
 /**
  * The copy deletes the only copy of data NJT does not serve twice. These tests
@@ -177,16 +178,13 @@ describe.skipIf(!online)("copying to object storage", () => {
   it("deletes nothing when an upload fails", async () => {
     seed("2026-08-14T08:00:00Z");
     const before = repos.snapshots.count();
-    const real = createClient(STORE);
     let sent = 0;
-    const flaky = {
-      send: (command: Parameters<typeof real.send>[0]) => {
-        if (++sent === 3) throw new Error("connection reset");
-        return real.send(command);
-      },
-    } as Pick<typeof real, "send">;
+    const flaky: typeof fetch = (url, init) => {
+      if (++sent === 3) throw new Error("connection reset");
+      return fetch(url, init);
+    };
 
-    await expect(run({ client: flaky })).rejects.toThrow(/connection reset/u);
+    await expect(run({ send: flaky })).rejects.toThrow(/connection reset/u);
     expect(repos.snapshots.count()).toBe(before);
   }, 60_000);
 
@@ -195,9 +193,13 @@ describe.skipIf(!online)("copying to object storage", () => {
     // case where what was stored is not what was sent.
     seed("2026-08-14T08:00:00Z", 1);
     const before = repos.snapshots.count();
-    const liar = { send: async () => ({ ETag: '"0000000000000000cafe000000000000"' }) };
+    const liar: typeof fetch = async () =>
+      new Response(null, {
+        status: 200,
+        headers: { etag: '"0000000000000000cafe000000000000"' },
+      });
 
-    await expect(run({ client: liar as never })).rejects.toThrow(/different digest/u);
+    await expect(run({ send: liar })).rejects.toThrow(/different digest/u);
     expect(repos.snapshots.count()).toBe(before);
   }, 60_000);
 

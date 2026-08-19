@@ -7,7 +7,7 @@ import type { Logger } from "@njt/shared/logger";
 // and a runtime read breaks once bundled (the path is relative to the module).
 import manifest from "../../../contract/v1/manifest.json" with { type: "json" };
 import { availableMemoryMb, insufficientMemory } from "./machine";
-import { createClient, type ObjectStore, type ObjectWriter, putVerified } from "./object-store";
+import { type ObjectStore, type ObjectWriter, putVerified } from "./object-store";
 
 /**
  * Publish derived events to object storage for the Python modelling repo, as gzipped
@@ -89,16 +89,20 @@ export function manifestKey(): string {
  */
 export async function publishManifest(
   store: ObjectStore,
-  client: ObjectWriter,
+  send: ObjectWriter | undefined,
   log?: Logger,
 ): Promise<string> {
   const key = manifestKey();
-  await putVerified(client, {
-    bucket: store.bucket,
-    key,
-    body: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`),
-    contentType: "application/json",
-  });
+  await putVerified(
+    store,
+    {
+      bucket: store.bucket,
+      key,
+      body: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`),
+      contentType: "application/json",
+    },
+    send,
+  );
   log?.info("published contract manifest", { key, digest: manifest.digest });
   return manifest.digest;
 }
@@ -108,7 +112,8 @@ export interface ExportOptions {
   store: ObjectStore;
   /** Service dates to publish. Each becomes exactly one object. */
   serviceDates: readonly string[];
-  client?: ObjectWriter;
+  /** Injected for tests. Defaults to the global `fetch`. */
+  send?: ObjectWriter;
   /** Injected for tests. Allocatable memory in MB, or null if unknown. */
   availableMemoryMb?: () => number | null;
   log?: Logger;
@@ -131,7 +136,7 @@ export interface ExportedPartition {
 export async function exportEvents(options: ExportOptions): Promise<ExportedPartition[]> {
   const { repos, store, serviceDates } = options;
   const log = options.log;
-  const client = options.client ?? createClient(store);
+  const send = options.send;
 
   const shortfall = insufficientMemory(
     "export events",
@@ -141,7 +146,7 @@ export async function exportEvents(options: ExportOptions): Promise<ExportedPart
   if (shortfall) throw new Error(shortfall);
 
   // Before the data, so a consumer never sees rows whose manifest is not there yet.
-  await publishManifest(store, client, log);
+  await publishManifest(store, send, log);
 
   const written: ExportedPartition[] = [];
   for (const serviceDate of serviceDates) {
@@ -155,12 +160,11 @@ export async function exportEvents(options: ExportOptions): Promise<ExportedPart
 
     const key = partitionKey(serviceDate);
     const body = gzipSync(serialize(events));
-    const { bytes } = await putVerified(client, {
-      bucket: store.bucket,
-      key,
-      body,
-      contentType: "application/gzip",
-    });
+    const { bytes } = await putVerified(
+      store,
+      { bucket: store.bucket, key, body, contentType: "application/gzip" },
+      send,
+    );
 
     log?.info("exported service date", { serviceDate, rows: events.length, key, bytes });
     written.push({ serviceDate, key, rows: events.length, bytes });

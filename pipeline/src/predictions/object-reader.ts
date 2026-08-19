@@ -1,5 +1,6 @@
 import { GetObjectCommand, ListObjectsV2Command, type S3Client } from "@aws-sdk/client-s3";
-import { createClient, type ObjectStore } from "../archive/object-store";
+import type { ObjectStore } from "../archive/object-store";
+import { createClient } from "../archive/s3-client";
 import type { ObjectReader } from "./import-jsonl";
 
 /** Reads object storage through the S3 client, for the CLI. */

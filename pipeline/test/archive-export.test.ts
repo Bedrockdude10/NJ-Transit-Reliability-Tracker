@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
+import { createHash } from "node:crypto";
 import { gunzipSync } from "node:zlib";
 import { createRepositories, openDatabase, type Database, type Repositories } from "@njt/db";
 import { CONTRACT_VERSION, type TripStopEvent } from "@njt/shared";
@@ -38,16 +39,21 @@ const STORE: ObjectStore = {
   region: "auto",
 };
 
-/** Records what was stored, so the round trip can be checked without a server. */
+/**
+ * Records what was stored, so the round trip can be checked without a server. The
+ * key comes back off the URL, which is where a path-style request carries it.
+ */
 function recordingClient() {
   const objects = new Map<string, Uint8Array>();
-  return {
-    objects,
-    send: async (command: { input: { Key: string; Body: Uint8Array } }) => {
-      objects.set(command.input.Key, command.input.Body);
-      return {};
-    },
+  const send: typeof fetch = async (url, init) => {
+    const bytes = init?.body as Uint8Array;
+    objects.set(new URL(String(url)).pathname.replace(`/${STORE.bucket}/`, ""), bytes);
+    return new Response(null, {
+      status: 200,
+      headers: { etag: `"${createHash("md5").update(bytes).digest("hex")}"` },
+    });
   };
+  return { objects, send };
 }
 
 const EVENT: TripStopEvent = {
@@ -91,10 +97,10 @@ describe("the records match the contract", () => {
     // The failure this prevents: a field added to the contract but never written,
     // so the modelling repo generates a model for a column that is always absent.
     repos.events.record(EVENT);
-    const client = recordingClient();
-    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
+    const { objects, send } = recordingClient();
+    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], send });
 
-    const object = client.objects.get(partitionKey("2026-08-11"));
+    const object = objects.get(partitionKey("2026-08-11"));
     if (object === undefined) throw new Error("expected the exported day object");
     const [line] = gunzipSync(object).toString().trim().split("\n");
     if (line === undefined) throw new Error("expected at least one event line");
@@ -105,10 +111,10 @@ describe("the records match the contract", () => {
     // Booleans are stored 0/1 and epoch fields are integers; a model reading
     // `false` as `0` would train on a column of the wrong type.
     repos.events.record({ ...EVENT, stopSkipped: true, observedArrival: null, delaySeconds: null });
-    const client = recordingClient();
-    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
+    const { objects, send } = recordingClient();
+    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], send });
 
-    const object = client.objects.get(partitionKey("2026-08-11"));
+    const object = objects.get(partitionKey("2026-08-11"));
     if (object === undefined) throw new Error("expected the exported day object");
     const record = JSON.parse(gunzipSync(object).toString().trim());
     expect(record.stopSkipped).toBe(true);
@@ -155,10 +161,10 @@ describe("the objects", () => {
     // writing an older contract than the consumer was generated from. This is
     // what lets the consumer check the deployment it actually reads from.
     repos.events.record(EVENT);
-    const client = recordingClient();
-    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
+    const { objects, send } = recordingClient();
+    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], send });
 
-    const object = client.objects.get(manifestKey());
+    const object = objects.get(manifestKey());
     if (object === undefined) throw new Error("expected the manifest object");
     const manifest = JSON.parse(Buffer.from(object).toString());
     expect(manifest.digest).toMatch(/^[0-9a-f]{64}$/u);
@@ -171,10 +177,10 @@ describe("the objects", () => {
     // follows CONTRACT_VERSION. A v2 would otherwise publish v1's manifest under
     // the v2 key, and every consumer would compare against the wrong contract.
     repos.events.record(EVENT);
-    const client = recordingClient();
-    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
+    const { objects, send } = recordingClient();
+    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], send });
 
-    const object = client.objects.get(manifestKey());
+    const object = objects.get(manifestKey());
     if (object === undefined) throw new Error("expected the manifest object");
     const manifest = JSON.parse(Buffer.from(object).toString());
     expect(manifest.version).toBe(CONTRACT_VERSION);
@@ -185,41 +191,45 @@ describe("the objects", () => {
     // A consumer that read data first could check it against a manifest that was
     // not there yet, and conclude the producer was stale.
     repos.events.record(EVENT);
-    const client = recordingClient();
-    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
-    expect([...client.objects.keys()][0]).toBe(manifestKey());
+    const { objects, send } = recordingClient();
+    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], send });
+    expect([...objects.keys()][0]).toBe(manifestKey());
   });
 
   it("skips a day with no events rather than writing an empty one", async () => {
     // An empty object is indistinguishable from a day the pipeline missed, and a
     // model reading it would treat "no trains ran" as fact.
-    const client = recordingClient();
+    const { objects, send } = recordingClient();
     const written = await exportEvents({
       repos,
       store: STORE,
       serviceDates: ["2026-08-11"],
-      client,
+      send,
     });
     expect(written).toEqual([]);
     // The manifest still goes out; only the day is skipped.
-    expect([...client.objects.keys()]).toEqual([manifestKey()]);
+    expect([...objects.keys()]).toEqual([manifestKey()]);
   });
 
   it("re-exporting a day replaces it rather than adding a second copy", async () => {
     repos.events.record(EVENT);
-    const client = recordingClient();
-    const options = { repos, store: STORE, serviceDates: ["2026-08-11"], client };
+    const { objects, send } = recordingClient();
+    const options = { repos, store: STORE, serviceDates: ["2026-08-11"], send };
     await exportEvents(options);
     await exportEvents(options);
-    expect(client.objects.size).toBe(2); // the day, plus the manifest
-    expect(client.objects.has(partitionKey("2026-08-11"))).toBe(true);
+    expect(objects.size).toBe(2); // the day, plus the manifest
+    expect(objects.has(partitionKey("2026-08-11"))).toBe(true);
   });
 
   it("refuses to report success when the store did not keep what was sent", async () => {
     repos.events.record(EVENT);
-    const liar = { send: async () => ({ ETag: '"0000000000000000cafe000000000000"' }) };
+    const liar: typeof fetch = async () =>
+      new Response(null, {
+        status: 200,
+        headers: { etag: '"0000000000000000cafe000000000000"' },
+      });
     await expect(
-      exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client: liar as never }),
+      exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], send: liar }),
     ).rejects.toThrow(/different digest/u);
   });
 });

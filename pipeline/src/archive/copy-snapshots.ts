@@ -2,7 +2,7 @@ import type { Repositories } from "@njt/db";
 import { DATASETS, FEED_TYPES, type FeedType } from "@njt/shared";
 import type { Logger } from "@njt/shared/logger";
 import { availableMemoryMb, insufficientMemory } from "./machine";
-import { createClient, type ObjectStore, type ObjectWriter, putVerified } from "./object-store";
+import { type ObjectStore, type ObjectWriter, putVerified } from "./object-store";
 
 /**
  * Move raw snapshots out of SQLite and into object storage, one blob per object.
@@ -43,7 +43,8 @@ export interface CopyOptions {
   now?: () => number;
   /** Injected for tests. Allocatable memory in MB, or null if unknown. */
   availableMemoryMb?: () => number | null;
-  client?: ObjectWriter;
+  /** Injected for tests. Defaults to the global `fetch`. */
+  send?: ObjectWriter;
   log?: Logger;
 }
 
@@ -107,7 +108,7 @@ export async function copySnapshots(options: CopyOptions): Promise<CopiedHour[]>
   const prefix = options.prefix ?? DATASETS.snapshots.prefix;
   const now = options.now ?? Date.now;
   const log = options.log;
-  const client = options.client ?? createClient(store);
+  const send = options.send;
   const deleteAfterCopy = options.deleteAfterCopy ?? true;
 
   const shortfall = insufficientMemory(
@@ -150,12 +151,16 @@ export async function copySnapshots(options: CopyOptions): Promise<CopiedHour[]>
         if (page.length === 0) break;
 
         await inParallel(page, async (snapshot) => {
-          const stored = await putVerified(client, {
-            bucket: store.bucket,
-            key: snapshotKey(prefix, snapshot),
-            body: snapshot.rawBytes,
-            contentType: "application/x-protobuf",
-          });
+          const stored = await putVerified(
+            store,
+            {
+              bucket: store.bucket,
+              key: snapshotKey(prefix, snapshot),
+              body: snapshot.rawBytes,
+              contentType: "application/x-protobuf",
+            },
+            send,
+          );
           bytes += stored.bytes;
           objects += 1;
         });
