@@ -27,6 +27,8 @@ export interface ImportOptions {
   /** Only import these service dates. Everything published, by default. */
   serviceDates?: readonly string[];
   log?: Logger;
+  /** Passed by a resident loop so unchanged days are not downloaded again. */
+  knownEtags?: Map<string, string>;
 }
 
 export function serviceDateFromKey(key: string): string | null {
@@ -55,5 +57,6 @@ export async function importPredictions(options: ImportOptions): Promise<Importe
     replace: (serviceDate, rows) => repos.predictions.replaceServiceDate(serviceDate, rows),
     serviceDates: options.serviceDates,
     log: options.log,
+    knownEtags: options.knownEtags,
   });
 }

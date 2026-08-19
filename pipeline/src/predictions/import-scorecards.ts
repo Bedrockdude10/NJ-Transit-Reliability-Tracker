@@ -23,6 +23,8 @@ export interface ScorecardImportOptions {
   /** Only import these service dates. Everything published, by default. */
   serviceDates?: readonly string[];
   log?: Logger;
+  /** Passed by a resident loop so unchanged days are not downloaded again. */
+  knownEtags?: Map<string, string>;
 }
 
 export function parseScorecards(serviceDate: string, body: Uint8Array): ModelScorecard[] {
@@ -44,5 +46,6 @@ export async function importScorecards(
     replace: (serviceDate, rows) => repos.scorecards.replaceServiceDate(serviceDate, rows),
     serviceDates: options.serviceDates,
     log: options.log,
+    knownEtags: options.knownEtags,
   });
 }

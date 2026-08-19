@@ -272,29 +272,25 @@ function scheduleEventsExport() {
   });
 }
 
-/** Hourly, not daily: the modelling repo republishes a service date as actuals arrive. */
-function schedulePredictionImport() {
-  let running = false;
-  const run = () => {
-    if (running || shuttingDown) return;
-    running = true;
-    const [bin, args] = existsSync(PREDICTIONS_BUNDLE)
-      ? ["node", [PREDICTIONS_BUNDLE]]
-      : ["npm", ["run", "import:predictions", "--"]];
-    const child = spawn(bin, args, { stdio: "inherit", env: process.env });
-    child.on("error", (error) => {
-      running = false;
-      log("prediction import failed to start", { error: error.message });
-    });
-    child.on("exit", (code) => {
-      running = false;
-      if (code !== 0) log("prediction import exited non-zero; will retry next tick", { code });
-    });
-  };
+/**
+ * Matched to the export, so the two ends of the round trip are the same age. A pass
+ * is one listing per dataset and downloads only the partitions whose ETag moved, so
+ * the steady cost is two requests rather than the whole published archive.
+ */
+const IMPORT_EVERY_SECONDS = 30;
 
-  setInterval(run, 60 * 60 * 1000).unref();
-  setTimeout(run, 10 * 60 * 1000).unref();
-  log("prediction import scheduled", { everyMinutes: 60 });
+function schedulePredictionImport() {
+  const args = ["--every", String(IMPORT_EVERY_SECONDS)];
+  const command = existsSync(PREDICTIONS_BUNDLE)
+    ? ["node", [PREDICTIONS_BUNDLE, ...args]]
+    : ["npm", ["run", "import:predictions", "--", ...args]];
+
+  // Offset from the export's first run so the two do not contend at boot.
+  setTimeout(() => {
+    if (!shuttingDown) start("predictions-import", command);
+  }, 10 * 60 * 1000).unref();
+
+  log("prediction import scheduled", { everySeconds: IMPORT_EVERY_SECONDS });
 }
 
 if (HAS_R2 && process.env.NJT_EVENTS_EXPORT_ENABLED === "true") {
