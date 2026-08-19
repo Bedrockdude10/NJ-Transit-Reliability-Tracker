@@ -86,7 +86,28 @@ describe("Predictions screen", () => {
     await waitFor(() => expect(getByText("Model lgbm-0.1.0, run abc123de")).toBeTruthy());
   });
 
-  it("leads with how wrong the model has been", async () => {
+  it("leads with the rider's train, not with how the model has scored", async () => {
+    // A rider opens this to find one train. The model's track record is real and
+    // stays on the page, but below the thing they came for.
+    respondWith(POPULATED);
+    const { getByText, getAllByText } = renderScreen();
+
+    await waitFor(() => expect(getByText("Northeast Corridor")).toBeTruthy());
+
+    const trainFirst = getAllByText(/Northeast Corridor|Average miss/u).map((node) =>
+      String(node.props.children),
+    );
+    expect(trainFirst[0]).toBe("Northeast Corridor");
+  });
+
+  it("says which service date it is showing", async () => {
+    respondWith(POPULATED);
+    const { getByText } = renderScreen();
+
+    await waitFor(() => expect(getByText(/Predictions for/u)).toBeTruthy());
+  });
+
+  it("still reports the model's average miss, further down", async () => {
     respondWith(POPULATED);
     const { getByText } = renderScreen();
 

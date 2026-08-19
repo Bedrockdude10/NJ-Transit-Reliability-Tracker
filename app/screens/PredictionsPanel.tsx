@@ -53,9 +53,18 @@ function PredictionPanel({ date, line }: { date?: string | undefined; line?: str
 
   const provenance = provenanceNote(data.provenance);
 
+  // A rider opens this to find one train, so the legs come first. The model's
+  // track record stays on the page — these are the only unobserved numbers on the
+  // site — but below the thing they came for rather than in front of it.
   return (
     <>
-      <Card title={`Predictions for ${formatDay(data.serviceDate)}`} subtitle={provenance ?? undefined}>
+      <Muted>Predictions for {formatDay(data.serviceDate)}</Muted>
+
+      {byLine(data.predictions).map((group) => (
+        <LineGroup key={group.lineName} lineName={group.lineName} legs={group.legs} />
+      ))}
+
+      <Card title="How far to trust this" subtitle={provenance ?? undefined}>
         <Row>
           <StatTile
             label="Average miss"
@@ -74,10 +83,6 @@ function PredictionPanel({ date, line }: { date?: string | undefined; line?: str
         </Row>
         <Muted>{accuracyNote(data)}</Muted>
       </Card>
-
-      {byLine(data.predictions).map((group) => (
-        <LineGroup key={group.lineName} lineName={group.lineName} legs={group.legs} />
-      ))}
     </>
   );
 }
