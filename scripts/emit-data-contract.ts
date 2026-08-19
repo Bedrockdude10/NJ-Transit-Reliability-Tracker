@@ -52,6 +52,21 @@ const CONTRACT = [
  * constraint makes `datamodel-code-generator` wrap the field in a `RootModel`,
  * so `delaySeconds` would arrive in Python as an object with a `.root`.
  */
+/**
+ * `anyOf: [T, {}]` back to plain `T`. ts-to-zod renders an optional
+ * `number | undefined` as a union *containing* `z.undefined()`, which zod will only
+ * represent as an empty schema — so the emitted contract would otherwise depend on
+ * how the generator spells optionality.
+ */
+function collapseOptionalUnion(node: Record<string, unknown>): void {
+  const branches = node.anyOf;
+  if (!Array.isArray(branches) || branches.length !== 2) return;
+  const real = branches.filter((branch) => Object.keys(branch as object).length > 0);
+  if (real.length !== 1) return;
+  delete node.anyOf;
+  Object.assign(node, real[0]);
+}
+
 const JS_SAFE_INTEGER = 9_007_199_254_740_991;
 
 const units = new Map<string, Map<string, string>>();
@@ -84,7 +99,9 @@ mkdirSync(OUT_DIR, { recursive: true });
 for (const entry of CONTRACT) {
   const jsonSchema = z.toJSONSchema(entry.schema, {
     target: "draft-7",
+    unrepresentable: "any",
     override: ({ jsonSchema: node }) => {
+      collapseOptionalUnion(node);
       if (node.type !== "integer") return;
       if (node.minimum === -JS_SAFE_INTEGER) delete node.minimum;
       if (node.maximum === JS_SAFE_INTEGER) delete node.maximum;
