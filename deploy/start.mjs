@@ -134,11 +134,12 @@ const EXPORT_BUNDLE = "dist/events-export.mjs";
 const PREDICTIONS_BUNDLE = "dist/predictions-import.mjs";
 
 /**
- * Hourly, and only the newest days: live scoring needs today's partition while it
- * is still being written, so publishing it partial is now the point rather than
- * the hazard. The consumer is what must not *train* on a day still in progress.
+ * Matched to the TripUpdates poll, which is the rate at which SQLite learns
+ * anything: live scoring needs today's partition while it is still being written,
+ * so publishing it partial is now the point rather than the hazard. The consumer
+ * is what must not *train* on a day still in progress.
  */
-const EXPORT_INTERVAL_MS = 60 * 60 * 1000;
+const EXPORT_EVERY_SECONDS = 30;
 
 /** Today and yesterday. The rest of the archive only changes after a repair. */
 const EXPORT_RECENT_DAYS = 2;
@@ -249,31 +250,24 @@ function scheduleArchiveCopy() {
   });
 }
 
+/**
+ * One resident process that repeats, not one process per tick: at this cadence a
+ * fresh Node start would cost ~90 MB and a SQLite open 2,880 times a day on a
+ * 512 MB machine. `start` supervises it, so a crash is still restarted.
+ */
 function scheduleEventsExport() {
-  let running = false;
-  const run = () => {
-    if (running || shuttingDown) return;
-    running = true;
-    const recent = ["--recent", String(EXPORT_RECENT_DAYS)];
-    const [bin, args] = existsSync(EXPORT_BUNDLE)
-      ? ["node", [EXPORT_BUNDLE, ...recent]]
-      : ["npm", ["run", "export:events", "--", ...recent]];
-    const child = spawn(bin, args, { stdio: "inherit", env: process.env });
-    child.on("error", (error) => {
-      running = false;
-      log("events export failed to start", { error: error.message });
-    });
-    child.on("exit", (code) => {
-      running = false;
-      if (code !== 0) log("events export exited non-zero; will retry next tick", { code });
-    });
-  };
+  const args = ["--recent", String(EXPORT_RECENT_DAYS), "--every", String(EXPORT_EVERY_SECONDS)];
+  const command = existsSync(EXPORT_BUNDLE)
+    ? ["node", [EXPORT_BUNDLE, ...args]]
+    : ["npm", ["run", "export:events", "--", ...args]];
 
-  setInterval(run, EXPORT_INTERVAL_MS).unref();
   // Offset from the copy's first run so the two do not contend at boot.
-  setTimeout(run, 15 * 60 * 1000).unref();
+  setTimeout(() => {
+    if (!shuttingDown) start("events-export", command);
+  }, 15 * 60 * 1000).unref();
+
   log("events export scheduled", {
-    everyHours: EXPORT_INTERVAL_MS / 3_600_000,
+    everySeconds: EXPORT_EVERY_SECONDS,
     recentDays: EXPORT_RECENT_DAYS,
   });
 }

@@ -224,6 +224,97 @@ describe("the objects", () => {
   });
 });
 
+describe("a resident loop re-exporting the same day", () => {
+  it("does not re-upload a partition whose bytes have not changed", async () => {
+    // At a 30s cadence yesterday's partition is rebuilt ~2,880 times a day and
+    // is identical every time; the digest is already computed to hash the body.
+    repos.events.record(EVENT);
+    const client = recordingClient();
+    const seen = new Map<string, string>();
+
+    const first = await exportEvents({
+      repos,
+      store: STORE,
+      serviceDates: ["2026-08-11"],
+      client,
+      knownDigests: seen,
+    });
+    client.objects.clear();
+    const second = await exportEvents({
+      repos,
+      store: STORE,
+      serviceDates: ["2026-08-11"],
+      client,
+      knownDigests: seen,
+    });
+
+    expect(first[0]?.skipped).toBe(false);
+    expect(second[0]?.skipped).toBe(true);
+    expect(client.objects.has(partitionKey("2026-08-11"))).toBe(false);
+  });
+
+  it("uploads again as soon as a new row lands in the day", async () => {
+    repos.events.record(EVENT);
+    const client = recordingClient();
+    const seen = new Map<string, string>();
+    await exportEvents({
+      repos,
+      store: STORE,
+      serviceDates: ["2026-08-11"],
+      client,
+      knownDigests: seen,
+    });
+    client.objects.clear();
+
+    repos.events.record({ ...EVENT, tripId: "T2", stopSequence: 4 });
+    const after = await exportEvents({
+      repos,
+      store: STORE,
+      serviceDates: ["2026-08-11"],
+      client,
+      knownDigests: seen,
+    });
+
+    expect(after[0]?.skipped).toBe(false);
+    expect(after[0]?.rows).toBe(2);
+    expect(client.objects.has(partitionKey("2026-08-11"))).toBe(true);
+  });
+
+  it("publishes the manifest once rather than on every pass", async () => {
+    // Fixed at build time, so re-PUTting it each pass is a third of the write
+    // budget spent on identical bytes.
+    repos.events.record(EVENT);
+    const client = recordingClient();
+    const seen = new Map<string, string>();
+
+    await exportEvents({
+      repos,
+      store: STORE,
+      serviceDates: ["2026-08-11"],
+      client,
+      knownDigests: seen,
+    });
+    client.objects.clear();
+    await exportEvents({
+      repos,
+      store: STORE,
+      serviceDates: ["2026-08-11"],
+      client,
+      knownDigests: seen,
+    });
+
+    expect(client.objects.has(manifestKey())).toBe(false);
+  });
+
+  it("still publishes everything on a fresh process, which has no memory", async () => {
+    repos.events.record(EVENT);
+    const client = recordingClient();
+    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
+    expect(client.objects.has(manifestKey())).toBe(true);
+    expect(client.objects.has(partitionKey("2026-08-11"))).toBe(true);
+  });
+});
+
 describe("datesToExport", () => {
   const ALL = ["2026-08-12", "2026-08-13", "2026-08-14", "2026-08-15", "2026-08-16"];
 
