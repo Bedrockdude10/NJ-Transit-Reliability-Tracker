@@ -47,7 +47,8 @@ function recordingClient() {
   const objects = new Map<string, Uint8Array>();
   const send: typeof fetch = async (url, init) => {
     const bytes = init?.body as Uint8Array;
-    objects.set(new URL(String(url)).pathname.replace(`/${STORE.bucket}/`, ""), bytes);
+    const path = decodeURIComponent(new URL(String(url)).pathname);
+    objects.set(path.replace(`/${STORE.bucket}/`, ""), bytes);
     return new Response(null, {
       status: 200,
       headers: { etag: `"${createHash("md5").update(bytes).digest("hex")}"` },

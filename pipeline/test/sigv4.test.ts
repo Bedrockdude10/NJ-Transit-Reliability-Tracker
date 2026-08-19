@@ -55,7 +55,7 @@ async function sdkAuthorization(
       method: "PUT",
       protocol: "https:",
       hostname: STORE.endpoint,
-      path: `/${object.bucket}/${object.key}`,
+      path: new URL(objectUrl(STORE, object)).pathname,
       headers: {
         host: STORE.endpoint,
         "content-md5": contentMd5,
@@ -123,6 +123,18 @@ describe("the signature this repo writes by hand", () => {
 });
 
 describe("what the request looks like on the wire", () => {
+  it("percent-encodes `=`, because the store re-encodes the path before checking", () => {
+    // R2 answered 403 on `service_date=2026-08-18` and quoted back a canonical
+    // request reading `service_date%3D2026-08-18`.
+    expect(objectUrl(STORE, { bucket: "njt-archive", key: "events/service_date=2026-08-18/e.gz" })).toBe(
+      "https://abc123.r2.cloudflarestorage.com/njt-archive/events/service_date%3D2026-08-18/e.gz",
+    );
+  });
+
+  it("leaves the separators alone, so the key stays a path and not one blob", () => {
+    expect(new URL(objectUrl(STORE, { bucket: "b", key: "a/b/c.gz" })).pathname).toBe("/b/a/b/c.gz");
+  });
+
   it("goes to a path-style URL, bucket first", () => {
     expect(objectUrl(STORE, { bucket: "njt-archive", key: "events/x.gz" })).toBe(
       "https://abc123.r2.cloudflarestorage.com/njt-archive/events/x.gz",

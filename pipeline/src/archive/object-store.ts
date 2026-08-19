@@ -3,6 +3,7 @@ import { createHash, createHmac } from "node:crypto";
 const URL_SCHEME_RE = /^https?:\/\//u;
 const QUOTES_RE = /"/gu;
 const AMZ_DATE_RE = /[-:]|\.\d{3}/gu;
+const EXTRA_ESCAPES_RE = /[!'()*]/gu;
 
 /** Where and how to reach the bucket. */
 export interface ObjectStore {
@@ -25,6 +26,24 @@ const sha256 = (data: Uint8Array | string): string =>
 
 const hmac = (key: Uint8Array | string, data: string): Buffer =>
   createHmac("sha256", key).update(data).digest();
+
+/**
+ * The path the URL and the signature must both carry, so they cannot diverge.
+ *
+ * Encoded per segment: the store rebuilds its own canonical request from the path
+ * it receives, so an unescaped `=` in a partition key is signed one way and checked
+ * another. `encodeURIComponent` leaves `!'()*` alone where S3 escapes them.
+ */
+function canonicalPath(bucket: string, key: string): string {
+  return `/${[bucket, ...key.split("/")]
+    .map((segment) =>
+      encodeURIComponent(segment).replace(
+        EXTRA_ESCAPES_RE,
+        (char) => `%${char.charCodeAt(0).toString(16).toUpperCase()}`,
+      ),
+    )
+    .join("/")}`;
+}
 
 export interface PutObject {
   bucket: string;
@@ -59,7 +78,7 @@ export function signedPutHeaders(
   const names = Object.keys(signed).sort();
   const canonical = [
     "PUT",
-    `/${object.bucket}/${object.key}`,
+    canonicalPath(object.bucket, object.key),
     "",
     names.map((name) => `${name}:${signed[name]?.trim() ?? ""}\n`).join(""),
     names.join(";"),
@@ -86,7 +105,8 @@ export function signedPutHeaders(
 
 /** Where a path-style request for this object goes. */
 export function objectUrl(store: ObjectStore, object: Pick<PutObject, "bucket" | "key">): string {
-  return `${store.useSsl === false ? "http" : "https"}://${store.endpoint}/${object.bucket}/${object.key}`;
+  const scheme = store.useSsl === false ? "http" : "https";
+  return `${scheme}://${store.endpoint}${canonicalPath(object.bucket, object.key)}`;
 }
 
 /**
