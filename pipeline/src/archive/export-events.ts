@@ -20,8 +20,19 @@ import {
  * JSON Lines — one object per service date. See CLAUDE.md and DEPLOY.md.
  */
 
-/** A service date is a few MB serialised, on top of Node's own ~90 MB. */
+/**
+ * What a *fresh* process needs: a service date is a few MB serialised, on top of
+ * Node's own ~90 MB. The one-shot CLI allocates all of that.
+ */
 const REQUIRED_MEMORY_MB = 145;
+
+/**
+ * What one pass of a resident loop needs, which is not the same thing: the process
+ * already holds its baseline, so asking for the startup figure again double-counts
+ * it and refuses a pass that is gzipping a few MB. Production refused every 30s
+ * pass at "~145 MB in total, 78 MB already held, 58 MB available".
+ */
+export const PASS_MEMORY_MB = 48;
 
 /** Fields the contract declares, read from the schema the Python repo generates from. */
 interface ContractSchema {
@@ -118,6 +129,10 @@ export interface ExportOptions {
   client?: ObjectWriter;
   /** Injected for tests. Allocatable memory in MB, or null if unknown. */
   availableMemoryMb?: () => number | null;
+  /** Marginal memory this run needs. A resident loop passes {@link PASS_MEMORY_MB}. */
+  requiredMemoryMb?: number;
+  /** Injected for tests, so a guard assertion does not depend on the runner's RSS. */
+  alreadyHeldMb?: number;
   log?: Logger;
   /**
    * Digest of each key this process last stored, updated in place. A resident loop
@@ -150,8 +165,9 @@ export async function exportEvents(options: ExportOptions): Promise<ExportedPart
 
   const shortfall = insufficientMemory(
     "export events",
-    REQUIRED_MEMORY_MB,
+    options.requiredMemoryMb ?? REQUIRED_MEMORY_MB,
     (options.availableMemoryMb ?? availableMemoryMb)(),
+    ...(options.alreadyHeldMb === undefined ? [] : ([options.alreadyHeldMb] as const)),
   );
   if (shortfall) throw new Error(shortfall);
 

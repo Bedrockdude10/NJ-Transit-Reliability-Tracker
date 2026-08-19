@@ -130,8 +130,7 @@ const COPY_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Built by the Dockerfile; absent in a plain checkout. */
 const COPY_BUNDLE = "dist/archive-copy.mjs";
-const EXPORT_BUNDLE = "dist/events-export.mjs";
-const PREDICTIONS_BUNDLE = "dist/predictions-import.mjs";
+const WORKER_BUNDLE = "dist/archive-worker.mjs";
 
 /**
  * Matched to the TripUpdates poll, which is the rate at which SQLite learns
@@ -139,7 +138,7 @@ const PREDICTIONS_BUNDLE = "dist/predictions-import.mjs";
  * so publishing it partial is now the point rather than the hazard. The consumer
  * is what must not *train* on a day still in progress.
  */
-const EXPORT_EVERY_SECONDS = 30;
+const ARCHIVE_EVERY_SECONDS = 30;
 
 /** Today and yesterday. The rest of the archive only changes after a repair. */
 const EXPORT_RECENT_DAYS = 2;
@@ -154,7 +153,7 @@ const COPY_RETAIN_HOURS = 2;
  * newest data arriving late after every deploy. Contention past that point needs no
  * offset — the memory guard refuses a pass and the next tick is 30s away.
  */
-const FIRST_PASS_DELAY_MS = { export: 60_000, import: 45_000 };
+const FIRST_PASS_DELAY_MS = { worker: 60_000 };
 
 /**
  * Hours moved per run. The steady state needs one; the cap bounds how long a
@@ -260,52 +259,36 @@ function scheduleArchiveCopy() {
 }
 
 /**
- * One resident process that repeats, not one process per tick: at this cadence a
- * fresh Node start would cost ~90 MB and a SQLite open 2,880 times a day on a
- * 512 MB machine. `start` supervises it, so a crash is still restarted.
+ * One resident process for both halves of the archive round trip, not one per tick
+ * and not one each. A fresh Node start costs ~90 MB and reopens SQLite, which at
+ * 30s is 2,880 times a day; but two *resident* processes hold ~90 MB each forever,
+ * and on a 512 MB machine that left the export short of the memory it checks for.
+ * `start` supervises it, so a crash is still restarted.
  */
-function scheduleEventsExport() {
-  const args = ["--recent", String(EXPORT_RECENT_DAYS), "--every", String(EXPORT_EVERY_SECONDS)];
-  const command = existsSync(EXPORT_BUNDLE)
-    ? ["node", [EXPORT_BUNDLE, ...args]]
-    : ["npm", ["run", "export:events", "--", ...args]];
+function scheduleArchiveWorker() {
+  const args = ["--recent", String(EXPORT_RECENT_DAYS), "--every", String(ARCHIVE_EVERY_SECONDS)];
+  const command = existsSync(WORKER_BUNDLE)
+    ? ["node", [WORKER_BUNDLE, ...args]]
+    : ["npm", ["run", "archive:worker", "--", ...args]];
 
   setTimeout(() => {
-    if (!shuttingDown) start("events-export", command);
-  }, FIRST_PASS_DELAY_MS.export).unref();
+    if (!shuttingDown) start("archive-worker", command);
+  }, FIRST_PASS_DELAY_MS.worker).unref();
 
-  log("events export scheduled", {
-    everySeconds: EXPORT_EVERY_SECONDS,
+  log("archive worker scheduled", {
+    everySeconds: ARCHIVE_EVERY_SECONDS,
     recentDays: EXPORT_RECENT_DAYS,
   });
 }
 
-/**
- * Matched to the export, so the two ends of the round trip are the same age. A pass
- * is one listing per dataset and downloads only the partitions whose ETag moved, so
- * the steady cost is two requests rather than the whole published archive.
- */
-const IMPORT_EVERY_SECONDS = 30;
-
-function schedulePredictionImport() {
-  const args = ["--every", String(IMPORT_EVERY_SECONDS)];
-  const command = existsSync(PREDICTIONS_BUNDLE)
-    ? ["node", [PREDICTIONS_BUNDLE, ...args]]
-    : ["npm", ["run", "import:predictions", "--", ...args]];
-
-  setTimeout(() => {
-    if (!shuttingDown) start("predictions-import", command);
-  }, FIRST_PASS_DELAY_MS.import).unref();
-
-  log("prediction import scheduled", { everySeconds: IMPORT_EVERY_SECONDS });
-}
-
-if (HAS_R2 && process.env.NJT_EVENTS_EXPORT_ENABLED === "true") {
-  scheduleEventsExport();
-}
-
-if (HAS_R2 && process.env.NJT_PREDICTION_IMPORT_ENABLED === "true") {
-  schedulePredictionImport();
+// One worker covers both; either flag turns it on, and it skips the half it is not
+// asked for by publishing or importing nothing.
+if (
+  HAS_R2 &&
+  (process.env.NJT_EVENTS_EXPORT_ENABLED === "true" ||
+    process.env.NJT_PREDICTION_IMPORT_ENABLED === "true")
+) {
+  scheduleArchiveWorker();
 }
 
 if (HAS_R2 && process.env.NJT_ARCHIVE_COPY_ENABLED === "true") {

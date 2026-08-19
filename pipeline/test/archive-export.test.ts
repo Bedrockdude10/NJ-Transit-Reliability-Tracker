@@ -14,6 +14,7 @@ import {
   sqliteColumn,
 } from "../src/archive/export-events";
 import type { ObjectStore } from "../src/archive/object-store";
+import { PASS_MEMORY_MB } from "../src/archive/export-events";
 
 /**
  * The export is the offline seam with the Python modelling repo: gzipped JSON
@@ -221,6 +222,64 @@ describe("the objects", () => {
     await expect(
       exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client: liar as never }),
     ).rejects.toThrow(/different digest/u);
+  });
+});
+
+describe("what a pass needs, versus what starting a process needs", () => {
+  it("does not ask a running loop for the memory a fresh process would have needed", async () => {
+    // Production: "needs ~66 MB more (~145 MB in total, 78 MB already held), 58 MB
+    // available" — refused every 30s pass while gzipping 3 MB, because 145 MB
+    // describes allocating a whole process, which a resident loop already did.
+    repos.events.record(EVENT);
+    const client = recordingClient();
+
+    // Production's exact numbers, pinned so the assertion does not depend on the
+    // test runner's own RSS.
+    await exportEvents({
+      repos,
+      store: STORE,
+      serviceDates: ["2026-08-11"],
+      client,
+      requiredMemoryMb: PASS_MEMORY_MB,
+      availableMemoryMb: () => 58,
+      alreadyHeldMb: 0,
+    });
+
+    expect(client.objects.has(partitionKey("2026-08-11"))).toBe(true);
+  });
+
+  it("would have refused those same numbers under the fresh-process figure", async () => {
+    repos.events.record(EVENT);
+    const client = recordingClient();
+
+    await expect(
+      exportEvents({
+        repos,
+        store: STORE,
+        serviceDates: ["2026-08-11"],
+        client,
+        requiredMemoryMb: 145,
+        availableMemoryMb: () => 58,
+        alreadyHeldMb: 78,
+      }),
+    ).rejects.toThrow(/needs ~67 MB more/u);
+  });
+
+  it("still refuses a pass when the machine really has nothing left", async () => {
+    repos.events.record(EVENT);
+    const client = recordingClient();
+
+    await expect(
+      exportEvents({
+        repos,
+        store: STORE,
+        serviceDates: ["2026-08-11"],
+        client,
+        requiredMemoryMb: PASS_MEMORY_MB,
+        availableMemoryMb: () => 0,
+        alreadyHeldMb: 0,
+      }),
+    ).rejects.toThrow(/not enough memory to export events/u);
   });
 });
 

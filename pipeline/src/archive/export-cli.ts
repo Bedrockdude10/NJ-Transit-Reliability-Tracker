@@ -10,8 +10,9 @@ import { withLock } from "./run-lock";
  *
  *   npm run export:events                      # every service date
  *   npm run export:events -- --from 2026-08-01 # from a date onwards
- *   npm run export:events -- --recent 2        # the newest two, for a frequent run
- *   npm run export:events -- --recent 2 --every 30   # stay up and repeat
+ *   npm run export:events -- --recent 2        # the newest two
+ *
+ * The repeating path is `archive:worker`; this is the one-shot, for backfills.
  *
  * Re-running a date replaces its object, so this is safe to schedule and safe to
  * rerun after a backfill.
@@ -56,31 +57,5 @@ async function pass(): Promise<void> {
   );
 }
 
-const everySeconds = Number(flag("every") ?? 0);
-
-if (everySeconds <= 0) {
-  await pass();
-  db.close();
-} else {
-  const tick = async (): Promise<void> => {
-    try {
-      await pass();
-    } catch (error) {
-      // A pass fails on a held lock or a memory shortfall, both of which the next
-      // tick may well clear. Dying would need the supervisor to restart the process.
-      consoleLogger.error("export pass failed; retrying next tick", { error: String(error) });
-    }
-  };
-
-  const interval = setInterval(tick, everySeconds * 1000);
-  const stop = (): void => {
-    clearInterval(interval);
-    db.close();
-    process.exit(0);
-  };
-  process.on("SIGTERM", stop);
-  process.on("SIGINT", stop);
-
-  consoleLogger.info("events export resident", { everySeconds, ...currentWindow() });
-  await tick();
-}
+await pass();
+db.close();

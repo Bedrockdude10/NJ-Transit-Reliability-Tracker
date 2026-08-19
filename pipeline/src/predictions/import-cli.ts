@@ -12,7 +12,8 @@ import { s3Reader } from "./object-reader";
  *
  *   npm run import:predictions                    # everything published
  *   npm run import:predictions -- --date 2026-08-14
- *   npm run import:predictions -- --every 30      # stay up and repeat
+ *
+ * The repeating path is `archive:worker`; this is the one-shot, for backfills.
  *
  * Both datasets, one command: the same model run writes them, so importing one
  * without the other leaves the forecast and its track record disagreeing.
@@ -61,31 +62,5 @@ async function pass(): Promise<void> {
   if (scorecards.length === 0) consoleLogger.info("no scorecards published yet");
 }
 
-const everySeconds = Number(flag("every") ?? 0);
-
-if (everySeconds <= 0) {
-  await pass();
-  db.close();
-} else {
-  const tick = async (): Promise<void> => {
-    try {
-      await pass();
-    } catch (error) {
-      // A pass fails on a held lock, a listing error, or a day that does not match
-      // the contract. The next tick may well clear it; dying would need a restart.
-      consoleLogger.error("import pass failed; retrying next tick", { error: String(error) });
-    }
-  };
-
-  const interval = setInterval(tick, everySeconds * 1000);
-  const stop = (): void => {
-    clearInterval(interval);
-    db.close();
-    process.exit(0);
-  };
-  process.on("SIGTERM", stop);
-  process.on("SIGINT", stop);
-
-  consoleLogger.info("prediction import resident", { everySeconds });
-  await tick();
-}
+await pass();
+db.close();
