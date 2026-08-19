@@ -4,8 +4,13 @@ import { beforeEach, describe, expect, it } from "vitest";
 import { recomputeServiceDate } from "../src/aggregator";
 import { purgeSeedData } from "../src/maintenance/purge-seed-data";
 
-const SEED_DATES = ["2026-05-27", "2026-05-28"];
-const REAL_DATES = ["2026-07-14", "2026-07-15"];
+const SEED_DATES = ["2026-05-27", "2026-05-28"] as const;
+const REAL_DATES = ["2026-07-14", "2026-07-15"] as const;
+
+const SEED_START = SEED_DATES[0];
+const SEED_END = SEED_DATES[1];
+const REAL_START = REAL_DATES[0];
+const REAL_END = REAL_DATES[1];
 
 function event(overrides: Partial<TripStopEvent>): TripStopEvent {
   return {
@@ -16,7 +21,7 @@ function event(overrides: Partial<TripStopEvent>): TripStopEvent {
     stopName: "Aberdeen-Matawan",
     stopSequence: 1,
     direction: "inbound",
-    serviceDate: REAL_DATES[0]!,
+    serviceDate: REAL_START,
     scheduledArrival: 1000,
     scheduledDeparture: 1060,
     observedArrival: 1120,
@@ -43,15 +48,15 @@ describe("purgeSeedData", () => {
       repos.events.record(event({ tripId: "", serviceDate: d, stopId: "2" })); // real, no trip id
       recomputeServiceDate(repos, d);
     }
-    repos.health.setMeta("collection_start_date", SEED_DATES[0]!);
+    repos.health.setMeta("collection_start_date", SEED_START);
   });
 
   it("previews without writing anything", () => {
     const result = purgeSeedData(repos, { dryRun: true });
 
-    expect(result).toMatchObject({ dryRun: true, eventsDeleted: 4, collectionStartAfter: REAL_DATES[0] });
+    expect(result).toMatchObject({ dryRun: true, eventsDeleted: 4, collectionStartAfter: REAL_START });
     expect(repos.events.count()).toBe(8); // untouched
-    expect(repos.health.collectionStartDate()).toBe(SEED_DATES[0]);
+    expect(repos.health.collectionStartDate()).toBe(SEED_START);
   });
 
   it("deletes only fabricated events, keeping real ones including empty trip ids", () => {
@@ -61,25 +66,25 @@ describe("purgeSeedData", () => {
     expect(repos.events.count()).toBe(4);
     expect(repos.events.distinctLineNames()).toEqual(["North Jersey Coast Line"]);
     // The empty-trip-id rows are real observations the feed supplied without an id.
-    expect(repos.events.getByServiceDate(REAL_DATES[0]!).map((e) => e.tripId).sort()).toEqual(["", "2131202"]);
+    expect(repos.events.getByServiceDate(REAL_START).map((e) => e.tripId).sort()).toEqual(["", "2131202"]);
   });
 
   it("clears the rollups for days that were entirely fabricated", () => {
-    expect(repos.aggregates.stationByLineDirection("1", SEED_DATES[0]!, SEED_DATES[1]!)).not.toEqual([]);
+    expect(repos.aggregates.stationByLineDirection("1", SEED_START, SEED_END)).not.toEqual([]);
 
     purgeSeedData(repos);
 
-    expect(repos.aggregates.stationByLineDirection("1", SEED_DATES[0]!, SEED_DATES[1]!)).toEqual([]);
+    expect(repos.aggregates.stationByLineDirection("1", SEED_START, SEED_END)).toEqual([]);
     // Real days survive untouched.
-    expect(repos.aggregates.stationByLineDirection("1", REAL_DATES[0]!, REAL_DATES[1]!)).not.toEqual([]);
+    expect(repos.aggregates.stationByLineDirection("1", REAL_START, REAL_END)).not.toEqual([]);
   });
 
   it("re-anchors the collection window to the first real observation", () => {
     const result = purgeSeedData(repos);
 
-    expect(result.collectionStartBefore).toBe(SEED_DATES[0]);
-    expect(result.collectionStartAfter).toBe(REAL_DATES[0]);
-    expect(repos.health.collectionStartDate()).toBe(REAL_DATES[0]);
+    expect(result.collectionStartBefore).toBe(SEED_START);
+    expect(result.collectionStartAfter).toBe(REAL_START);
+    expect(repos.health.collectionStartDate()).toBe(REAL_START);
   });
 
   // Uptime divides lost time by the collection window, so a gap sitting before

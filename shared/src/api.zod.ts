@@ -457,10 +457,10 @@ export const historyResponseSchema = z.object({
     seasonality: z.array(seasonalityMonthSchema),
     annual: z.array(annualOtpYearSchema),
     /** Fleet mean-distance-between-failures by year (system scope only). */
-    mdbfAnnual: z.array(z.object({
-        year: z.number(),
-        avgMdbf: z.number()
-    })).optional()
+    mdbfAnnual: z.union([z.array(z.object({
+            year: z.number(),
+            avgMdbf: z.number()
+        })), z.undefined()]).optional()
 });
 
 export const worstTripSchema = z.object({

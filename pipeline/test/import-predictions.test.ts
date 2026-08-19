@@ -108,7 +108,7 @@ describe("importing predictions", () => {
 
     const stored = repos.predictions.forServiceDate("2026-08-14");
     expect(stored).toHaveLength(1);
-    expect(stored[0]!.predictedDelaySeconds).toBe(90);
+    expect(stored[0]?.predictedDelaySeconds).toBe(90);
   });
 
   it("imports nothing, without complaint, before any model has run", async () => {

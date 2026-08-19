@@ -26,9 +26,11 @@ export function alertRoutes(repos: Repositories): Hono {
     const page = parsePositiveInt(c.req.query("page"), 1);
     const pageSize = parsePositiveInt(c.req.query("pageSize"), 50, 200);
 
+    const line = c.req.query("line");
+    const effectType = c.req.query("effect_type");
     const { alerts, total } = repos.alerts.list({
-      route: c.req.query("line"),
-      effectType: c.req.query("effect_type"),
+      ...(line !== undefined ? { route: line } : {}),
+      ...(effectType !== undefined ? { effectType } : {}),
       fromMs: startOfDayMs(range.from),
       toMs: endOfDayMs(range.to),
       limit: pageSize,

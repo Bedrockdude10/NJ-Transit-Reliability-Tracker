@@ -46,18 +46,18 @@ export interface DelayPrediction {
    * the importer rejects a day carrying part of an interval.
    * @unit seconds
    */
-  predictedDelayLowerSeconds?: number;
+  predictedDelayLowerSeconds?: number | undefined;
   /**
    * Upper bound of the prediction interval, seconds.
    * @unit seconds
    */
-  predictedDelayUpperSeconds?: number;
+  predictedDelayUpperSeconds?: number | undefined;
   /**
    * Coverage of that interval — 80 means an 80% interval, so 8 runs in 10 are
    * expected to land inside it.
    * @unit percent
    */
-  predictionIntervalPercent?: number;
+  predictionIntervalPercent?: number | undefined;
   modelVersion: string;
   /** MLflow run id, so a prediction can be traced to its experiment. */
   runId: string;

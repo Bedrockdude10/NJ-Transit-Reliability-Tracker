@@ -29,8 +29,10 @@ export function resolveOfficialWindow<T extends YearMonth>(
 }
 
 function coverageOf(metrics: readonly YearMonth[], outsideRequestedRange: boolean): PublishedCoverage {
-  let min = metrics[0]!;
-  let max = metrics[0]!;
+  const first = metrics[0];
+  if (!first) throw new Error("coverageOf requires at least one month");
+  let min = first;
+  let max = first;
   for (const m of metrics) {
     if (m.year * 12 + m.month < min.year * 12 + min.month) min = m;
     if (m.year * 12 + m.month > max.year * 12 + max.month) max = m;

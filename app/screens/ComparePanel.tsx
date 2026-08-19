@@ -115,7 +115,7 @@ function ComparisonCharts({
     () =>
       comparison.series.map((s, i) => ({
         label: s.name,
-        color: s.color ? `#${s.color}` : palette[i % palette.length]!,
+        color: s.color ? `#${s.color}` : palette[i % palette.length] ?? palette[0] ?? "",
         values: fillForward(s.values),
       })),
     [comparison, palette],

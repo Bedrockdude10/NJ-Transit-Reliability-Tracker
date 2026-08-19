@@ -23,7 +23,7 @@ const imported = await withLock(`${dbPath}.predictions.lock`, () =>
   importPredictions({
     repos: createRepositories(db),
     store,
-    serviceDates: date ? [date] : undefined,
+    ...(date ? { serviceDates: [date] } : {}),
     log: consoleLogger,
   }),
 );

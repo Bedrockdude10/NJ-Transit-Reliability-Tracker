@@ -75,11 +75,14 @@ export function linePath(points: readonly Point[]): string {
 export function smoothPath(points: readonly Point[], tension = 0.5): string {
   if (points.length < 3) return linePath(points);
   const p = points;
-  let d = `M${p[0]!.x.toFixed(2)},${p[0]!.y.toFixed(2)}`;
+  const first = p[0];
+  if (first === undefined) return linePath(points);
+  let d = `M${first.x.toFixed(2)},${first.y.toFixed(2)}`;
   for (let i = 0; i < p.length - 1; i++) {
-    const p0 = p[i - 1] ?? p[i]!;
-    const p1 = p[i]!;
-    const p2 = p[i + 1]!;
+    const p0 = p[i - 1] ?? p[i];
+    const p1 = p[i];
+    const p2 = p[i + 1];
+    if (p0 === undefined || p1 === undefined || p2 === undefined) return d;
     const p3 = p[i + 2] ?? p2;
     const t = tension / 3;
     const c1x = p1.x + (p2.x - p0.x) * t;
@@ -94,8 +97,9 @@ export function smoothPath(points: readonly Point[], tension = 0.5): string {
 export function areaPath(points: readonly Point[], baselineY: number, smooth = true): string {
   if (points.length === 0) return "";
   const top = smooth ? smoothPath(points) : linePath(points);
-  const last = points[points.length - 1]!;
-  const first = points[0]!;
+  const last = points[points.length - 1];
+  const first = points[0];
+  if (last === undefined || first === undefined) return "";
   return `${top} L${last.x.toFixed(2)},${baselineY.toFixed(2)} L${first.x.toFixed(2)},${baselineY.toFixed(2)} Z`;
 }
 
@@ -110,11 +114,11 @@ function lerpChannel(a: number, b: number, t: number): number {
 /** Heat color for a delay: green → amber → red. Tuned for dark text on top. */
 export function heatColor(value: number, max: number): string {
   const t = clamp01(max > 0 ? value / max : 0);
-  const green = [52, 211, 153];
-  const amber = [251, 191, 36];
-  const red = [248, 113, 113];
+  const green = [52, 211, 153] as const;
+  const amber = [251, 191, 36] as const;
+  const red = [248, 113, 113] as const;
   const [from, to, local] = t < 0.5 ? [green, amber, t / 0.5] : [amber, red, (t - 0.5) / 0.5];
-  return `rgb(${lerpChannel(from[0]!, to[0]!, local)}, ${lerpChannel(from[1]!, to[1]!, local)}, ${lerpChannel(from[2]!, to[2]!, local)})`;
+  return `rgb(${lerpChannel(from[0], to[0], local)}, ${lerpChannel(from[1], to[1], local)}, ${lerpChannel(from[2], to[2], local)})`;
 }
 
 /** Degrees, 0° = 12 o'clock, clockwise. */

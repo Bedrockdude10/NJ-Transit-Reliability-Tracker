@@ -59,12 +59,14 @@ export function LineChart({
             {ticks.map((t, i) => {
               const y = PAD_TOP + plotH * (1 - t / maxValue);
               return (
+                // biome-ignore lint/suspicious/noArrayIndexKey: ticks can share a value when max is small; position is the identity
                 <Line key={`g${i}`} x1={Y_AXIS_W} y1={y} x2={width} y2={y} stroke={c.gridLine} strokeWidth={1} />
               );
             })}
             {ticks.map((t, i) => {
               const y = PAD_TOP + plotH * (1 - t / maxValue);
               return (
+                // biome-ignore lint/suspicious/noArrayIndexKey: ticks can share a value when max is small; position is the identity
                 <SvgText key={`l${i}`} x={Y_AXIS_W - 6} y={y + 3} fill={c.textFaint} fontSize={9} textAnchor="end">
                   {t}
                   {unit}
@@ -79,7 +81,7 @@ export function LineChart({
             {series.map((s) => {
               if (s.values.length === 0) return null;
               return (
-                <Path key={s.label} d={smoothPath(project(s.values))} stroke={s.color} strokeWidth={2.5} fill="none" strokeDasharray={s.dashed ? "5,4" : undefined} strokeLinecap="round" strokeLinejoin="round" />
+                <Path key={s.label} d={smoothPath(project(s.values))} stroke={s.color} strokeWidth={2.5} fill="none" {...(s.dashed ? { strokeDasharray: "5,4" } : {})} strokeLinecap="round" strokeLinejoin="round" />
               );
             })}
 
@@ -87,7 +89,8 @@ export function LineChart({
             {series.map((s) => {
               if (s.values.length === 0) return null;
               const pts = project(s.values);
-              const last = pts[pts.length - 1]!;
+              const last = pts[pts.length - 1];
+              if (last === undefined) return null;
               return <Circle key={`d${s.label}`} cx={last.x} cy={last.y} r={3.5} fill={s.color} stroke={c.surface} strokeWidth={2} />;
             })}
           </Svg>

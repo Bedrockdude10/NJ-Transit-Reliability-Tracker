@@ -33,7 +33,7 @@ export function PredictionsPanel() {
   );
 }
 
-function PredictionPanel({ date, line }: { date?: string; line?: string }) {
+function PredictionPanel({ date, line }: { date?: string | undefined; line?: string | undefined }) {
   const { data } = useApi(api.predictions(date, line));
 
   if (!data.available) {

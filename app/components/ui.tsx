@@ -22,7 +22,7 @@ export function Card({
   children?: ReactNode;
   style?: ViewStyle | ViewStyle[];
   title?: string;
-  subtitle?: string;
+  subtitle?: string | undefined;
   right?: ReactNode;
   tint?: string;
 }) {
@@ -70,9 +70,9 @@ export function StatTile({
 }: {
   label: string;
   value: string;
-  color?: string;
-  hint?: string;
-  accent?: string;
+  color?: string | undefined;
+  hint?: string | undefined;
+  accent?: string | undefined;
 }) {
   const strip = accent ?? color ?? theme.colors.border;
   return (
@@ -128,6 +128,7 @@ export function SkeletonCard({ lines = 3 }: { lines?: number }) {
     <View style={styles.card}>
       <Skeleton height={18} width="40%" />
       {Array.from({ length: lines }).map((_, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: skeleton rows are identical placeholders with no identity
         <Skeleton key={i} height={12} width={`${90 - i * 12}%`} />
       ))}
     </View>

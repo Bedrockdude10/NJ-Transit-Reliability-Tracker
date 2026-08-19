@@ -93,11 +93,11 @@ describe("the records match the contract", () => {
     const client = recordingClient();
     await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
 
-    const [line] = gunzipSync(client.objects.get(partitionKey("2026-08-11"))!)
-      .toString()
-      .trim()
-      .split("\n");
-    expect(Object.keys(JSON.parse(line!)).sort()).toEqual(Object.keys(SCHEMA.properties).sort());
+    const object = client.objects.get(partitionKey("2026-08-11"));
+    if (object === undefined) throw new Error("expected the exported day object");
+    const [line] = gunzipSync(object).toString().trim().split("\n");
+    if (line === undefined) throw new Error("expected at least one event line");
+    expect(Object.keys(JSON.parse(line)).sort()).toEqual(Object.keys(SCHEMA.properties).sort());
   });
 
   it("round-trips values, not their SQLite encodings", async () => {
@@ -107,9 +107,9 @@ describe("the records match the contract", () => {
     const client = recordingClient();
     await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
 
-    const record = JSON.parse(
-      gunzipSync(client.objects.get(partitionKey("2026-08-11"))!).toString().trim(),
-    );
+    const object = client.objects.get(partitionKey("2026-08-11"));
+    if (object === undefined) throw new Error("expected the exported day object");
+    const record = JSON.parse(gunzipSync(object).toString().trim());
     expect(record.stopSkipped).toBe(true);
     expect(record.tripCancelled).toBe(false);
     expect(record.observedArrival).toBeNull();
@@ -157,7 +157,9 @@ describe("the objects", () => {
     const client = recordingClient();
     await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
 
-    const manifest = JSON.parse(Buffer.from(client.objects.get(manifestKey())!).toString());
+    const object = client.objects.get(manifestKey());
+    if (object === undefined) throw new Error("expected the manifest object");
+    const manifest = JSON.parse(Buffer.from(object).toString());
     expect(manifest.digest).toMatch(/^[0-9a-f]{64}$/);
     expect(Object.keys(manifest.files)).toContain("datasets.json");
   });
@@ -171,7 +173,9 @@ describe("the objects", () => {
     const client = recordingClient();
     await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
 
-    const manifest = JSON.parse(Buffer.from(client.objects.get(manifestKey())!).toString());
+    const object = client.objects.get(manifestKey());
+    if (object === undefined) throw new Error("expected the manifest object");
+    const manifest = JSON.parse(Buffer.from(object).toString());
     expect(manifest.version).toBe(CONTRACT_VERSION);
     expect(manifestKey()).toContain(`/${CONTRACT_VERSION}/`);
   });

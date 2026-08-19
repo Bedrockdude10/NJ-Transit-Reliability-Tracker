@@ -38,7 +38,8 @@ function reachable(entry: string): { files: Set<string>; packages: Set<string> }
   const queue = [entry];
 
   while (queue.length > 0) {
-    const file = queue.pop()!;
+    const file = queue.pop();
+    if (file === undefined) break; // unreachable: guarded by queue.length > 0
     if (files.has(file)) continue;
     files.add(file);
 

@@ -150,6 +150,8 @@ export function buildDevFixture(repos: Repositories, nowMs: number = Date.now(),
   repos.vehicles.replaceAll(
     trips.slice(0, 18).map((t, i) => {
       const r = rand(1000 + i);
+      const stop = STOPS[i % STOPS.length];
+      if (stop === undefined) throw new Error("dev-fixture: STOPS must not be empty");
       return {
         vehicleId: `veh-${i}`,
         tripId: t.tripId,
@@ -160,8 +162,8 @@ export function buildDevFixture(repos: Repositories, nowMs: number = Date.now(),
         longitude: -74.5 + r * 0.6,
         bearing: Math.round(r * 360),
         speedMetersPerSecond: 10 + r * 20,
-        stopId: STOPS[i % STOPS.length]!.stopId,
-        stopName: STOPS[i % STOPS.length]!.stopName,
+        stopId: stop.stopId,
+        stopName: stop.stopName,
         status: "in_transit_to" as const,
         reportedAt: nowSec - Math.round(r * 60),
         ingestedAtMs: nowMs,

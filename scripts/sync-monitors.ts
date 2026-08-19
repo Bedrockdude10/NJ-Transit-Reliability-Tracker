@@ -97,4 +97,6 @@ for (const entry of plan.update) {
 console.log(
   `\nApplied: ${plan.create.length} created, ${plan.update.length} updated, ${plan.unmanaged.length} left alone.`,
 );
-console.log(`Confirm at https://uptime.betterstack.com/monitors — and test it: ${monitorUrl(baseUrl, monitors[0]!)}`);
+const monitor = monitors[0];
+if (monitor === undefined) throw new Error("no monitors to configure");
+console.log(`Confirm at https://uptime.betterstack.com/monitors — and test it: ${monitorUrl(baseUrl, monitor)}`);

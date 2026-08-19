@@ -23,16 +23,19 @@ const PARTS = [
  * interval is almost always the two having been computed in different units.
  */
 export function intervalProblem(prediction: DelayPrediction): string | null {
+  const lower = prediction.predictedDelayLowerSeconds;
+  const upper = prediction.predictedDelayUpperSeconds;
+  const percent = prediction.predictionIntervalPercent;
   const present = PARTS.filter((part) => prediction[part] !== undefined);
   if (present.length === 0) return null;
   if (present.length < PARTS.length) {
     const missing = PARTS.filter((part) => prediction[part] === undefined);
     return `has a partial prediction interval: ${present.join(", ")} present, ${missing.join(", ")} missing`;
   }
-
-  const lower = prediction.predictedDelayLowerSeconds!;
-  const upper = prediction.predictedDelayUpperSeconds!;
-  const percent = prediction.predictionIntervalPercent!;
+  // present.length === PARTS.length means all three are defined, so these cannot fire.
+  if (lower === undefined || upper === undefined || percent === undefined) {
+    throw new Error("intervalProblem: all interval parts present but a value is undefined");
+  }
 
   if (!(lower <= upper)) {
     return `has an inverted prediction interval: lower ${lower}s is above upper ${upper}s`;
@@ -56,10 +59,10 @@ export function intervalProblem(prediction: DelayPrediction): string | null {
  */
 export function predictionInterval(prediction: DelayPrediction): PredictionInterval | null {
   if (intervalProblem(prediction) !== null) return null;
-  if (prediction.predictedDelayLowerSeconds === undefined) return null;
-  return {
-    lowerSeconds: prediction.predictedDelayLowerSeconds,
-    upperSeconds: prediction.predictedDelayUpperSeconds!,
-    percent: prediction.predictionIntervalPercent!,
-  };
+  const lower = prediction.predictedDelayLowerSeconds;
+  const upper = prediction.predictedDelayUpperSeconds;
+  const percent = prediction.predictionIntervalPercent;
+  // intervalProblem returned null, so the interval is either fully absent or fully coherent.
+  if (lower === undefined || upper === undefined || percent === undefined) return null;
+  return { lowerSeconds: lower, upperSeconds: upper, percent };
 }

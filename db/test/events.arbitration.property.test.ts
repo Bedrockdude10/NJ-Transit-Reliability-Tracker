@@ -68,7 +68,8 @@ describe("arbitration properties", () => {
   it("agrees with its SQL mirror on arbitrary pairs", () => {
     fc.assert(
       fc.property(reading, reading, (first, second) => {
-        const stored = ingest([first, second])!;
+        const stored = ingest([first, second]);
+        if (stored === undefined) throw new Error("ingest must store at least one event");
         const predicted = prefersIncomingReading(first, second) ? second : first;
         expect(stored.ingestedAtMs).toBe(predicted.ingestedAtMs);
         expect(stored.delaySeconds).toBe(predicted.delaySeconds);
@@ -96,7 +97,7 @@ describe("arbitration properties", () => {
         // distance when it arrives: see the asymmetry test below.
         if (rs.some((r) => r.delaySeconds === null)) return false;
         // Ties are broken by order, so exclude them: see the tie test below.
-        const distances = rs.map((r) => Math.abs(r.ingestedAtMs - r.scheduledArrival! * 1000));
+        const distances = rs.map((r) => Math.abs(r.ingestedAtMs - (r.scheduledArrival ?? 0) * 1000));
         return new Set(distances).size === distances.length;
       });
 

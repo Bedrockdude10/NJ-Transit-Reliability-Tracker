@@ -63,12 +63,12 @@ export function predictionRoutes(repos: Repositories): Hono {
 
     // Score the whole day, not `predictions`: that is ranked by delay, so it
     // would score the model only on its hardest cases.
-    const scored = stored.filter((p) => p.actualDelaySeconds !== null);
+    const scored = stored.filter(
+      (p): p is typeof p & { actualDelaySeconds: number } => p.actualDelaySeconds !== null,
+    );
     const meanAbsoluteErrorSeconds = scored.length
-      ? scored.reduce(
-          (total, p) => total + Math.abs(p.actualDelaySeconds! - p.predictedDelaySeconds),
-          0,
-        ) / scored.length
+      ? scored.reduce((total, p) => total + Math.abs(p.actualDelaySeconds - p.predictedDelaySeconds), 0) /
+        scored.length
       : null;
 
     const response: PredictionsResponse = {

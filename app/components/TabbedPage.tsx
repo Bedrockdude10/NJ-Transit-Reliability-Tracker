@@ -14,7 +14,8 @@ export interface PageTab<T extends string> {
  */
 export function TabbedPage<T extends string>({ tabs }: { tabs: readonly PageTab<T>[] }) {
   const { tab, select } = useTab(tabs.map((t) => t.key));
-  const active = tabs.find((t) => t.key === tab) ?? tabs[0];
+  const active = tabs.find((t) => t.key === tab);
+  if (active === undefined) throw new Error("TabbedPage requires at least one tab");
 
   return (
     <Screen>

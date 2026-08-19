@@ -28,12 +28,13 @@ db.exec("PRAGMA busy_timeout = 60000;");
 
 // One copy at a time: a scheduled run and a manual one overlapped in production,
 // and the second counted rows the first was deleting.
+const maxHours = flag("max-hours") ? Number(flag("max-hours")) : undefined;
 const copied = await withLock(`${dbPath}.snapshots.lock`, () =>
   copySnapshots({
     repos: createRepositories(db),
     store,
     olderThanHours: Number(flag("older-than-hours") ?? process.env.NJT_ARCHIVE_RETAIN_HOURS ?? 48),
-    maxHours: flag("max-hours") ? Number(flag("max-hours")) : undefined,
+    ...(maxHours !== undefined ? { maxHours } : {}),
     deleteAfterCopy: !process.argv.includes("--keep"),
     log: consoleLogger,
   }),

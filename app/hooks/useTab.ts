@@ -8,7 +8,9 @@ import { useCallback } from "react";
 export function useTab<T extends string>(tabs: readonly T[]): { tab: T; select: (next: T) => void } {
   const router = useRouter();
   const params = useLocalSearchParams<{ tab?: string }>();
-  const tab = tabs.find((t) => t === params.tab) ?? tabs[0];
+  const fallback = tabs[0];
+  if (fallback === undefined) throw new Error("useTab requires at least one tab");
+  const tab = tabs.find((t) => t === params.tab) ?? fallback;
 
   const select = useCallback(
     // `setParams`, not `push`: switching tab is not a history entry.

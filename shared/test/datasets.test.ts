@@ -36,7 +36,7 @@ describe("the emitted layout matches the code that writes it", () => {
     // and the dataset would be unreadable there while looking fine here.
     for (const [name, dataset] of Object.entries(DATASETS)) {
       if (dataset.schema === null) continue;
-      expect(() => readFileSync(resolve(CONTRACT, dataset.schema!)), name).not.toThrow();
+      expect(() => readFileSync(resolve(CONTRACT, dataset.schema)), name).not.toThrow();
     }
   });
 

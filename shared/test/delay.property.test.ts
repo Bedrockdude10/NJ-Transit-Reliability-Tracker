@@ -95,7 +95,7 @@ describe("on-time properties", () => {
       fc.property(nonEmptyDelays, (values) => {
         const counts = countOnTimeByThreshold(values);
         for (const threshold of OTP_THRESHOLDS_SECONDS) {
-          const fromCount = (counts[String(threshold)]! / values.length) * 100;
+          const fromCount = ((counts[String(threshold)] ?? 0) / values.length) * 100;
           expect(fromCount).toBeCloseTo(otpPercent(values, threshold), 10);
         }
       }),

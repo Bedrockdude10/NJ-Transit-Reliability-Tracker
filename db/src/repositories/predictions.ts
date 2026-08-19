@@ -152,7 +152,11 @@ function intervalOf(row: PredictionRow): Partial<DelayPrediction> {
   if (row.predicted_delay_lower_seconds === null) return {};
   return {
     predictedDelayLowerSeconds: row.predicted_delay_lower_seconds,
-    predictedDelayUpperSeconds: row.predicted_delay_upper_seconds ?? undefined,
-    predictionIntervalPercent: row.prediction_interval_percent ?? undefined,
+    ...(row.predicted_delay_upper_seconds !== null
+      ? { predictedDelayUpperSeconds: row.predicted_delay_upper_seconds }
+      : {}),
+    ...(row.prediction_interval_percent !== null
+      ? { predictionIntervalPercent: row.prediction_interval_percent }
+      : {}),
   };
 }

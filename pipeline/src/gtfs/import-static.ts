@@ -46,6 +46,15 @@ function num(value: string | undefined): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
+/** A GTFS field the spec marks required: a missing value is a malformed feed, not empty input. */
+function required(row: Record<string, string>, field: string, file: string): string {
+  const value = row[field];
+  if (value === undefined || value === "") {
+    throw new Error(`${file}: required field ${field} is missing or empty`);
+  }
+  return value;
+}
+
 export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImportResult {
   const read = (name: string) => readFileSync(join(gtfsDir, name), "utf8");
 
@@ -55,15 +64,15 @@ export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImpo
     if (row.route_type !== "0") continue;
     const lr = LIGHT_RAIL_BY_SHORT[row.route_short_name ?? ""];
     if (!lr) continue;
-    realToCanonical.set(row.route_id!, lr.routeId);
+    realToCanonical.set(required(row, "route_id", "routes.txt"), lr.routeId);
     if (!canonicalRoutes.has(lr.routeId)) {
       canonicalRoutes.set(lr.routeId, { routeId: lr.routeId, lineName: lr.lineName, color: row.route_color || null, mode: "light_rail" });
     }
   }
 
   const stops: GtfsStopRecord[] = parseCsv(read("stops.txt")).map((row) => ({
-    stopId: row.stop_id!,
-    stopName: row.stop_name ?? row.stop_id!,
+    stopId: required(row, "stop_id", "stops.txt"),
+    stopName: row.stop_name ?? required(row, "stop_id", "stops.txt"),
     stopLat: num(row.stop_lat),
     stopLon: num(row.stop_lon),
   }));
@@ -73,9 +82,9 @@ export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImpo
   for (const row of parseCsv(read("trips.txt"))) {
     const canonical = realToCanonical.get(row.route_id ?? "");
     if (!canonical) continue;
-    railTripIds.add(row.trip_id!);
+    railTripIds.add(required(row, "trip_id", "trips.txt"));
     trips.push({
-      tripId: row.trip_id!,
+      tripId: required(row, "trip_id", "trips.txt"),
       routeId: canonical,
       serviceId: row.service_id ?? null,
       directionId: num(row.direction_id),
@@ -87,8 +96,8 @@ export function importGtfsStatic(repos: Repositories, gtfsDir: string): GtfsImpo
   for (const row of parseCsv(read("stop_times.txt"))) {
     if (!railTripIds.has(row.trip_id ?? "")) continue;
     stopTimes.push({
-      tripId: row.trip_id!,
-      stopId: row.stop_id!,
+      tripId: required(row, "trip_id", "stop_times.txt"),
+      stopId: required(row, "stop_id", "stop_times.txt"),
       stopSequence: Number(row.stop_sequence),
       arrivalTime: row.arrival_time || null,
       departureTime: row.departure_time || null,

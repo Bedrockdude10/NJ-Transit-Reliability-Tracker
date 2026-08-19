@@ -101,7 +101,7 @@ export function parseCancellationCauses(csv: string): Map<string, Record<string,
 
 function parseYearMonthLabel(label: string | undefined): { year: number; month: number } | null {
   const match = /^(\d{4})\s+([A-Za-z]+)/.exec(label ?? "");
-  const month = match ? MONTH_NUMBERS[match[2]!.toUpperCase()] : undefined;
+  const month = match ? MONTH_NUMBERS[match[2]?.toUpperCase() ?? ""] : undefined;
   return match && month ? { year: Number(match[1]), month } : null;
 }
 

@@ -31,18 +31,23 @@ describe("createScheduleContext", () => {
 
     const schedule = ctx.lookup("T1", DATE);
     expect(schedule).not.toBeNull();
-    expect(schedule?.routeId).toBe("NE");
-    expect(schedule?.lineName).toBe("Northeast Corridor Line");
-    expect(schedule?.direction).toBe(directionFromId(1)); // "inbound"
+    if (schedule === null) throw new Error("expected a schedule");
+    expect(schedule.routeId).toBe("NE");
+    expect(schedule.lineName).toBe("Northeast Corridor Line");
+    expect(schedule.direction).toBe(directionFromId(1)); // "inbound"
 
-    const [first, second] = schedule!.stops;
-    expect(first?.scheduledArrival).toBe(gtfsStopTimeToEpochSeconds(DATE, "23:50:00"));
-    expect(first?.scheduledDeparture).toBe(gtfsStopTimeToEpochSeconds(DATE, "23:51:00"));
+    const [first, second] = schedule.stops;
+    if (first === undefined || second === undefined) throw new Error("expected two stops");
+    expect(first.scheduledArrival).toBe(gtfsStopTimeToEpochSeconds(DATE, "23:50:00"));
+    expect(first.scheduledDeparture).toBe(gtfsStopTimeToEpochSeconds(DATE, "23:51:00"));
 
     // 25:10:00 is a valid GTFS time past midnight; it must resolve to an
     // absolute instant 80 minutes after the 23:50 arrival, not wrap negatively.
-    expect(second?.scheduledArrival).toBe(gtfsStopTimeToEpochSeconds(DATE, "25:10:00"));
-    expect(second!.scheduledArrival! - first!.scheduledArrival!).toBe(80 * 60);
+    expect(second.scheduledArrival).toBe(gtfsStopTimeToEpochSeconds(DATE, "25:10:00"));
+    if (first.scheduledArrival === null || second.scheduledArrival === null) {
+      throw new Error("stops must carry arrivals");
+    }
+    expect(second.scheduledArrival - first.scheduledArrival).toBe(80 * 60);
   });
 
   it("returns null for an unknown trip", () => {

@@ -36,14 +36,16 @@ describe("api logging", () => {
     await app.request("/health");
     const request = rec.entries.find((e) => e.message === "request");
     expect(request).toBeDefined();
-    expect(request!.meta).toMatchObject({ method: "GET", path: "/health", status: 200 });
-    expect(typeof request!.meta.durationMs).toBe("number");
+    if (request === undefined) throw new Error("expected a request log entry");
+    expect(request.meta).toMatchObject({ method: "GET", path: "/health", status: 200 });
+    expect(typeof request.meta.durationMs).toBe("number");
   });
 
   it("records the status of a request that was refused", async () => {
     await app.request("/lines/nope/summary");
     const request = rec.entries.find((e) => e.message === "request");
-    expect(request!.meta.status).toBe(404);
+    if (request === undefined) throw new Error("expected a request log entry");
+    expect(request.meta.status).toBe(404);
   });
 
   it("does not treat a deliberate 4xx as an incident", async () => {
@@ -64,9 +66,10 @@ describe("api logging", () => {
 
     const failure = rec.entries.find((e) => e.level === "error");
     expect(failure).toBeDefined();
-    expect(failure!.meta).toMatchObject({ method: "GET", path: "/explode", query: "who=me", error: "kaboom" });
+    if (failure === undefined) throw new Error("expected an error log entry");
+    expect(failure.meta).toMatchObject({ method: "GET", path: "/explode", query: "who=me", error: "kaboom" });
     // Without a stack the log says something broke but not where.
-    expect(failure!.meta.stack).toBeTruthy();
+    expect(failure.meta.stack).toBeTruthy();
   });
 
   it("still hides the internal detail from the response body", async () => {

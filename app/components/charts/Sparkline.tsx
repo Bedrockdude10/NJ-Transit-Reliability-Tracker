@@ -29,7 +29,8 @@ export function Sparkline({
     x: p.x + pad,
     y: p.y + pad,
   }));
-  const last = pts[pts.length - 1]!;
+  const last = pts[pts.length - 1];
+  if (last === undefined) return <Svg width={width} height={height} />;
 
   return (
     <Svg width={width} height={height}>

@@ -112,9 +112,11 @@ if (process.argv[1]?.endsWith("export-predictions.ts")) {
   const out = arg("out") ?? "./predictions.csv.gz";
   let lastReport = 0;
 
+  const fromDate = arg("from");
+  const toDate = arg("to");
   const result = await exportPredictions(repos, out, {
-    fromDate: arg("from"),
-    toDate: arg("to"),
+    ...(fromDate !== undefined ? { fromDate } : {}),
+    ...(toDate !== undefined ? { toDate } : {}),
     onProgress: (polls, rows) => {
       if (polls - lastReport < 2000) return;
       lastReport = polls;

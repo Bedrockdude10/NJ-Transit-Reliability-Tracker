@@ -43,8 +43,10 @@ describe("archive paging uses an ordered index walk", () => {
     expect(first).toHaveLength(10);
     expect(first.map((s) => s.id)).toEqual([...first.map((s) => s.id)].sort((a, b) => (a ?? 0) - (b ?? 0)));
 
-    const next = repos.snapshots.pageById("TripUpdates", first.at(-1)!.id!, 10);
-    expect(next[0]!.id).toBeGreaterThan(first.at(-1)!.id!);
+    const last = first.at(-1);
+    if (last === undefined || last.id === undefined) throw new Error("expected a stored page with ids");
+    const next = repos.snapshots.pageById("TripUpdates", last.id, 10);
+    expect(next[0]?.id).toBeGreaterThan(last.id);
   });
 
   it("walks the whole archive exactly once", () => {
@@ -53,8 +55,13 @@ describe("archive paging uses an ordered index walk", () => {
     for (;;) {
       const page = repos.snapshots.pageById("TripUpdates", after, 7);
       if (page.length === 0) break;
-      for (const s of page) seen.add(s.id!);
-      after = page.at(-1)!.id!;
+      for (const s of page) {
+        if (s.id === undefined) throw new Error("snapshots carry an id");
+        seen.add(s.id);
+      }
+      const last = page.at(-1);
+      if (last === undefined || last.id === undefined) throw new Error("page has no id");
+      after = last.id;
     }
     expect(seen.size).toBe(50);
   });

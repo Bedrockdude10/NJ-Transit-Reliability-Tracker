@@ -29,7 +29,7 @@ export function BarChart({
   height?: number;
   showValues?: boolean;
   maxValue?: number;
-  referenceLine?: ReferenceLine;
+  referenceLine?: ReferenceLine | undefined;
   formatValue?: (value: number) => string;
 }) {
   const [width, setWidth] = useState(0);
@@ -55,6 +55,7 @@ export function BarChart({
         <Svg width={width} height={height}>
           {/* gridlines */}
           {axisTicks(max, 4).map((t, i) => (
+            // biome-ignore lint/suspicious/noArrayIndexKey: ticks can share a value when max is small; position is the identity
             <Line key={`g${i}`} x1={0} y1={yFor(t)} x2={width} y2={yFor(t)} stroke={c.gridLine} strokeWidth={1} />
           ))}
 
@@ -62,7 +63,7 @@ export function BarChart({
             const datum = data[i];
             const cx = bar.x + bar.width / 2;
             return (
-              <G key={i}>
+              <G key={`b${bar.x}`}>
                 <Rect x={bar.x} y={bar.y + valueSpace} width={bar.width} height={Math.max(bar.height, bar.value > 0 ? 2 : 0)} rx={4} fill={datum?.color ?? c.accent} />
                 {showValues ? (
                   <SvgText x={cx} y={bar.y + valueSpace - 5} fill={c.textMuted} fontSize={10} fontWeight="600" textAnchor="middle">

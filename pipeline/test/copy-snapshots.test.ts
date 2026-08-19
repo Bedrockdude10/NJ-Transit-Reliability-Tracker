@@ -121,9 +121,11 @@ describe.skipIf(!online)("copying to object storage", () => {
     const copied = await run();
 
     expect(copied.length).toBe(1);
-    expect(copied[0]!.objects).toBe(FEED_TYPES.length * 3);
-    expect(copied[0]!.deleted).toBe(copied[0]!.objects);
-    expect(repos.snapshots.count()).toBe(before - copied[0]!.objects);
+    const [copiedHour] = copied;
+    if (copiedHour === undefined) throw new Error("expected one copied hour");
+    expect(copiedHour.objects).toBe(FEED_TYPES.length * 3);
+    expect(copiedHour.deleted).toBe(copiedHour.objects);
+    expect(repos.snapshots.count()).toBe(before - copiedHour.objects);
   }, 60_000);
 
   it("copies every feed type, not just the busiest", async () => {
@@ -135,7 +137,11 @@ describe.skipIf(!online)("copying to object storage", () => {
     const listed = await client().send(
       new ListObjectsV2Command({ Bucket: STORE.bucket, Prefix: `${prefix}/` }),
     );
-    const feeds = new Set((listed.Contents ?? []).map((o: { Key?: string }) => o.Key!.split("/").at(-2)));
+    const feeds = new Set(
+      (listed.Contents ?? [])
+        .map((o) => o.Key?.split("/").at(-2))
+        .filter((feed): feed is string => feed !== undefined),
+    );
     expect([...feeds].sort()).toEqual([...FEED_TYPES].sort());
   }, 60_000);
 
@@ -148,15 +154,18 @@ describe.skipIf(!online)("copying to object storage", () => {
     });
 
     const [hour] = await run();
-    expect(hour!.objects).toBe(1);
+    if (hour === undefined) throw new Error("expected one copied hour");
+    expect(hour.objects).toBe(1);
 
     const listed = await client().send(
       new ListObjectsV2Command({ Bucket: STORE.bucket, Prefix: `${prefix}/` }),
     );
-    const got = await client().send(
-      new GetObjectCommand({ Bucket: STORE.bucket, Key: listed.Contents![0]!.Key! }),
-    );
-    expect(Buffer.from(await got.Body!.transformToByteArray())).toEqual(bytes);
+    const key = listed.Contents?.[0]?.Key;
+    if (key === undefined) throw new Error("expected the stored object to be listed");
+    const got = await client().send(new GetObjectCommand({ Bucket: STORE.bucket, Key: key }));
+    const body = got.Body;
+    if (body === undefined) throw new Error("expected an object body");
+    expect(Buffer.from(await body.transformToByteArray())).toEqual(bytes);
   }, 60_000);
 
   it("is idempotent — a second run has nothing left to do", async () => {

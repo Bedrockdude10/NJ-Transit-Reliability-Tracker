@@ -435,7 +435,7 @@ export interface HistoryResponse {
   seasonality: SeasonalityMonth[];
   annual: AnnualOtpYear[];
   /** Fleet mean-distance-between-failures by year (system scope only). */
-  mdbfAnnual?: { year: number; avgMdbf: number }[];
+  mdbfAnnual?: { year: number; avgMdbf: number }[] | undefined;
 }
 
 export interface WorstTrip {

@@ -22,6 +22,7 @@ export function Table({ columns, rows }: { columns: Column[]; rows: TableRow[] }
         ))}
       </View>
       {rows.map((row, i) => (
+        // biome-ignore lint/suspicious/noArrayIndexKey: rows carry no id field and a static table never reorders
         <View key={i} style={[styles.row, i % 2 ? styles.zebra : null]}>
           {columns.map((col) => (
             <Text key={col.key} style={[styles.cell, cellStyle(col)]} numberOfLines={1}>

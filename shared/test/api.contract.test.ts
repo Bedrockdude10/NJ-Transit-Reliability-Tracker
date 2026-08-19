@@ -103,17 +103,21 @@ describe("contract validation at runtime", () => {
 
   it("distinguishes null from absent", () => {
     // `lastFailureAtMs` is nullable and required — null is data, missing is not.
-    const feeds = [{ ...health.feeds[0]!, lastFailureAtMs: undefined }];
+    const feed = health.feeds[0];
+    if (feed === undefined) throw new Error("fixture has no feeds");
+    const feeds = [{ ...feed, lastFailureAtMs: undefined }];
     expect(schemas.healthResponseSchema.safeParse({ ...health, feeds }).success).toBe(false);
   });
 
   it("names the offending path when it rejects", () => {
+    const feed = health.feeds[0];
+    if (feed === undefined) throw new Error("fixture has no feeds");
     const result = schemas.healthResponseSchema.safeParse({
       ...health,
-      feeds: [{ ...health.feeds[0]!, pollsToday: "many" }],
+      feeds: [{ ...feed, pollsToday: "many" }],
     });
     expect(result.success).toBe(false);
     // Without the path, a validation failure in production is unactionable.
-    expect(result.error!.issues[0]!.path).toEqual(["feeds", 0, "pollsToday"]);
+    expect(result.error?.issues[0]?.path).toEqual(["feeds", 0, "pollsToday"]);
   });
 });

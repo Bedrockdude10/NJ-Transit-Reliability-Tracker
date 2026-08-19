@@ -86,7 +86,8 @@ export function SystemMap({
       if (d < stationDist) [stationDist, nearestStation] = [d, s];
     }
     if (nearestStation && stationDist <= 14 / v.scale) {
-      const c = cd.get(nearestStation.stopId)!;
+      const c = cd.get(nearestStation.stopId);
+      if (c === undefined) return;
       setSelected({ kind: "station", station: nearestStation, at: { x: c.x * v.scale + v.tx, y: c.y * v.scale + v.ty } });
       return;
     }
@@ -126,16 +127,17 @@ export function SystemMap({
     };
     const onMove = (e: PointerEvent) => {
       if (!down) return;
+      const from = down;
       const p = rel(e);
-      const dx = p.x - down.p.x;
-      const dy = p.y - down.p.y;
+      const dx = p.x - from.p.x;
+      const dy = p.y - from.p.y;
       if (!dragged && Math.hypot(dx, dy) > 4) {
         dragged = true;
         setSelected(null);
       }
       if (dragged && itx.current.view.scale > 1) {
         const w = el.clientWidth;
-        setView((v) => clampView({ scale: v.scale, tx: down!.tx + dx, ty: down!.ty + dy }, w, height));
+        setView((v) => clampView({ scale: v.scale, tx: from.tx + dx, ty: from.ty + dy }, w, height));
       }
     };
     const onUp = (e: PointerEvent) => {
@@ -191,7 +193,7 @@ export function SystemMap({
                   d={d}
                   stroke={colorFor(l)}
                   strokeWidth={(lightRail ? 2 : 3) / Math.sqrt(view.scale)}
-                  strokeDasharray={lightRail ? "5,4" : undefined}
+                  {...(lightRail ? { strokeDasharray: "5,4" } : {})}
                   strokeLinejoin="round"
                   strokeLinecap="round"
                   fill="none"
@@ -207,7 +209,7 @@ export function SystemMap({
               if (!pt) return null;
               const active = s.stopId === selectedStationId;
               const r = (active ? 5 : 2.6) / Math.sqrt(view.scale);
-              return <Circle key={s.stopId} cx={pt.x} cy={pt.y} r={r} fill={active ? c.accent : c.text} stroke={active ? c.background : undefined} strokeWidth={active ? 1.5 / view.scale : 0} opacity={active ? 1 : 0.7} />;
+              return <Circle key={s.stopId} cx={pt.x} cy={pt.y} r={r} fill={active ? c.accent : c.text} {...(active ? { stroke: c.background } : {})} strokeWidth={active ? 1.5 / view.scale : 0} opacity={active ? 1 : 0.7} />;
             })}
             {/* Live trains, drawn last so they sit above the network. Each is a
                 chevron pointing along its reported bearing; a train with no

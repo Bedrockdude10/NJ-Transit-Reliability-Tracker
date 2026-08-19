@@ -36,8 +36,6 @@ export function CommutePanel() {
   const setDestination = (v: string) => setParams({ destination: v });
   const swap = () => setParams({ origin: destination, destination: origin });
 
-  const ready = Boolean(origin && destination && origin !== destination);
-
   return (
     <>
       <PageTitle
@@ -63,9 +61,9 @@ export function CommutePanel() {
           query that cannot run yet is not a disabled query — it is a component
           that should not be on screen, which is also why Suspense needs no
           special case for it. */}
-      {ready ? (
+      {origin && destination && origin !== destination ? (
         <QueryBoundary>
-          <CommuteResult origin={origin!} destination={destination!} range={range} />
+          <CommuteResult origin={origin} destination={destination} range={range} />
         </QueryBoundary>
       ) : (
         <Card>

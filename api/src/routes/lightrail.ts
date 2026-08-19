@@ -8,8 +8,10 @@ import { CACHE_CONTROL_DAILY } from "../util";
 
 function monthSpanOf(rows: readonly YearMonth[]): MonthRange {
   const index = (m: YearMonth) => m.year * 12 + m.month;
-  let from = rows[0]!;
-  let to = rows[0]!;
+  const first = rows[0];
+  if (!first) throw new Error("monthSpanOf requires at least one month");
+  let from = first;
+  let to = first;
   for (const r of rows) {
     if (index(r) < index(from)) from = r;
     if (index(r) > index(to)) to = r;

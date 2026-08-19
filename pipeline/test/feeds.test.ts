@@ -50,7 +50,9 @@ describe("TokenManager", () => {
     expect(await tokens.get()).toBe("TOK1"); // served from cache
     expect(fetchImpl).toHaveBeenCalledTimes(1);
 
-    const [url, init] = fetchImpl.mock.calls[0]!;
+    const call = fetchImpl.mock.calls[0];
+    if (call === undefined) throw new Error("expected one fetch call");
+    const [url, init] = call;
     expect(url).toBe(`${BASE}/getToken`);
     expect((init as RequestInit).method).toBe("POST");
     const form = (init as RequestInit).body as FormData;
@@ -118,7 +120,9 @@ describe("HttpFeedClient", () => {
     const bytes = await client.fetchTripUpdates();
     expect(bytes).toEqual(proto);
 
-    const [url, init] = fetchImpl.mock.calls[0]!;
+    const call = fetchImpl.mock.calls[0];
+    if (call === undefined) throw new Error("expected one fetch call");
+    const [url, init] = call;
     expect(url).toBe(`${BASE}/getTripUpdates`);
     expect(((init as RequestInit).body as FormData).get("token")).toBe("TOK");
   });
@@ -149,7 +153,9 @@ describe("HttpFeedClient", () => {
     const client = new HttpFeedClient(config(), tokens, fetchImpl as unknown as typeof fetch);
 
     expect(await client.fetchGtfsStatic()).toEqual(zip);
-    expect(fetchImpl.mock.calls[0]![0]).toBe(`${BASE}/getGTFS`);
+    const call = fetchImpl.mock.calls[0];
+    if (call === undefined) throw new Error("expected one fetch call");
+    expect(call[0]).toBe(`${BASE}/getGTFS`);
   });
 
   it("throws on a non-token JSON error", async () => {

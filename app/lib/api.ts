@@ -122,7 +122,12 @@ export const api = {
   connections: (q: { inbound_trip_id: string; transfer_stop_id: string; outbound_trip_id: string } & DateRange) =>
     get(connectionResponseSchema, "/connections", { ...q }),
   connectionsTop: (limit = 10) => get(connectionTopResponseSchema, "/connections/top", { limit }),
-  alerts: (q: { line?: string; effect_type?: string; page?: number; pageSize?: number } & DateRange) =>
+  alerts: (q: {
+      line?: string | undefined;
+      effect_type?: string | undefined;
+      page?: number;
+      pageSize?: number;
+    } & DateRange) =>
     get(alertListResponseSchema, "/alerts", { ...q }),
   alertFrequency: (r: DateRange) => get(alertFrequencyResponseSchema, "/alerts/frequency", { ...r }),
   /** Omit `date` for the most recently predicted day — today is usually unpredicted. */

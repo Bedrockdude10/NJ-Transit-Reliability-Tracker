@@ -93,7 +93,9 @@ export function s3Reader(store: ObjectStore, client: S3Client = createClient(sto
       const object = await client.send(
         new GetObjectCommand({ Bucket: store.bucket, Key: key }),
       );
-      return object.Body!.transformToByteArray();
+      const body = object.Body;
+      if (body === undefined) throw new Error(`object ${key} has no body`);
+      return body.transformToByteArray();
     },
   };
 }

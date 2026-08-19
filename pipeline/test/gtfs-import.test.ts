@@ -50,7 +50,8 @@ describe("importGtfsStatic", () => {
 
     // NEC + (NJCL/NJCLL collapsed) + Hudson-Bergen light rail = 3 lines.
     expect(result.routes).toBe(3);
-    const version = repos.gtfs.currentVersion()!;
+    const version = repos.gtfs.currentVersion();
+    if (version === null) throw new Error("import must set a current version");
     const routes = repos.gtfs.routes(version.versionId);
     const rail = routes.filter((r) => r.mode !== "light_rail").map((r) => r.lineName).sort();
     expect(rail).toEqual(["North Jersey Coast Line", "Northeast Corridor Line"]);
@@ -63,7 +64,8 @@ describe("importGtfsStatic", () => {
     const dir = writeFeed();
     const repos = createRepositories(openDatabase());
     importGtfsStatic(repos, dir);
-    const version = repos.gtfs.currentVersion()!;
+    const version = repos.gtfs.currentVersion();
+    if (version === null) throw new Error("import must set a current version");
 
     const nwk = repos.gtfs.allStops(version.versionId).find((s) => s.stopId === "NWK");
     expect(nwk).toMatchObject({ stopName: "Newark Penn", lat: 40.7347, lon: -74.1644 });

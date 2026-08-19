@@ -182,7 +182,11 @@ function expectEquivalent(actual: readonly ConnectionDailyRow[], expected: reado
 /** Generate a randomized-but-seeded event set exercising the transfer logic. */
 function generateEvents(seed: number): TripStopEvent[] {
   const r = rng(seed);
-  const pick = <T>(xs: readonly T[]): T => xs[Math.floor(r() * xs.length)]!;
+  const pick = <T>(xs: readonly T[]): T => {
+    const value = xs[Math.floor(r() * xs.length)];
+    if (value === undefined) throw new Error("pick: empty list");
+    return value;
+  };
   const stops = ["NWK", "NYP", "SEC", "TRE"]; // several transfer stops (+ some singletons)
   // Base instant near the AM peak so isPeak / off-peak both get exercised.
   const base = Math.floor(Date.UTC(2025, 6, 15, 10, 30, 0) / 1000); // ~06:30 EDT
@@ -230,7 +234,8 @@ describe("computeConnections — two-pointer sweep matches brute force", () => {
   ];
 
   for (let seed = 1; seed <= 40; seed++) {
-    const params = paramSets[seed % paramSets.length]!;
+    const params = paramSets[seed % paramSets.length];
+    if (params === undefined) throw new Error("paramSets must not be empty");
     it(`equivalent for seed ${seed} (window=${params.maxTransferWindowSeconds}s, buffer=${params.minTransferBufferSeconds}s)`, () => {
       const events = generateEvents(seed);
       const { connections } = computeAggregates(events, DATE, { timeZone: tz, ...params });

@@ -32,8 +32,12 @@ for (let i = 0; i < ring.length; i += step) {
   const [lon, lat] = ring[i] as [number, number];
   pts.push([Math.round(lon * 1e4) / 1e4, Math.round(lat * 1e4) / 1e4]);
 }
-const first = pts[0]!;
-const last = pts[pts.length - 1]!;
+const first = pts[0];
+const last = pts[pts.length - 1];
+if (first === undefined || last === undefined) {
+  console.error("The GeoJSON ring contains no points — nothing to write.");
+  process.exit(1);
+}
 if (first[0] !== last[0] || first[1] !== last[1]) pts.push([first[0], first[1]]);
 
 const body = pts.map((p) => `  [${p[0]}, ${p[1]}],`).join("\n");

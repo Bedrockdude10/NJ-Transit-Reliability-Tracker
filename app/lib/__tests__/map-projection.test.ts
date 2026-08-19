@@ -79,10 +79,9 @@ describe("buildProjection", () => {
 
   it("projects every station into the viewport with y inverted (north is up)", () => {
     const { coord } = buildProjection(stations, outline, 200, 200);
-    const a = coord.get("A")!;
-    const b = coord.get("B")!;
-    expect(a).toBeDefined();
-    expect(b).toBeDefined();
+    const a = coord.get("A");
+    const b = coord.get("B");
+    if (a === undefined || b === undefined) throw new Error("projection must include both stations");
     // Station B is further north (higher lat) so it has a smaller y.
     expect(b.y).toBeLessThan(a.y);
     // Station B is further east (higher lon) so it has a larger x.
@@ -107,7 +106,8 @@ describe("buildProjection", () => {
   it("does not divide by zero when all points coincide", () => {
     const degenerate: ProjectableStation[] = [{ stopId: "X", lat: 40, lon: -74 }];
     const { coord } = buildProjection(degenerate, [[-74, 40]], 200, 200);
-    const p = coord.get("X")!;
+    const p = coord.get("X");
+    if (p === undefined) throw new Error("projection must include the station");
     expect(Number.isFinite(p.x)).toBe(true);
     expect(Number.isFinite(p.y)).toBe(true);
   });

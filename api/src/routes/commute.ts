@@ -16,7 +16,7 @@ export function commuteRoutes(repos: Repositories): Hono {
     if (origin === destination) badRequest("origin and destination must differ");
 
     const range = resolveRange(c.req.query("from"), c.req.query("to"));
-    const journeys = repos.events.journeysBetween(origin!, destination!, range.from, range.to);
+    const journeys = repos.events.journeysBetween(origin, destination, range.from, range.to);
 
     const completed = journeys.filter((j) => !j.cancelled && !j.skipped && j.destinationDelaySeconds !== null);
     const delays = completed.map((j) => j.destinationDelaySeconds as number);
@@ -35,12 +35,12 @@ export function commuteRoutes(repos: Repositories): Hono {
     const onTimePercent =
       delays.length > 0 ? round1((delays.filter((d) => d <= OTP_STRICT_THRESHOLD_SECONDS).length / delays.length) * 100) : null;
 
-    const originName = stopName(repos, origin!);
-    const destinationName = stopName(repos, destination!);
+    const originName = stopName(repos, origin);
+    const destinationName = stopName(repos, destination);
 
     const response: CommuteResponse = {
-      origin: { stopId: origin!, stopName: originName },
-      destination: { stopId: destination!, stopName: destinationName },
+      origin: { stopId: origin, stopName: originName },
+      destination: { stopId: destination, stopName: destinationName },
       from: range.from,
       to: range.to,
       linesServing: [...new Set(journeys.map((j) => j.lineName))].sort(),

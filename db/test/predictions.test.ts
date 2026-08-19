@@ -45,7 +45,8 @@ describe("storing predictions", () => {
     // Null means "the trip has not run yet"; zero means "it was on time". A
     // model scored against zeroes would look wrong in both directions.
     repo.upsertMany([PREDICTION]);
-    expect(repo.forServiceDate("2026-08-14")[0]!.actualDelaySeconds).toBeNull();
+    const [stored] = repo.forServiceDate("2026-08-14");
+    expect(stored?.actualDelaySeconds).toBeNull();
   });
 
   it("replaces a prediction rather than duplicating it", () => {
@@ -55,8 +56,8 @@ describe("storing predictions", () => {
 
     const stored = repo.forServiceDate("2026-08-14");
     expect(stored).toHaveLength(1);
-    expect(stored[0]!.predictedDelaySeconds).toBe(300);
-    expect(stored[0]!.runId).toBe("run-b");
+    expect(stored[0]?.predictedDelaySeconds).toBe(300);
+    expect(stored[0]?.runId).toBe("run-b");
   });
 
   it("replaces a whole service date, dropping legs the new run no longer predicts", () => {
@@ -157,10 +158,11 @@ describe("prediction intervals", () => {
 
   it("omits the keys entirely for a prediction published without one", () => {
     repo.upsertMany([PREDICTION]);
-    const [stored] = repo.forServiceDate("2026-08-14");
+    const stored = repo.forServiceDate("2026-08-14")[0];
+    if (stored === undefined) throw new Error("expected a stored prediction");
     expect(stored).toEqual(PREDICTION);
-    expect(Object.hasOwn(stored!, "predictedDelayLowerSeconds")).toBe(false);
-    expect(Object.hasOwn(stored!, "predictionIntervalPercent")).toBe(false);
+    expect(Object.hasOwn(stored, "predictedDelayLowerSeconds")).toBe(false);
+    expect(Object.hasOwn(stored, "predictionIntervalPercent")).toBe(false);
   });
 
   it("drops the interval when a re-run stops publishing one", () => {
@@ -168,8 +170,9 @@ describe("prediction intervals", () => {
     // claim a confidence the new run never stated.
     repo.upsertMany([WITH_INTERVAL]);
     repo.upsertMany([{ ...PREDICTION, tripId: "T-interval" }]);
-    const [stored] = repo.forServiceDate("2026-08-14");
-    expect(Object.hasOwn(stored!, "predictedDelayLowerSeconds")).toBe(false);
+    const stored = repo.forServiceDate("2026-08-14")[0];
+    if (stored === undefined) throw new Error("expected a stored prediction");
+    expect(Object.hasOwn(stored, "predictedDelayLowerSeconds")).toBe(false);
   });
 
   it("replaces a service date carrying intervals", () => {

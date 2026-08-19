@@ -31,7 +31,7 @@ export function buildDelayDistribution(
   for (const bucket of DELAY_BUCKETS) counts[bucket.label] = 0;
   for (const delay of delaysSeconds) {
     const label = bucketForDelay(delay).label;
-    counts[label] = counts[label]! + 1;
+    counts[label] = (counts[label] ?? 0) + 1;
   }
   return counts;
 }

@@ -101,7 +101,7 @@ export function computeAggregates(
       acc.operated += 1;
       acc.sumDelay += delay;
       for (const [t, tKey] of THRESHOLD_KEYS) {
-        if (isOnTime(delay, t)) acc.onTime[tKey] = acc.onTime[tKey]! + 1;
+        if (isOnTime(delay, t)) acc.onTime[tKey] = (acc.onTime[tKey] ?? 0) + 1;
       }
     }
     otpAcc.set(key, acc);

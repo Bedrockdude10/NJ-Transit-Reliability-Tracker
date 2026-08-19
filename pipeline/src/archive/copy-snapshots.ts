@@ -158,7 +158,8 @@ export async function copySnapshots(options: CopyOptions): Promise<CopiedHour[]>
           objects += 1;
         });
 
-        afterId = page[page.length - 1]!.id ?? afterId;
+        const last = page[page.length - 1];
+        if (last) afterId = last.id ?? afterId;
       }
     }
 
