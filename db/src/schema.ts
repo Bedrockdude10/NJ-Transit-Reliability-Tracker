@@ -394,4 +394,25 @@ export const MIGRATIONS: readonly Migration[] = [
       ALTER TABLE predictions ADD COLUMN prediction_interval_percent   REAL;
     `,
   },
+  {
+    id: "012_model_scorecards",
+    up: /* sql */ `
+      -- How each model version scored, per service date and horizon. Written by
+      -- njt-delay-modeling and landed here; nothing in this repo derives from it.
+      CREATE TABLE model_scorecards (
+        model_version              TEXT    NOT NULL,
+        run_id                     TEXT    NOT NULL,
+        service_date               TEXT    NOT NULL,
+        horizon_seconds            INTEGER NOT NULL,
+        predictions                INTEGER NOT NULL,
+        mae_seconds                REAL    NOT NULL,
+        bias_seconds               REAL    NOT NULL,
+        falsely_reassuring_percent REAL    NOT NULL,
+        -- The run is part of the key: two runs of the same version on the same day
+        -- are two measurements, and collapsing them would hide a regression.
+        PRIMARY KEY (model_version, run_id, service_date, horizon_seconds)
+      );
+      CREATE INDEX idx_scorecards_date ON model_scorecards(service_date);
+    `,
+  },
 ];

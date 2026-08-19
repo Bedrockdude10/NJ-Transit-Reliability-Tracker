@@ -7,6 +7,7 @@ import { HealthRepository } from "./health";
 import { LightRailRepository } from "./lightrail";
 import { OfficialMetricRepository } from "./official";
 import { PredictionRepository } from "./predictions";
+import { ScorecardRepository } from "./scorecards";
 import { RawSnapshotRepository } from "./snapshots";
 import { VehiclePositionRepository } from "./vehicles";
 
@@ -32,12 +33,14 @@ export interface Repositories {
   health: HealthRepository;
   vehicles: VehiclePositionRepository;
   predictions: PredictionRepository;
+  scorecards: ScorecardRepository;
 }
 
 export function createRepositories(db: Database): Repositories {
   return {
     events: new TripStopEventRepository(db),
     predictions: new PredictionRepository(db),
+    scorecards: new ScorecardRepository(db),
     snapshots: new RawSnapshotRepository(db),
     alerts: new ServiceAlertRepository(db),
     gtfs: new GtfsRepository(db),
