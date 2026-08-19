@@ -74,7 +74,7 @@ describe("Predictions screen", () => {
     const { getByText } = renderScreen();
 
     await waitFor(() => expect(getByText("No predictions yet")).toBeTruthy());
-    expect(getByText(/no invented\s+numbers/)).toBeTruthy();
+    expect(getByText(/no invented\s+numbers/u)).toBeTruthy();
   });
 
   it("names the model and run alongside the numbers", async () => {
@@ -113,7 +113,7 @@ describe("Predictions screen", () => {
 
     await waitFor(() => expect(getByText("4m")).toBeTruthy());
     expect(getByText("Predicted")).toBeTruthy();
-    expect(queryByText(/prediction intervals/)).toBeNull();
+    expect(queryByText(/prediction intervals/u)).toBeNull();
   });
 
   it("shows the range, and what its confidence means, when the model published one", async () => {
@@ -131,6 +131,6 @@ describe("Predictions screen", () => {
 
     await waitFor(() => expect(getByText("5m–12m")).toBeTruthy());
     expect(getByText("Predicted range")).toBeTruthy();
-    expect(getByText(/80% prediction intervals/)).toBeTruthy();
+    expect(getByText(/80% prediction intervals/u)).toBeTruthy();
   });
 });

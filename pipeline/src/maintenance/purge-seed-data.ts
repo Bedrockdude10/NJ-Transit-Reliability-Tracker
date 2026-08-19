@@ -1,6 +1,8 @@
 import type { Repositories } from "@njt/db";
 import { recomputeServiceDate } from "../aggregator";
 
+const SEED_TRIP_ID_RE = /-inbound-|-outbound-/u;
+
 /**
  * Remove the fabricated measurement left behind by the pre-API seed: only rows
  * matching its trip-id shape, unlike `deploy/purge-synthetic.mjs`, which clears
@@ -87,5 +89,5 @@ export function purgeSeedData(repos: Repositories, options: SeedPurgeOptions = {
 
 /** Mirror of the repository's seed predicate, for the dry-run preview. */
 function isSeedTripId(tripId: string): boolean {
-  return /-inbound-|-outbound-/.test(tripId);
+  return SEED_TRIP_ID_RE.test(tripId);
 }

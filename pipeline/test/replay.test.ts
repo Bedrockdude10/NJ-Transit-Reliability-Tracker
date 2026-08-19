@@ -19,7 +19,7 @@ function poll(tripId: string, stopId: string, arrivalEpoch: number, delay: numbe
     {
       id: "e1",
       tripUpdate: {
-        trip: { tripId, routeId: "NE", startDate: DATE.replace(/-/g, ""), directionId: 1 },
+        trip: { tripId, routeId: "NE", startDate: DATE.replace(/-/gu, ""), directionId: 1 },
         stopTimeUpdate: [{ stopId, stopSequence: 1, arrival: { time: arrivalEpoch, delay } }],
       },
     },

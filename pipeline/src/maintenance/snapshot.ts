@@ -4,6 +4,10 @@ import { pipeline } from "node:stream/promises";
 import { DatabaseSync } from "node:sqlite";
 import { join } from "node:path";
 
+const ISO_SEPARATORS_RE = /[-:]/gu;
+const ISO_MILLIS_RE = /\.\d+Z$/u;
+const SNAPSHOT_NAME_RE = /^njt-\d{8}T\d{6}Z\.sqlite\.gz$/u;
+
 /**
  * Take a consistent, compressed copy of the live database. See DEPLOY.md → Backups.
  *
@@ -34,7 +38,7 @@ export interface SnapshotResult {
 
 /** `njt-20260814T150844Z.sqlite.gz` — sorts chronologically as a string. */
 export function snapshotName(at: Date): string {
-  return `njt-${at.toISOString().replace(/[-:]/g, "").replace(/\.\d+Z$/, "Z")}.sqlite.gz`;
+  return `njt-${at.toISOString().replace(ISO_SEPARATORS_RE, "").replace(ISO_MILLIS_RE, "Z")}.sqlite.gz`;
 }
 
 /**
@@ -43,7 +47,7 @@ export function snapshotName(at: Date): string {
  * history and delete the wrong one.
  */
 export function prunable(names: readonly string[], keep: number): string[] {
-  const snapshots = names.filter((n) => /^njt-\d{8}T\d{6}Z\.sqlite\.gz$/.test(n)).sort();
+  const snapshots = names.filter((n) => SNAPSHOT_NAME_RE.test(n)).sort();
   return keep <= 0 ? [...snapshots] : snapshots.slice(0, Math.max(0, snapshots.length - keep));
 }
 
@@ -81,7 +85,7 @@ export async function snapshotDatabase(options: SnapshotOptions): Promise<Snapsh
     const db = new DatabaseSync(dbPath, { readOnly: true });
     try {
       rmSync(rawPath, { force: true });
-      db.exec(`VACUUM INTO '${rawPath.replace(/'/g, "''")}'`);
+      db.exec(`VACUUM INTO '${rawPath.replace(/'/gu, "''")}'`);
     } finally {
       db.close();
     }

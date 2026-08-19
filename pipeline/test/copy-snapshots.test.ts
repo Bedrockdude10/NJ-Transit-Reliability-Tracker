@@ -186,7 +186,7 @@ describe.skipIf(!online)("copying to object storage", () => {
       },
     } as Pick<typeof real, "send">;
 
-    await expect(run({ client: flaky })).rejects.toThrow(/connection reset/);
+    await expect(run({ client: flaky })).rejects.toThrow(/connection reset/u);
     expect(repos.snapshots.count()).toBe(before);
   }, 60_000);
 
@@ -197,7 +197,7 @@ describe.skipIf(!online)("copying to object storage", () => {
     const before = repos.snapshots.count();
     const liar = { send: async () => ({ ETag: '"0000000000000000cafe000000000000"' }) };
 
-    await expect(run({ client: liar as never })).rejects.toThrow(/different digest/);
+    await expect(run({ client: liar as never })).rejects.toThrow(/different digest/u);
     expect(repos.snapshots.count()).toBe(before);
   }, 60_000);
 
@@ -217,7 +217,7 @@ describe.skipIf(!online)("copying to object storage", () => {
       }),
     } as Repositories;
 
-    await expect(run({ repos: miscounting })).rejects.toThrow(/refusing to delete/);
+    await expect(run({ repos: miscounting })).rejects.toThrow(/refusing to delete/u);
     expect(repos.snapshots.count()).toBe(before);
   }, 60_000);
 

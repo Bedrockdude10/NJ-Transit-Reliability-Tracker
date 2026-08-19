@@ -8,7 +8,7 @@ import { predictionInterval } from "@njt/shared";
 import { Hono } from "hono";
 import { CACHE_CONTROL_MINUTE } from "../util";
 
-const SERVICE_DATE = /^\d{4}-\d{2}-\d{2}$/;
+const SERVICE_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 
 /** A day holds ~50,000 legs; returning them all is ~5 MB of JSON. */
 const DEFAULT_LIMIT = 100;

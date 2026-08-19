@@ -5,6 +5,8 @@ import ts from "typescript";
 
 const base = process.argv[2] ?? "HEAD";
 
+const SOURCE_FILE_RE = /\.(?:ts|tsx|mjs|js)$/u;
+
 const strip = (text: string, file: string) =>
   ts.transpileModule(text, {
     fileName: file,
@@ -22,7 +24,7 @@ const changed = execFileSync("git", ["diff", "--name-only", "--diff-filter=M", b
   encoding: "utf8",
 })
   .split("\n")
-  .filter((f) => /\.(ts|tsx|mjs|js)$/.test(f));
+  .filter((f) => SOURCE_FILE_RE.test(f));
 
 const offenders: string[] = [];
 for (const file of changed) {

@@ -55,7 +55,7 @@ describe("stopProcessTree", () => {
       log,
     });
     expect(logged).toHaveLength(1);
-    expect(logged[0].message).toMatch(/could not signal/);
+    expect(logged[0].message).toMatch(/could not signal/u);
   });
 
   it("signals the group, not just the leader", () => {

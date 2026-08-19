@@ -3,9 +3,12 @@ import type { DateRange } from "./dates";
 
 type Cell = string | number;
 
+const NEEDS_QUOTING_RE = /[",\n\r]/u;
+const DOUBLE_QUOTE_RE = /"/gu;
+
 function escapeCell(value: Cell): string {
   const s = String(value);
-  return /[",\n\r]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
+  return NEEDS_QUOTING_RE.test(s) ? `"${s.replace(DOUBLE_QUOTE_RE, '""')}"` : s;
 }
 
 export function toCsv(rows: readonly Cell[][]): string {

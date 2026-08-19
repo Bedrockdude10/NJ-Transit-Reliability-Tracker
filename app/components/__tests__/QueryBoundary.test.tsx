@@ -56,6 +56,7 @@ describe("QueryBoundary", () => {
     });
 
     await waitFor(() => expect(getByText("Retry")).toBeTruthy());
+    // biome-ignore lint/nursery/useAwaitThenable: React's act is a void|Thenable union; the async callback makes it a thenable, so the await flushes the retry.
     await act(async () => { fireEvent.press(getByText("Retry")); });
     await waitFor(() => expect(queryByText("data:recovered")).toBeTruthy());
   });
@@ -70,6 +71,7 @@ describe("QueryBoundary", () => {
     });
 
     await waitFor(() => expect(getByText("data:3 trains")).toBeTruthy());
+    // biome-ignore lint/nursery/useAwaitThenable: React's act is a void|Thenable union; the async callback makes it a thenable, so the await flushes the refetch.
     await act(async () => {
       await (globalThis as { __refetch?: () => Promise<unknown> }).__refetch?.();
     });

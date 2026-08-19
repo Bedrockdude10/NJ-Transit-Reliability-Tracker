@@ -18,6 +18,9 @@ export interface LocalParts {
 
 const PARTS_FORMATTER_CACHE = new Map<string, Intl.DateTimeFormat>();
 
+const SERVICE_DATE_RE = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/u;
+const GTFS_TIME_RE = /^(?<hours>\d{1,3}):(?<minutes>[0-5]\d):(?<seconds>[0-5]\d)$/u;
+
 function partsFormatter(timeZone: string): Intl.DateTimeFormat {
   let fmt = PARTS_FORMATTER_CACHE.get(timeZone);
   if (!fmt) {
@@ -74,9 +77,9 @@ export function formatDateParts(year: number, month: number, day: number): strin
 
 /** Throws on malformed input. */
 export function parseDateString(date: string): { year: number; month: number; day: number } {
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const match = SERVICE_DATE_RE.exec(date);
   if (!match) throw new Error(`Invalid service date: ${date}`);
-  return { year: Number(match[1]), month: Number(match[2]), day: Number(match[3]) };
+  return { year: Number(match.groups?.year), month: Number(match.groups?.month), day: Number(match.groups?.day) };
 }
 
 /**
@@ -84,9 +87,9 @@ export function parseDateString(date: string): { year: number; month: number; da
  * "25:30:00" is 1:30am the next calendar day, on the prior service date.
  */
 export function parseGtfsTimeToSeconds(time: string): number {
-  const match = /^(\d{1,3}):([0-5]\d):([0-5]\d)$/.exec(time);
+  const match = GTFS_TIME_RE.exec(time);
   if (!match) throw new Error(`Invalid GTFS time: ${time}`);
-  return Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]);
+  return Number(match.groups?.hours) * 3600 + Number(match.groups?.minutes) * 60 + Number(match.groups?.seconds);
 }
 
 /** 0 = Sunday … 6 = Saturday. */

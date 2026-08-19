@@ -6,7 +6,7 @@ export interface DateRange {
   to: string;
 }
 
-const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
+const DATE_RE = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/u;
 
 function daysInMonth(year: number, month: number): number {
   return new Date(Date.UTC(year, month, 0)).getUTCDate();
@@ -15,9 +15,9 @@ function daysInMonth(year: number, month: number): number {
 function validateDate(value: string, label: string): string {
   const m = DATE_RE.exec(value);
   if (!m) badRequest(`${label} must be YYYY-MM-DD, got "${value}"`);
-  const year = Number(m[1]);
-  const month = Number(m[2]);
-  const day = Number(m[3]);
+  const year = Number(m.groups?.year);
+  const month = Number(m.groups?.month);
+  const day = Number(m.groups?.day);
   if (month < 1 || month > 12 || day < 1 || day > daysInMonth(year, month)) {
     badRequest(`${label} must be a real calendar date, got "${value}"`);
   }

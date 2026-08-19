@@ -379,7 +379,7 @@ describe("API integration", () => {
     ];
     for (const path of cached) {
       const res = await app.request(path);
-      expect(res.headers.get("Cache-Control"), path).toMatch(/max-age=\d+/);
+      expect(res.headers.get("Cache-Control"), path).toMatch(/max-age=\d+/u);
     }
     const health = await app.request("/health");
     expect(health.headers.get("Cache-Control")).toBeNull();

@@ -14,6 +14,8 @@ import { createClient, type ObjectStore, type ObjectWriter, putVerified } from "
 
 const MS_PER_HOUR = 3_600_000;
 
+const TRAILING_SLASHES_RE = /\/+$/u;
+
 /**
  * Measured on the production image at the concurrency below (128 MB at four).
  * Kept close to the measurement: the machine has 148–185 MB free, so an
@@ -64,7 +66,7 @@ export function snapshotKey(
   const date = iso.slice(0, 10);
   const hour = iso.slice(11, 13);
   const { partitionBy } = DATASETS.snapshots;
-  return `${prefix.replace(/\/+$/, "")}/${partitionBy}=${date}/hour=${hour}/${snapshot.feedType}/${snapshot.fetchedAtMs}-${snapshot.id}.pb`;
+  return `${prefix.replace(TRAILING_SLASHES_RE, "")}/${partitionBy}=${date}/hour=${hour}/${snapshot.feedType}/${snapshot.fetchedAtMs}-${snapshot.id}.pb`;
 }
 
 /** The UTC hour an instant falls in, as epoch ms. */

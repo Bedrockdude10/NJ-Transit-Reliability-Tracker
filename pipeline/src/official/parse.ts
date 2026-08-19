@@ -26,7 +26,7 @@ function pick(row: Record<string, string>, aliases: readonly string[]): string |
 
 function toNumber(value: string | undefined): number | null {
   if (value === undefined) return null;
-  const cleaned = value.replace(/[%,\s]/g, "");
+  const cleaned = value.replace(/[%,\s]/gu, "");
   const n = Number(cleaned);
   return Number.isFinite(n) ? n : null;
 }

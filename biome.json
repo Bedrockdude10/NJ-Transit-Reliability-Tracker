@@ -24,7 +24,42 @@
       "preset": "recommended",
       "suspicious": {
         "noArrayIndexKey": "error"
+      },
+      "style": {
+        "noInferrableTypes": "error",
+        "noParameterAssign": "error"
+      },
+      "performance": {
+        "useTopLevelRegex": "error"
+      },
+      "nursery": {
+        "noConditionalExpect": "error",
+        "useUnicodeRegex": "error",
+        "useNamedCaptureGroup": "error",
+        "noFloatingPromises": "error",
+        "noMisusedPromises": "error",
+        "useAwaitThenable": "error",
+        "noUselessTypeConversion": "error",
+        "useArraySome": "error",
+        "useIncludes": "error",
+        "useNullishCoalescing": "error",
+        "useStringStartsEndsWith": "error",
+        "useRegexpTest": "error",
+        "useRegexpExec": "error",
+        "noUnusedClasses": "error"
       }
     }
-  }
+  },
+  "overrides": [
+    {
+      "includes": ["**/*.test.ts", "**/*.test.tsx", "**/test/**", "**/__tests__/**"],
+      "linter": {
+        "rules": {
+          "performance": {
+            "useTopLevelRegex": "off"
+          }
+        }
+      }
+    }
+  ]
 }

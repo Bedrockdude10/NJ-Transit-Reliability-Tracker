@@ -81,9 +81,9 @@ function rowCounts(db: DatabaseSync, tables: readonly string[]): Map<string, num
   const counts = new Map<string, number>();
   for (const table of tables) {
     // Quoted so a table called `order` or `group` counts like any other.
-    const quoted = `"${table.replace(/"/g, '""')}"`;
+    const quoted = `"${table.replace(/"/gu, '""')}"`;
     const row = db.prepare(`SELECT count(*) AS n FROM ${quoted}`).get() as { n: number };
-    counts.set(table, Number(row.n));
+    counts.set(table, row.n);
   }
   return counts;
 }
@@ -108,7 +108,7 @@ export function inspect(options: Pick<CompactOptions, "dbPath" | "freeBytes">): 
       freelistCount: pragmaNumber(db, "freelist_count"),
     });
     const rawSnapshots = userTables(db).includes("raw_snapshots")
-      ? Number((db.prepare("SELECT count(*) AS n FROM raw_snapshots").get() as { n: number }).n)
+      ? (db.prepare("SELECT count(*) AS n FROM raw_snapshots").get() as { n: number }).n
       : 0;
     return {
       ...sizes,
@@ -188,7 +188,7 @@ export async function compactDatabase(options: CompactOptions): Promise<CompactR
     log("database is quiet; taking the copy", { quiesceMs });
 
     rmSync(workingPath, { force: true });
-    source.exec(`VACUUM INTO '${workingPath.replace(/'/g, "''")}'`);
+    source.exec(`VACUUM INTO '${workingPath.replace(/'/gu, "''")}'`);
 
     const verdict = integrityOf(workingPath);
     if (verdict !== "ok") throw new Error(`the compacted copy failed integrity_check: ${verdict}`);

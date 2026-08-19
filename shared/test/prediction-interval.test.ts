@@ -41,22 +41,22 @@ describe("intervalProblem", () => {
 
   it("rejects bounds published without a confidence", () => {
     const partial = prediction({ predictedDelayLowerSeconds: 300, predictedDelayUpperSeconds: 720 });
-    expect(intervalProblem(partial)).toMatch(/partial prediction interval/);
-    expect(intervalProblem(partial)).toMatch(/predictionIntervalPercent missing/);
+    expect(intervalProblem(partial)).toMatch(/partial prediction interval/u);
+    expect(intervalProblem(partial)).toMatch(/predictionIntervalPercent missing/u);
   });
 
   it("rejects a confidence published without bounds", () => {
     expect(intervalProblem(prediction({ predictionIntervalPercent: 80 }))).toMatch(
-      /partial prediction interval/,
+      /partial prediction interval/u,
     );
   });
 
   it("rejects an inverted interval", () => {
-    expect(intervalProblem(withInterval(720, 300, 80))).toMatch(/inverted/);
+    expect(intervalProblem(withInterval(720, 300, 80))).toMatch(/inverted/u);
   });
 
   it.each([0, 100, -5, 150])("rejects a confidence of %s%%", (percent) => {
-    expect(intervalProblem(withInterval(300, 720, percent))).toMatch(/between 0 and 100/);
+    expect(intervalProblem(withInterval(300, 720, percent))).toMatch(/between 0 and 100/u);
   });
 
   /**
@@ -66,12 +66,12 @@ describe("intervalProblem", () => {
    */
   it("rejects bounds that do not contain their own point estimate", () => {
     const mixed = withInterval(5, 12, 80);
-    expect(intervalProblem(mixed)).toMatch(/outside its own 80% interval/);
-    expect(intervalProblem(mixed)).toMatch(/check that both are in seconds/);
+    expect(intervalProblem(mixed)).toMatch(/outside its own 80% interval/u);
+    expect(intervalProblem(mixed)).toMatch(/check that both are in seconds/u);
   });
 
   it("rejects a point estimate above the upper bound too", () => {
-    expect(intervalProblem(withInterval(0, 60, 80))).toMatch(/outside its own/);
+    expect(intervalProblem(withInterval(0, 60, 80))).toMatch(/outside its own/u);
   });
 });
 

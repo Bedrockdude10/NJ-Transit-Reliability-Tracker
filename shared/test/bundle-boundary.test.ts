@@ -26,8 +26,8 @@ const SERVER_ONLY_DEPENDENCIES = ["@js-temporal/polyfill"];
 function importsOf(file: string): string[] {
   const source = readFileSync(file, "utf8");
   // Covers `import ... from "x"`, bare `import "x"`, and `export ... from "x"`.
-  return [...source.matchAll(/(?:import|export)[\s\S]*?from\s*"([^"]+)"|import\s*"([^"]+)"/g)].map(
-    (m) => m[1] ?? m[2] ?? "",
+  return [...source.matchAll(/(?:import|export)[\s\S]*?from\s*"(?<from>[^"]+)"|import\s*"(?<bare>[^"]+)"/gu)].map(
+    (m) => m.groups?.from ?? m.groups?.bare ?? "",
   );
 }
 

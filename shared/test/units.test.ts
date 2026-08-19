@@ -15,10 +15,14 @@ describe("unit vocabulary", () => {
   });
 
   it("keeps bounds consistent where a unit declares them", () => {
-    for (const name of UNIT_NAMES) {
+    const bounded = UNIT_NAMES.map((name) => {
       const { minimum, maximum } = descriptorOf(name);
-      if (minimum !== undefined && maximum !== undefined) expect(minimum).toBeLessThan(maximum);
-    }
+      return { minimum, maximum };
+    }).filter(
+      (d): d is { minimum: number; maximum: number } =>
+        d.minimum !== undefined && d.maximum !== undefined,
+    );
+    for (const { minimum, maximum } of bounded) expect(minimum).toBeLessThan(maximum);
   });
 
   it("bounds percent to a share out of 100, since that is the confusable one", () => {

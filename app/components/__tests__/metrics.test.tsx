@@ -17,26 +17,26 @@ describe("GapCallout", () => {
 
   it("renders nothing without an official figure", () => {
     const { queryByText } = render(<GapCallout strictPercent={60} njtPercent={null} />);
-    expect(queryByText(/point/)).toBeNull();
+    expect(queryByText(/point/u)).toBeNull();
   });
 
   it("renders nothing when the period has no measured data", () => {
     const { queryByText } = render(<GapCallout strictPercent={0} njtPercent={85} measured={false} />);
-    expect(queryByText(/point/)).toBeNull();
+    expect(queryByText(/point/u)).toBeNull();
   });
 });
 
 describe("OtpComparison", () => {
   it("renders the comparison chart when measured", () => {
     const { getByText, queryByText } = render(<OtpComparison thresholds={thresholds} njtOfficial={null} measured />);
-    expect(getByText(/Each bar is the on-time rate/)).toBeTruthy();
+    expect(getByText(/Each bar is the on-time rate/u)).toBeTruthy();
     expect(queryByText("No data yet")).toBeNull();
   });
 
   it("shows a No data yet state when there are no measured trips", () => {
     const { getByText, queryByText } = render(<OtpComparison thresholds={thresholds} njtOfficial={null} measured={false} />);
     expect(getByText("No data yet")).toBeTruthy();
-    expect(queryByText(/Each bar is the on-time rate/)).toBeNull();
+    expect(queryByText(/Each bar is the on-time rate/u)).toBeNull();
   });
 });
 
@@ -52,13 +52,13 @@ describe("DelayHistogram", () => {
 
   it("renders the histogram when there are observed trips", () => {
     const { getByText, queryByText } = render(<DelayHistogram distribution={populated} />);
-    expect(getByText(/Trips by terminal delay/)).toBeTruthy();
+    expect(getByText(/Trips by terminal delay/u)).toBeTruthy();
     expect(queryByText("No data yet")).toBeNull();
   });
 
   it("shows a No data yet state when every bucket is empty", () => {
     const { getByText, queryByText } = render(<DelayHistogram distribution={empty} />);
     expect(getByText("No data yet")).toBeTruthy();
-    expect(queryByText(/Trips by terminal delay/)).toBeNull();
+    expect(queryByText(/Trips by terminal delay/u)).toBeNull();
   });
 });

@@ -28,7 +28,7 @@ describe("archive run lock", () => {
 
   it("refuses to start while another run holds it", async () => {
     await withLock(lock, async () => {
-      await expect(withLock(lock, async () => "second")).rejects.toThrow(/another archive run/);
+      await expect(withLock(lock, async () => "second")).rejects.toThrow(/another archive run/u);
     });
   });
 

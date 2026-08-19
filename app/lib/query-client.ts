@@ -4,6 +4,8 @@ import { ApiContractError } from "./api";
 /** Defaults for every API query. Live endpoints opt out with `staleTime: 0`. */
 export const STALE_TIME_MS = 30_000;
 
+const API_4XX_RE = /^API 4\d\d/u;
+
 export function createQueryClient(): QueryClient {
   return new QueryClient({
     defaultOptions: {
@@ -14,7 +16,7 @@ export function createQueryClient(): QueryClient {
         // and neither will a response that failed contract validation.
         retry: (failureCount, error) => {
           if (error instanceof ApiContractError) return false;
-          if (/^API 4\d\d/.test(error.message)) return false;
+          if (API_4XX_RE.test(error.message)) return false;
           return failureCount < 1;
         },
 

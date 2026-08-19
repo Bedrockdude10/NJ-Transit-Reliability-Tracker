@@ -1,6 +1,8 @@
 /** Configuration from the environment. See `.env.example`. */
 import { NO_TRIP_UPDATES_ALERT_MS } from "@njt/shared";
 
+const TRAILING_SLASHES_RE = /\/+$/u;
+
 export interface PipelineConfig {
   dbPath: string;
   /** raildata.njtransit.com — token auth, see `pipeline/src/feeds.ts`. */
@@ -39,7 +41,7 @@ export function loadConfig(env: NodeJS.ProcessEnv = process.env): PipelineConfig
     railData: {
       username: env.NJT_RAIL_DATA_USERNAME,
       password: env.NJT_RAIL_DATA_PASSWORD,
-      baseUrl: (env.NJT_RAIL_DATA_BASE_URL ?? "https://raildata.njtransit.com/api/GTFSRT").replace(/\/+$/, ""),
+      baseUrl: (env.NJT_RAIL_DATA_BASE_URL ?? "https://raildata.njtransit.com/api/GTFSRT").replace(TRAILING_SLASHES_RE, ""),
     },
     xmlApiKey: env.NJT_XML_API_KEY,
     urls: {

@@ -18,6 +18,7 @@ import { parseCsv } from "../csv";
  * system figure as the trips-weighted aggregate of the lines, as NJT does.
  */
 
+const MONTH_LABEL_RE = /^(?<year>\d{4})\s+(?<monthName>[A-Za-z]+)/u;
 const MONTH_NUMBERS: Record<string, number> = {
   JANUARY: 1,
   FEBRUARY: 2,
@@ -47,7 +48,7 @@ export const CODE_TO_LINE_ID: Record<string, string> = {
 
 function toNum(value: string | undefined): number | null {
   if (!value) return null;
-  const n = Number(value.replace(/[,%\s]/g, ""));
+  const n = Number(value.replace(/[,%\s]/gu, ""));
   return Number.isFinite(n) ? n : null;
 }
 
@@ -100,9 +101,9 @@ export function parseCancellationCauses(csv: string): Map<string, Record<string,
 }
 
 function parseYearMonthLabel(label: string | undefined): { year: number; month: number } | null {
-  const match = /^(\d{4})\s+([A-Za-z]+)/.exec(label ?? "");
-  const month = match ? MONTH_NUMBERS[match[2]?.toUpperCase() ?? ""] : undefined;
-  return match && month ? { year: Number(match[1]), month } : null;
+  const match = MONTH_LABEL_RE.exec(label ?? "");
+  const month = match ? MONTH_NUMBERS[match.groups?.monthName?.toUpperCase() ?? ""] : undefined;
+  return match && month ? { year: Number(match.groups?.year), month } : null;
 }
 
 export function parseMdbf(csv: string): FleetMdbfMetric[] {

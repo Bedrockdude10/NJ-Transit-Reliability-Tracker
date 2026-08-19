@@ -86,7 +86,7 @@ describe("taking a snapshot", () => {
   it("refuses to start when the volume lacks room", async () => {
     // Filling the volume would take the live database down with it — a backup
     // job causing an outage.
-    await expect(run({ freeBytes: () => 1024 })).rejects.toThrow(/not enough room/);
+    await expect(run({ freeBytes: () => 1024 })).rejects.toThrow(/not enough room/u);
     expect(readdirSync(outDir)).toEqual([]);
   });
 
@@ -137,6 +137,6 @@ describe("verification", () => {
   });
 
   it("reports a missing snapshot plainly", async () => {
-    await expect(restoreSnapshot(join(dir, "nope.gz"), join(dir, "out.sqlite"))).rejects.toThrow(/no snapshot at/);
+    await expect(restoreSnapshot(join(dir, "nope.gz"), join(dir, "out.sqlite"))).rejects.toThrow(/no snapshot at/u);
   });
 });

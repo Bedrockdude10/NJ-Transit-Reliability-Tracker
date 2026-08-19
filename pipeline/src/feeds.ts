@@ -17,6 +17,8 @@ export interface TokenStore {
 /** NJT caps getToken at 10 calls/day; tokens are minted per calendar day. */
 const TOKEN_TTL_MS = 20 * 60 * 60 * 1000;
 
+const INVALID_TOKEN_RE = /invalid token/iu;
+
 /**
  * Without a deadline a hung connection stalls ingest silently while `/health` still
  * returns 200. Sits below the poll interval so stalled polls don't accumulate.
@@ -75,11 +77,9 @@ export class TokenManager {
       const cached = this.store.read();
       if (cached && this.clock.now() - cached.fetchedAtMs < TOKEN_TTL_MS) return cached.token;
     }
-    if (!this.inFlight) {
-      this.inFlight = this.request().finally(() => {
-        this.inFlight = null;
-      });
-    }
+    this.inFlight ??= this.request().finally(() => {
+      this.inFlight = null;
+    });
     return this.inFlight;
   }
 
@@ -172,7 +172,7 @@ export class HttpFeedClient implements FeedClient {
     if (contentType.includes("octet-stream") || contentType.includes("protobuf")) return bytes;
 
     const text = new TextDecoder().decode(bytes).trim();
-    if (/invalid token/i.test(text) || text === "" || text.toLowerCase() === "null") return INVALID_TOKEN;
+    if (INVALID_TOKEN_RE.test(text) || text === "" || text.toLowerCase() === "null") return INVALID_TOKEN;
     throw new Error(`${method} error: ${text.slice(0, 200)}`);
   }
 }

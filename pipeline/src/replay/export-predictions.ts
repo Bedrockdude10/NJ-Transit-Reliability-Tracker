@@ -21,7 +21,7 @@ const PAGE_SIZE = 100;
 const HEADER = "trip_id,stop_id,line_name,route_id,direction,service_date,observed_at,scheduled_arrival,lead_seconds,predicted_delay,cancelled,skipped\n";
 
 function q(value: string): string {
-  return `"${value.replace(/"/g, '""')}"`;
+  return `"${value.replace(/"/gu, '""')}"`;
 }
 
 export async function exportPredictions(

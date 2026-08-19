@@ -139,7 +139,7 @@ describe("verifying a restore", () => {
           db.close();
         },
       }),
-    ).rejects.toThrow(/missing every row of: trip_stop_events/);
+    ).rejects.toThrow(/missing every row of: trip_stop_events/u);
   });
 
   it("fails when the replica is further behind than the tolerance allows", async () => {
@@ -154,13 +154,13 @@ describe("verifying a restore", () => {
           db.close();
         },
       }),
-    ).rejects.toThrow(/behind, past the/);
+    ).rejects.toThrow(/behind, past the/u);
   });
 
   it("refuses rather than fill the volume it restores onto", async () => {
     await expect(
       verifyRestore({ dbPath, scratchPath, restore: perfectReplica, freeBytes: () => 1 }),
-    ).rejects.toThrow(/not enough room/);
+    ).rejects.toThrow(/not enough room/u);
   });
 
   it("never touches the live database", async () => {
@@ -198,6 +198,6 @@ describe("verifying a restore", () => {
     copyFileSync(dbPath, scratchPath);
     await expect(
       verifyRestore({ dbPath, scratchPath, restore: async () => {} }),
-    ).rejects.toThrow(/produced no database/);
+    ).rejects.toThrow(/produced no database/u);
   });
 });

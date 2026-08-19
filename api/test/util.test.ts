@@ -4,23 +4,28 @@ import { ApiError, badRequest, notFound, parseHeatmapType, parseLimit, parsePosi
 describe("ApiError + throwers", () => {
   it("badRequest throws a 400 ApiError", () => {
     expect(() => badRequest("nope")).toThrowError(ApiError);
+    let error: unknown;
     try {
       badRequest("bad thing");
     } catch (e) {
-      expect(e).toBeInstanceOf(ApiError);
-      expect((e as ApiError).status).toBe(400);
-      expect((e as ApiError).message).toBe("bad thing");
-      expect((e as ApiError).name).toBe("ApiError");
+      error = e;
     }
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(400);
+    expect((error as ApiError).message).toBe("bad thing");
+    expect((error as ApiError).name).toBe("ApiError");
   });
 
   it("notFound throws a 404 ApiError", () => {
+    let error: unknown;
     try {
       notFound("missing");
     } catch (e) {
-      expect((e as ApiError).status).toBe(404);
-      expect((e as ApiError).message).toBe("missing");
+      error = e;
     }
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(404);
+    expect((error as ApiError).message).toBe("missing");
   });
 });
 
@@ -85,12 +90,13 @@ describe("parseHeatmapType", () => {
   });
 
   it("rejects an unknown type with a 400", () => {
+    let error: unknown;
     try {
       parseHeatmapType("year_of_life");
-      throw new Error("should have thrown");
     } catch (e) {
-      expect(e).toBeInstanceOf(ApiError);
-      expect((e as ApiError).status).toBe(400);
+      error = e;
     }
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(400);
   });
 });

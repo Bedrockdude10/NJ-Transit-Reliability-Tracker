@@ -1,6 +1,8 @@
 import { createHash } from "node:crypto";
 import { PutObjectCommand, S3Client } from "@aws-sdk/client-s3";
 
+const URL_SCHEME_RE = /^https?:\/\//u;
+
 /** Where and how to reach the bucket. */
 export interface ObjectStore {
   bucket: string;
@@ -52,7 +54,7 @@ export async function putVerified(
     }),
   );
 
-  const etag = response.ETag?.replace(/"/g, "");
+  const etag = response.ETag?.replace(/"/gu, "");
   if (etag && etag !== hex) {
     throw new Error(
       `object storage returned a different digest for ${object.key}: sent ${hex}, stored ${etag}`,
@@ -76,7 +78,7 @@ export function storeFromEnv(env: NodeJS.ProcessEnv = process.env): ObjectStore 
   const endpoint = required("NJT_R2_ENDPOINT");
   return {
     bucket: required("NJT_R2_BUCKET"),
-    endpoint: endpoint.replace(/^https?:\/\//, ""),
+    endpoint: endpoint.replace(URL_SCHEME_RE, ""),
     accessKeyId: required("NJT_R2_ACCESS_KEY_ID"),
     secretAccessKey: required("NJT_R2_SECRET_ACCESS_KEY"),
     region: env.NJT_R2_REGION ?? "auto",

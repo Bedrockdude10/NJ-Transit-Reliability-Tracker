@@ -12,7 +12,7 @@ import { buildThemeCss, FONT_HREF, STYLE_ELEMENT_ID } from "../lib/themeCss";
 // Open Graph needs absolute URLs. Defaults to the live Worker URL; override with
 // EXPO_PUBLIC_SITE_URL for a custom domain.
 const DEFAULT_SITE_URL = "https://nj-transit-reliability-tracker.dannyrollo4.workers.dev";
-const SITE_URL = (process.env.EXPO_PUBLIC_SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/, "");
+const SITE_URL = (process.env.EXPO_PUBLIC_SITE_URL || DEFAULT_SITE_URL).replace(/\/+$/u, "");
 const TITLE = "NJ Transit Reliability Tracker";
 const DESCRIPTION =
   "Independent on-time performance for NJ Transit rail — stricter delay thresholds, line comparisons, and cancellation causes alongside NJT's official figures.";

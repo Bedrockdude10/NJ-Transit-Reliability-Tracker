@@ -70,7 +70,7 @@ describe("api client", () => {
       json: async () => ({ ...lineSummary, name: 42 }),
     }));
     // Without the field name, a skew in production is a guessing game.
-    await expect(api.lineSummary("NE", {}).run()).rejects.toThrow(/"name"/);
+    await expect(api.lineSummary("NE", {}).run()).rejects.toThrow(/"name"/u);
   });
 
   it("tolerates a field the API has added", async () => {

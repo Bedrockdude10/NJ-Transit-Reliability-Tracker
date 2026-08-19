@@ -26,11 +26,11 @@ describe("fitting on the machine", () => {
     // By the time the check runs, the process already holds most of its
     // footprint and MemAvailable already reflects it. Asking for the full figure
     // on top refused run after run on a machine with 168 MB free.
-    expect(insufficientMemory("copy", 160, 40, 0)).toMatch(/not enough memory to copy/);
+    expect(insufficientMemory("copy", 160, 40, 0)).toMatch(/not enough memory to copy/u);
     expect(insufficientMemory("copy", 160, 40, 1_000)).toBeNull();
   });
 
   it("names the job that cannot run, since several share the machine", () => {
-    expect(insufficientMemory("export events", 160, 1, 0)).toMatch(/export events/);
+    expect(insufficientMemory("export events", 160, 1, 0)).toMatch(/export events/u);
   });
 });

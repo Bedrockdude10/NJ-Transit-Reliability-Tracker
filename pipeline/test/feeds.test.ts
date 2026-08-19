@@ -90,18 +90,18 @@ describe("TokenManager", () => {
   it("throws on a null response (missing credentials)", async () => {
     const fetchImpl = vi.fn(async () => new Response("null", { headers: { "content-type": "application/json" } }));
     const tokens = new TokenManager(config(), memoryStore(), fetchImpl as unknown as typeof fetch, clock, silentLogger);
-    await expect(tokens.get()).rejects.toThrow(/null/);
+    await expect(tokens.get()).rejects.toThrow(/null/u);
   });
 
   it("surfaces the daily-usage error message", async () => {
     const fetchImpl = vi.fn(async () => jsonResponse({ errorMessage: "Daily usage limit:10. Your current daily usage: 11" }));
     const tokens = new TokenManager(config(), memoryStore(), fetchImpl as unknown as typeof fetch, clock, silentLogger);
-    await expect(tokens.get()).rejects.toThrow(/Daily usage limit/);
+    await expect(tokens.get()).rejects.toThrow(/Daily usage limit/u);
   });
 
   it("throws when the config lacks credentials", async () => {
     const tokens = new TokenManager(loadConfig({}), memoryStore(), vi.fn() as unknown as typeof fetch, clock, silentLogger);
-    await expect(tokens.get()).rejects.toThrow(/credentials are not configured/);
+    await expect(tokens.get()).rejects.toThrow(/credentials are not configured/u);
   });
 });
 
@@ -164,7 +164,7 @@ describe("HttpFeedClient", () => {
     const tokens = new TokenManager(config(), store, fetchImpl as unknown as typeof fetch, clock, silentLogger);
     const client = new HttpFeedClient(config(), tokens, fetchImpl as unknown as typeof fetch);
 
-    await expect(client.fetchServiceAlerts()).rejects.toThrow(/Something else/);
+    await expect(client.fetchServiceAlerts()).rejects.toThrow(/Something else/u);
   });
 
   it("throws if the token is still invalid after a refresh", async () => {
@@ -177,6 +177,6 @@ describe("HttpFeedClient", () => {
     const tokens = new TokenManager(config(), store, fetchImpl as unknown as typeof fetch, clock, silentLogger);
     const client = new HttpFeedClient(config(), tokens, fetchImpl as unknown as typeof fetch);
 
-    await expect(client.fetchTripUpdates()).rejects.toThrow(/invalid token after refresh/);
+    await expect(client.fetchTripUpdates()).rejects.toThrow(/invalid token after refresh/u);
   });
 });

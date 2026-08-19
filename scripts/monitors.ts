@@ -4,6 +4,8 @@
  * vanishing because this file omitted it is worse than a stale monitor.
  */
 
+const TRAILING_SLASHES_RE = /\/+$/u;
+
 export interface MonitorDefinition {
   name: string;
   path: string;
@@ -26,7 +28,7 @@ export interface MonitorPlan {
 }
 
 export function monitorUrl(baseUrl: string, definition: MonitorDefinition): string {
-  return `${baseUrl.replace(/\/+$/, "")}${definition.path}`;
+  return `${baseUrl.replace(TRAILING_SLASHES_RE, "")}${definition.path}`;
 }
 
 export function planMonitors(

@@ -2,7 +2,7 @@ import { createRepositories, openDatabase, type Repositories } from "@njt/db";
 import type { OfficialNjtMetric } from "@njt/shared";
 import { beforeEach, describe, expect, it } from "vitest";
 import { listLines, listStations, requireLine, resolveLine, stopName, toLineItem } from "../src/catalog";
-import type { ApiError } from "../src/util";
+import { ApiError } from "../src/util";
 
 function metric(o: Partial<OfficialNjtMetric>): OfficialNjtMetric {
   return {
@@ -116,12 +116,15 @@ describe("repository-backed catalog helpers", () => {
   it("requireLine throws a 404 ApiError for an unknown line", () => {
     seedGtfs();
     expect(requireLine(repos, "NE").routeId).toBe("NE");
-    expect(() => requireLine(repos, "ZZZ")).toThrow(/unknown line "ZZZ"/);
+    expect(() => requireLine(repos, "ZZZ")).toThrow(/unknown line "ZZZ"/u);
+    let error: unknown;
     try {
       requireLine(repos, "ZZZ");
     } catch (err) {
-      expect((err as ApiError).status).toBe(404);
+      error = err;
     }
+    expect(error).toBeInstanceOf(ApiError);
+    expect((error as ApiError).status).toBe(404);
   });
 
   it("listStations maps route ids to human line names", () => {

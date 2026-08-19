@@ -160,7 +160,7 @@ describe("the objects", () => {
     const object = client.objects.get(manifestKey());
     if (object === undefined) throw new Error("expected the manifest object");
     const manifest = JSON.parse(Buffer.from(object).toString());
-    expect(manifest.digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(manifest.digest).toMatch(/^[0-9a-f]{64}$/u);
     expect(Object.keys(manifest.files)).toContain("datasets.json");
   });
 
@@ -219,6 +219,6 @@ describe("the objects", () => {
     const liar = { send: async () => ({ ETag: '"0000000000000000cafe000000000000"' }) };
     await expect(
       exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client: liar as never }),
-    ).rejects.toThrow(/different digest/);
+    ).rejects.toThrow(/different digest/u);
   });
 });

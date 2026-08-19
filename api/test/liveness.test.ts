@@ -38,7 +38,7 @@ describe("ingestLiveness", () => {
   it("fails once the feed has been silent longer than the threshold", () => {
     const liveness = ingestLiveness([feed({ lastSuccessAtMs: NOW - HOUR - 1 })], NOW, HOUR);
     expect(liveness.ok).toBe(false);
-    expect(liveness.reason).toMatch(/no TripUpdates fetch for 60 minutes/);
+    expect(liveness.reason).toMatch(/no TripUpdates fetch for 60 minutes/u);
   });
 
   it("fails when nothing has ever been ingested", () => {
@@ -46,7 +46,7 @@ describe("ingestLiveness", () => {
     // would call healthy: a machine that has never collected anything.
     const liveness = ingestLiveness([feed({ lastSuccessAtMs: null })], NOW, HOUR);
     expect(liveness.ok).toBe(false);
-    expect(liveness.reason).toMatch(/has ever been recorded/);
+    expect(liveness.reason).toMatch(/has ever been recorded/u);
   });
 
   it("fails when the feed is absent entirely", () => {

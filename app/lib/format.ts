@@ -4,6 +4,9 @@ import { NJT_TIMEZONE, type PublishedCoverage } from "@njt/shared";
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"] as const;
 
+const SERVICE_DATE_RE = /^(?<year>\d{4})-(?<month>\d{2})-(?<day>\d{2})$/u;
+const SERVICE_MONTH_RE = /^(?<year>\d{4})-(?<month>\d{2})/u;
+
 /** A bare duration: "2m 30s", "1m", "45s". Absolute — no sign, no words. */
 export function formatDurationShort(seconds: number): string {
   const total = Math.round(Math.abs(seconds));
@@ -37,21 +40,21 @@ export function formatInt(value: number | null | undefined): string {
 }
 
 export function formatShortDate(date: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const m = SERVICE_DATE_RE.exec(date);
   if (!m) return date;
-  return `${MONTHS[Number(m[2]) - 1] ?? "?"} ${Number(m[3])}`;
+  return `${MONTHS[Number(m.groups?.month) - 1] ?? "?"} ${Number(m.groups?.day)}`;
 }
 
 export function formatDay(date: string): string {
-  const m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(date);
+  const m = SERVICE_DATE_RE.exec(date);
   if (!m) return date;
-  return `${MONTHS[Number(m[2]) - 1] ?? "?"} ${Number(m[3])}, ${m[1]}`;
+  return `${MONTHS[Number(m.groups?.month) - 1] ?? "?"} ${Number(m.groups?.day)}, ${m.groups?.year}`;
 }
 
 export function formatMonth(date: string): string {
-  const m = /^(\d{4})-(\d{2})/.exec(date);
+  const m = SERVICE_MONTH_RE.exec(date);
   if (!m) return date;
-  return `${MONTHS[Number(m[2]) - 1] ?? "?"} ${m[1]}`;
+  return `${MONTHS[Number(m.groups?.month) - 1] ?? "?"} ${m.groups?.year}`;
 }
 
 export function formatTimestamp(ms: number | null | undefined): string {
@@ -91,6 +94,6 @@ export function officialPeriodLabel(coverage: PublishedCoverage | null | undefin
 }
 
 export function humanizeEffect(effect: string): string {
-  const spaced = effect.replace(/_/g, " ");
+  const spaced = effect.replace(/_/gu, " ");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1);
 }

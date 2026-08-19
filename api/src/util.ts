@@ -28,9 +28,9 @@ export function notFound(message: string): never {
 export function slugify(name: string): string {
   return name
     .toLowerCase()
-    .replace(/&/g, " and ")
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-+|-+$/g, "");
+    .replace(/&/gu, " and ")
+    .replace(/[^a-z0-9]+/gu, "-")
+    .replace(/^-+|-+$/gu, "");
 }
 
 export function round1(value: number): number {

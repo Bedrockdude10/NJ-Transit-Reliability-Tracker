@@ -88,7 +88,7 @@ describe("officialPeriodLabel", () => {
     expect(label).toBe("May 2026 — NJT's most recent published month, before your selected window");
     // It describes NJT's figures only. "this period" previously read as a
     // verdict on everything on screen, including the live measurements.
-    expect(label).not.toMatch(/this period/i);
+    expect(label).not.toMatch(/this period/iu);
   });
 
   it("renders a multi-month span", () => {

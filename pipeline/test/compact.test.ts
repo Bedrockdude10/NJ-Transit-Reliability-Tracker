@@ -77,7 +77,7 @@ describe("refusing to run", () => {
   it("will not fill the volume it is trying to protect", async () => {
     await expect(
       compactDatabase({ dbPath, apply: true, freeBytes: () => 1024, quiesceMs: 0 }),
-    ).rejects.toThrow(/not enough room/);
+    ).rejects.toThrow(/not enough room/u);
     expect(existsSync(dbPath)).toBe(true);
   });
 
@@ -85,7 +85,7 @@ describe("refusing to run", () => {
     seed(join(dir, "undrained.sqlite"), 50);
     await expect(
       compactDatabase({ dbPath: join(dir, "undrained.sqlite"), apply: true, quiesceMs: 0 }),
-    ).rejects.toThrow(/raw snapshots still to drain/);
+    ).rejects.toThrow(/raw snapshots still to drain/u);
   });
 
   /**
@@ -106,7 +106,7 @@ describe("refusing to run", () => {
             writer.exec("INSERT INTO events (line) VALUES ('written during maintenance')");
           },
         }),
-      ).rejects.toThrow(/still being written to/);
+      ).rejects.toThrow(/still being written to/u);
     } finally {
       writer.close();
     }
@@ -125,7 +125,7 @@ describe("refusing to run", () => {
   it("refuses rather than overwrite a backup a previous run left behind", async () => {
     seed(`${dbPath}.pre-compact`, 1);
     await expect(compactDatabase({ dbPath, apply: true, quiesceMs: 0 })).rejects.toThrow(
-      /has not been cleaned up/,
+      /has not been cleaned up/u,
     );
   });
 });

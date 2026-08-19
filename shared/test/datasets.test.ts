@@ -70,10 +70,11 @@ describe("the contract digest", () => {
       digest: string;
       files: Record<string, string>;
     };
-    for (const dataset of Object.values(DATASETS)) {
-      if (dataset.schema) expect(Object.keys(manifest.files)).toContain(dataset.schema);
-    }
+    const schemaFiles: string[] = Object.values(DATASETS)
+      .map((d) => d.schema)
+      .filter((s): s is Exclude<typeof s, null> => s !== null);
+    expect(Object.keys(manifest.files)).toEqual(expect.arrayContaining(schemaFiles));
     expect(Object.keys(manifest.files)).toContain("datasets.json");
-    expect(manifest.digest).toMatch(/^[0-9a-f]{64}$/);
+    expect(manifest.digest).toMatch(/^[0-9a-f]{64}$/u);
   });
 });

@@ -151,17 +151,17 @@ describe("intervalNote", () => {
 
   it("states the coverage once, rather than on every row", () => {
     expect(intervalNote([withInterval(300, 720), withInterval(60, 200)])).toMatch(
-      /80% prediction intervals/,
+      /80% prediction intervals/u,
     );
   });
 
   it("names every coverage if a run mixes them, rather than picking one", () => {
     expect(intervalNote([withInterval(300, 720, 90), withInterval(60, 200, 50)])).toMatch(
-      /50% \/ 90%/,
+      /50% \/ 90%/u,
     );
   });
 
   it("ignores legs without a range when some have one", () => {
-    expect(intervalNote([LEG, withInterval(300, 720)])).toMatch(/80%/);
+    expect(intervalNote([LEG, withInterval(300, 720)])).toMatch(/80%/u);
   });
 });

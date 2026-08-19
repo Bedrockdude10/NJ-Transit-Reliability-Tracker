@@ -53,8 +53,8 @@ function userTables(db: DatabaseSync): string[] {
 }
 
 function countRows(db: DatabaseSync, table: string): number {
-  const quoted = `"${table.replace(/"/g, '""')}"`;
-  return Number((db.prepare(`SELECT count(*) AS n FROM ${quoted}`).get() as { n: number }).n);
+  const quoted = `"${table.replace(/"/gu, '""')}"`;
+  return (db.prepare(`SELECT count(*) AS n FROM ${quoted}`).get() as { n: number }).n;
 }
 
 /** Compare the restored copy against the live database, table by table. */

@@ -11,6 +11,8 @@ import GtfsRealtimeBindings from "gtfs-realtime-bindings";
 
 const { transit_realtime: tr } = GtfsRealtimeBindings;
 
+const EIGHT_DIGITS_RE = /^\d{8}$/u;
+
 /** protobufjs returns 64-bit ints as Long objects; normalize to number | null. */
 type LongLike = { toNumber(): number };
 function num(v: number | string | LongLike | null | undefined): number | null {
@@ -23,7 +25,7 @@ function num(v: number | string | LongLike | null | undefined): number | null {
 
 /** "YYYYMMDD" (GTFS-RT start_date) -> "YYYY-MM-DD". */
 function toServiceDate(startDate: string | null | undefined, fallback: string): string {
-  if (startDate && /^\d{8}$/.test(startDate)) {
+  if (startDate && EIGHT_DIGITS_RE.test(startDate)) {
     return `${startDate.slice(0, 4)}-${startDate.slice(4, 6)}-${startDate.slice(6, 8)}`;
   }
   return fallback;

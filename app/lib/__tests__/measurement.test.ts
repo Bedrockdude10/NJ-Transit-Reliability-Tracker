@@ -84,7 +84,7 @@ describe("measurementStatus", () => {
     const s = measurementStatus(null);
     expect(s.live).toBe(false);
     expect(s.badge).toBe("NO DATA YET");
-    expect(s.label).toMatch(/hasn.t started/i);
+    expect(s.label).toMatch(/hasn.t started/iu);
   });
 
   it("reports live and formats the collection-start date", () => {

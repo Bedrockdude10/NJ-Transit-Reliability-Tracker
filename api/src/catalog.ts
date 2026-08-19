@@ -97,5 +97,6 @@ export function listStations(repos: Repositories): { stopId: string; stopName: s
 
 export function stopName(repos: Repositories, stopId: string): string {
   const version = repos.gtfs.currentVersion();
-  return (version && repos.gtfs.stopName(version.versionId, stopId)) || stopId;
+  if (!version) return stopId;
+  return repos.gtfs.stopName(version.versionId, stopId) ?? stopId;
 }

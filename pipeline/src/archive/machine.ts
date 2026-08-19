@@ -1,5 +1,7 @@
 import { readFileSync } from "node:fs";
 
+const MEMAVAILABLE_RE = /^MemAvailable:\s+(?<kB>\d+) kB$/mu;
+
 /**
  * How much room a job has on the machine it is about to run on. Being OOM-killed
  * reports itself only as exit code 137, so jobs check first and say what they need.
@@ -14,8 +16,8 @@ import { readFileSync } from "node:fs";
  * 71 MB on a 64 GB macOS machine.
  */
 export function parseAvailableMemoryMb(meminfo: string): number | null {
-  const match = /^MemAvailable:\s+(\d+) kB$/m.exec(meminfo);
-  return match ? Math.floor(Number(match[1]) / 1024) : null;
+  const match = MEMAVAILABLE_RE.exec(meminfo);
+  return match ? Math.floor(Number(match.groups?.kB) / 1024) : null;
 }
 
 /**

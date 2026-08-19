@@ -62,7 +62,7 @@ describe("outbound calls have a deadline", () => {
     try {
       const seen = { signals: [] as AbortSignal[] };
       const pending = feedClient(hangingFetch(seen)).fetchTripUpdates();
-      const assertion = expect(pending).rejects.toThrow(/getTripUpdates timed out after 15000ms/);
+      const assertion = expect(pending).rejects.toThrow(/getTripUpdates timed out after 15000ms/u);
 
       await vi.advanceTimersByTimeAsync(FEED_TIMEOUT_MS + 1);
       await assertion;
@@ -89,7 +89,7 @@ describe("outbound calls have a deadline", () => {
     try {
       const seen = { signals: [] as AbortSignal[] };
       const pending = feedClient(hangingFetch(seen)).fetchVehiclePositions();
-      const assertion = expect(pending).rejects.toThrow(/timed out/);
+      const assertion = expect(pending).rejects.toThrow(/timed out/u);
       await vi.advanceTimersByTimeAsync(FEED_TIMEOUT_MS + 1);
       await assertion;
 
@@ -106,7 +106,7 @@ describe("outbound calls have a deadline", () => {
     vi.useFakeTimers();
     try {
       const pending = feedClient(hangingFetch({ signals: [] })).fetchGtfsStatic();
-      const assertion = expect(pending).rejects.toThrow(/getGTFS timed out after 120000ms/);
+      const assertion = expect(pending).rejects.toThrow(/getGTFS timed out after 120000ms/u);
 
       // Still running well past the real-time ceiling.
       await vi.advanceTimersByTimeAsync(FEED_TIMEOUT_MS + 1_000);

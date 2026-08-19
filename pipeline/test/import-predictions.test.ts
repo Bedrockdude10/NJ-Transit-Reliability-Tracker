@@ -132,7 +132,7 @@ describe("refusing what does not match the contract", () => {
 
     await expect(
       importPredictions({ repos, store: STORE, reader, log: silentLogger }),
-    ).rejects.toThrow(/2026-08-14/);
+    ).rejects.toThrow(/2026-08-14/u);
     expect(repos.predictions.serviceDates()).toEqual([]);
   });
 
@@ -206,13 +206,13 @@ describe("importing prediction intervals", () => {
 
   it("refuses a day carrying bounds with no stated confidence", async () => {
     const partial = { ...PREDICTION, predictedDelayLowerSeconds: 120, predictedDelayUpperSeconds: 400 };
-    await expect(importing([partial])).rejects.toThrow(/partial prediction interval/);
+    await expect(importing([partial])).rejects.toThrow(/partial prediction interval/u);
   });
 
   it("refuses an inverted interval", async () => {
     await expect(
       importing([{ ...WITH_INTERVAL, predictedDelayLowerSeconds: 900 }]),
-    ).rejects.toThrow(/inverted/);
+    ).rejects.toThrow(/inverted/u);
   });
 
   it("refuses bounds that do not contain their own point estimate", async () => {
@@ -226,14 +226,14 @@ describe("importing prediction intervals", () => {
           predictionIntervalPercent: 80,
         },
       ]),
-    ).rejects.toThrow(/outside its own 80% interval/);
+    ).rejects.toThrow(/outside its own 80% interval/u);
   });
 
   it("leaves the whole day unimported when one row's interval is bad", async () => {
     // All-or-nothing, like every other validation failure here: a partially
     // imported day is indistinguishable from a complete one once it is stored.
     await expect(importing([WITH_INTERVAL, { ...WITH_INTERVAL, tripId: "T2", predictionIntervalPercent: 0 }]))
-      .rejects.toThrow(/between 0 and 100/);
+      .rejects.toThrow(/between 0 and 100/u);
     expect(repos.predictions.forServiceDate("2026-08-14")).toEqual([]);
   });
 });

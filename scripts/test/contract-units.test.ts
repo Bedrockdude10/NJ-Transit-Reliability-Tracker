@@ -62,7 +62,7 @@ describe("readContractFields", () => {
   });
 
   it("fails loudly when the interface is not there, rather than reporting no fields", () => {
-    expect(() => readContractFields(SAMPLE, "Missing")).toThrow(/Missing/);
+    expect(() => readContractFields(SAMPLE, "Missing")).toThrow(/Missing/u);
   });
 });
 
@@ -84,33 +84,33 @@ describe("checkUnits", () => {
   });
 
   it("rejects a number with no unit at all", () => {
-    expect(problems(withOneField(null, "legs: number;"))[0]).toMatch(/no @unit/);
+    expect(problems(withOneField(null, "legs: number;"))[0]).toMatch(/no @unit/u);
   });
 
   it("does not let an optional field skip its unit", () => {
-    expect(problems(withOneField(null, "spareSeconds?: number;"))[0]).toMatch(/no @unit/);
+    expect(problems(withOneField(null, "spareSeconds?: number;"))[0]).toMatch(/no @unit/u);
   });
 
   it("rejects a unit that is not in the vocabulary", () => {
     expect(problems(withOneField("@unit stops", "stopsAhead: number;"))[0]).toMatch(
-      /unknown unit `stops`/,
+      /unknown unit `stops`/u,
     );
   });
 
   it("rejects a `…Seconds` field that declares it holds something else", () => {
     expect(problems(withOneField("@unit stop_index", "horizonSeconds: number;"))[0]).toMatch(
-      /name and the unit must agree/,
+      /name and the unit must agree/u,
     );
   });
 
   it("rejects an epoch field that claims to be a duration", () => {
     expect(problems(withOneField("@unit seconds", "predictedAtEpochSeconds: number;"))[0]).toMatch(
-      /name and the unit must agree/,
+      /name and the unit must agree/u,
     );
   });
 
   it("rejects a unit tag on something that is not a number", () => {
-    expect(problems(withOneField("@unit seconds", "lineName: string;"))[0]).toMatch(/not a number/);
+    expect(problems(withOneField("@unit seconds", "lineName: string;"))[0]).toMatch(/not a number/u);
   });
 
   it("leaves names that reserve no suffix free to declare any unit", () => {

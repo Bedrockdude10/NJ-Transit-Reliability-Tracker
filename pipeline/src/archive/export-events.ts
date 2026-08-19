@@ -34,7 +34,7 @@ export function exportedFields(): string[] {
 
 /** `ingestedAtMs` → `ingested_at_ms`. The repo's own naming convention. */
 export function sqliteColumn(field: string): string {
-  return field.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`);
+  return field.replace(/[A-Z]/gu, (letter) => `_${letter.toLowerCase()}`);
 }
 
 /** Object key for a service date, from the shared dataset descriptor. */
