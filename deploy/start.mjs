@@ -148,6 +148,15 @@ const EXPORT_RECENT_DAYS = 2;
 const COPY_RETAIN_HOURS = 2;
 
 /**
+ * How long the repeating jobs hold off at boot, staggered so their first passes do
+ * not land together. Only long enough to clear the API's health-check grace and the
+ * startup GTFS sync: a pass is seconds of work, so a longer offset is just the
+ * newest data arriving late after every deploy. Contention past that point needs no
+ * offset — the memory guard refuses a pass and the next tick is 30s away.
+ */
+const FIRST_PASS_DELAY_MS = { export: 60_000, import: 45_000 };
+
+/**
  * Hours moved per run. The steady state needs one; the cap bounds how long a
  * backlog drain holds resources on a machine with ~150 MB and one shared core.
  */
@@ -261,10 +270,9 @@ function scheduleEventsExport() {
     ? ["node", [EXPORT_BUNDLE, ...args]]
     : ["npm", ["run", "export:events", "--", ...args]];
 
-  // Offset from the copy's first run so the two do not contend at boot.
   setTimeout(() => {
     if (!shuttingDown) start("events-export", command);
-  }, 15 * 60 * 1000).unref();
+  }, FIRST_PASS_DELAY_MS.export).unref();
 
   log("events export scheduled", {
     everySeconds: EXPORT_EVERY_SECONDS,
@@ -285,10 +293,9 @@ function schedulePredictionImport() {
     ? ["node", [PREDICTIONS_BUNDLE, ...args]]
     : ["npm", ["run", "import:predictions", "--", ...args]];
 
-  // Offset from the export's first run so the two do not contend at boot.
   setTimeout(() => {
     if (!shuttingDown) start("predictions-import", command);
-  }, 10 * 60 * 1000).unref();
+  }, FIRST_PASS_DELAY_MS.import).unref();
 
   log("prediction import scheduled", { everySeconds: IMPORT_EVERY_SECONDS });
 }
