@@ -29,7 +29,9 @@ primary_region = "ewr"  # Secaucus/Newark — next door to NJ Transit.
     path = "/health"
     interval = "30s"
     timeout = "5s"
-    grace_period = "20s"
+    # Boot runs two tsx processes plus the startup getGTFS sync; under 60s a
+    # rolling deploy aborts before the API is first reachable (~7-10s).
+    grace_period = "60s"
 
 [[vm]]
   size = "shared-cpu-1x"

@@ -30,7 +30,7 @@ type Range = Required<DateRange>;
 export default function LineDetail() {
   const { lineId } = useLocalSearchParams<{ lineId: string }>();
   const id = lineId ?? "";
-  const { key: windowKey, range, select: selectWindow } = useWindow("30d");
+  const { key: windowKey, range, select: selectWindow } = useWindow();
 
   return (
     <Screen>

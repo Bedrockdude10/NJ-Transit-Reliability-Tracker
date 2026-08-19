@@ -13,10 +13,20 @@ export const WINDOWS = [
 export type WindowKey = (typeof WINDOWS)[number]["key"];
 
 /**
+ * What a summary screen opens at. Wide on purpose: NJT publishes its official
+ * metrics monthly and in arrears, so a 30-day window can fall entirely inside
+ * the unpublished gap and render a populated database as an empty page.
+ */
+export const DEFAULT_WINDOW_KEY: WindowKey = "1y";
+
+/**
  * Resolve a key that arrived from a URL or bookmark. Anything unrecognised falls
  * back, so the picker can always represent the state.
  */
-export function parseWindowKey(value: string | undefined, fallback: WindowKey = "30d"): WindowKey {
+export function parseWindowKey(
+  value: string | undefined,
+  fallback: WindowKey = DEFAULT_WINDOW_KEY,
+): WindowKey {
   return WINDOWS.some((w) => w.key === value) ? (value as WindowKey) : fallback;
 }
 

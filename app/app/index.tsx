@@ -27,7 +27,7 @@ type Range = Required<DateRange>;
  * component would serialise into a waterfall.
  */
 export default function SystemOverview() {
-  const { key: windowKey, range, select: selectWindow } = useWindow("30d");
+  const { key: windowKey, range, select: selectWindow } = useWindow();
 
   return (
     <Screen>

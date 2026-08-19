@@ -25,7 +25,7 @@ const DEPARTURES_REFRESH_MS = 30_000;
 export default function StationDetail() {
   const { stopId } = useLocalSearchParams<{ stopId: string }>();
   const id = stopId ?? "";
-  const { key: windowKey, range, select: selectWindow } = useWindow("30d");
+  const { key: windowKey, range, select: selectWindow } = useWindow();
 
   return (
     <Screen>
