@@ -49,6 +49,12 @@ export interface ExportWindow {
   from?: string | undefined;
   /** Publish only the last N dates, whatever they are. */
   recent?: number | undefined;
+  /**
+   * Ignore anything after this date. The feed carries trips scheduled past
+   * midnight, so a partition for tomorrow exists hours before tomorrow and would
+   * otherwise take a slot in `recent` from the day still receiving arrivals.
+   */
+  through?: string | undefined;
 }
 
 /**
@@ -58,8 +64,8 @@ export interface ExportWindow {
  * the newest few and only those are rebuilt.
  */
 export function datesToExport(all: readonly string[], window: ExportWindow): string[] {
-  const from = window.from;
-  const scoped = from ? all.filter((date) => date >= from) : [...all];
+  const { from, through } = window;
+  const scoped = all.filter((date) => (!from || date >= from) && (!through || date <= through));
   return window.recent === undefined ? scoped : scoped.slice(-window.recent);
 }
 

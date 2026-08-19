@@ -346,4 +346,29 @@ describe("datesToExport", () => {
   it("has nothing to export from an empty archive", () => {
     expect(datesToExport([], { recent: 2 })).toEqual([]);
   });
+
+  it("counts `recent` back from today, not from a trip scheduled past midnight", () => {
+    // Real regression: at 13:50 on 2026-08-19 a 16-row 2026-08-20 partition already
+    // existed, so `recent: 2` resolved to tomorrow and today and stopped publishing
+    // 2026-08-18 — the day still taking late arrivals.
+    expect(datesToExport(ALL, { recent: 2, through: "2026-08-15" })).toEqual([
+      "2026-08-14",
+      "2026-08-15",
+    ]);
+  });
+
+  it("still publishes today when today is the newest thing there is", () => {
+    expect(datesToExport(ALL, { recent: 2, through: "2026-08-16" })).toEqual([
+      "2026-08-15",
+      "2026-08-16",
+    ]);
+  });
+
+  it("leaves a future date alone entirely — no train on it has run", () => {
+    expect(datesToExport(ALL, { through: "2026-08-14" })).toEqual([
+      "2026-08-12",
+      "2026-08-13",
+      "2026-08-14",
+    ]);
+  });
 });

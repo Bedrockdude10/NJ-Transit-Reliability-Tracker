@@ -1,5 +1,6 @@
 import { createRepositories, openDatabase } from "@njt/db";
 import { consoleLogger } from "@njt/shared/logger";
+import { toLocalDateString } from "@njt/shared";
 import { datesToExport, exportEvents } from "./export-events";
 import { createClient, storeFromEnv } from "./object-store";
 import { withLock } from "./run-lock";
@@ -27,10 +28,16 @@ db.exec("PRAGMA busy_timeout = 60000;");
 const repos = createRepositories(db);
 
 const recent = flag("recent");
-const window = {
-  from: flag("from"),
-  recent: recent === undefined ? undefined : Number(recent),
-};
+const from = flag("from");
+const explicitRecent = recent === undefined ? undefined : Number(recent);
+
+/**
+ * Resolved per pass, not once: `through` is today in NJT's timezone, and a resident
+ * loop crosses midnight.
+ */
+function currentWindow() {
+  return { from, recent: explicitRecent, through: toLocalDateString(Date.now() / 1000) };
+}
 
 // Held across passes so a resident loop pays SQLite, the S3 client and Node's own
 // startup once instead of on every tick.
@@ -39,7 +46,7 @@ const knownDigests = new Map<string, string>();
 
 /** Resolved per pass, not once: a loop outlives the service date it started in. */
 async function pass(): Promise<void> {
-  const serviceDates = datesToExport(repos.events.serviceDates(), window);
+  const serviceDates = datesToExport(repos.events.serviceDates(), currentWindow());
   if (serviceDates.length === 0) {
     consoleLogger.warn("nothing to export", { dbPath });
     return;
@@ -74,6 +81,6 @@ if (everySeconds <= 0) {
   process.on("SIGTERM", stop);
   process.on("SIGINT", stop);
 
-  consoleLogger.info("events export resident", { everySeconds, ...window });
+  consoleLogger.info("events export resident", { everySeconds, ...currentWindow() });
   await tick();
 }
