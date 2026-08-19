@@ -7,32 +7,15 @@ import type { Logger } from "@njt/shared/logger";
 // and a runtime read breaks once bundled (the path is relative to the module).
 import manifest from "../../../contract/v1/manifest.json" with { type: "json" };
 import { availableMemoryMb, insufficientMemory } from "./machine";
-import {
-  bodyDigest,
-  createClient,
-  type ObjectStore,
-  type ObjectWriter,
-  putVerified,
-} from "./object-store";
+import { createClient, type ObjectStore, type ObjectWriter, putVerified } from "./object-store";
 
 /**
  * Publish derived events to object storage for the Python modelling repo, as gzipped
  * JSON Lines — one object per service date. See CLAUDE.md and DEPLOY.md.
  */
 
-/**
- * What a *fresh* process needs: a service date is a few MB serialised, on top of
- * Node's own ~90 MB. The one-shot CLI allocates all of that.
- */
+/** A service date is a few MB serialised, on top of Node's own ~90 MB. */
 const REQUIRED_MEMORY_MB = 145;
-
-/**
- * What one pass of a resident loop needs, which is not the same thing: the process
- * already holds its baseline, so asking for the startup figure again double-counts
- * it and refuses a pass that is gzipping a few MB. Production refused every 30s
- * pass at "~145 MB in total, 78 MB already held, 58 MB available".
- */
-export const PASS_MEMORY_MB = 48;
 
 /** Fields the contract declares, read from the schema the Python repo generates from. */
 interface ContractSchema {
@@ -108,15 +91,14 @@ export async function publishManifest(
   store: ObjectStore,
   client: ObjectWriter,
   log?: Logger,
-  knownDigests?: Map<string, string>,
 ): Promise<string> {
   const key = manifestKey();
-  const body = Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`);
-  const digest = bodyDigest(body);
-  if (knownDigests?.get(key) === digest) return manifest.digest;
-
-  await putVerified(client, { bucket: store.bucket, key, body, contentType: "application/json" });
-  knownDigests?.set(key, digest);
+  await putVerified(client, {
+    bucket: store.bucket,
+    key,
+    body: Buffer.from(`${JSON.stringify(manifest, null, 2)}\n`),
+    contentType: "application/json",
+  });
   log?.info("published contract manifest", { key, digest: manifest.digest });
   return manifest.digest;
 }
@@ -129,17 +111,7 @@ export interface ExportOptions {
   client?: ObjectWriter;
   /** Injected for tests. Allocatable memory in MB, or null if unknown. */
   availableMemoryMb?: () => number | null;
-  /** Marginal memory this run needs. A resident loop passes {@link PASS_MEMORY_MB}. */
-  requiredMemoryMb?: number;
-  /** Injected for tests, so a guard assertion does not depend on the runner's RSS. */
-  alreadyHeldMb?: number;
   log?: Logger;
-  /**
-   * Digest of each key this process last stored, updated in place. A resident loop
-   * passes one so an unchanged partition costs a gzip instead of an upload; a
-   * one-shot run passes nothing and republishes.
-   */
-  knownDigests?: Map<string, string>;
 }
 
 export interface ExportedPartition {
@@ -147,8 +119,6 @@ export interface ExportedPartition {
   key: string;
   rows: number;
   bytes: number;
-  /** Built and hashed, but identical to what this process already stored. */
-  skipped: boolean;
 }
 
 /**
@@ -165,16 +135,13 @@ export async function exportEvents(options: ExportOptions): Promise<ExportedPart
 
   const shortfall = insufficientMemory(
     "export events",
-    options.requiredMemoryMb ?? REQUIRED_MEMORY_MB,
+    REQUIRED_MEMORY_MB,
     (options.availableMemoryMb ?? availableMemoryMb)(),
-    ...(options.alreadyHeldMb === undefined ? [] : ([options.alreadyHeldMb] as const)),
   );
   if (shortfall) throw new Error(shortfall);
 
-  const known = options.knownDigests;
-
   // Before the data, so a consumer never sees rows whose manifest is not there yet.
-  await publishManifest(store, client, log, known);
+  await publishManifest(store, client, log);
 
   const written: ExportedPartition[] = [];
   for (const serviceDate of serviceDates) {
@@ -188,34 +155,20 @@ export async function exportEvents(options: ExportOptions): Promise<ExportedPart
 
     const key = partitionKey(serviceDate);
     const body = gzipSync(serialize(events));
-    const digest = bodyDigest(body);
-    const common = { serviceDate, key, rows: events.length, bytes: body.byteLength };
-
-    // gzip is deterministic for identical input, so an unchanged day hashes the
-    // same and needs no request. Yesterday's partition stops moving hours before
-    // the loop does.
-    if (known?.get(key) === digest) {
-      written.push({ ...common, skipped: true });
-      continue;
-    }
-
     const { bytes } = await putVerified(client, {
       bucket: store.bucket,
       key,
       body,
       contentType: "application/gzip",
     });
-    known?.set(key, digest);
 
     log?.info("exported service date", { serviceDate, rows: events.length, key, bytes });
-    written.push({ ...common, bytes, skipped: false });
+    written.push({ serviceDate, key, rows: events.length, bytes });
   }
 
-  const uploaded = written.filter((partition) => !partition.skipped);
   log?.info("export complete", {
-    partitions: uploaded.length,
-    unchanged: written.length - uploaded.length,
-    rows: uploaded.reduce((total, p) => total + p.rows, 0),
+    partitions: written.length,
+    rows: written.reduce((total, p) => total + p.rows, 0),
   });
   return written;
 }

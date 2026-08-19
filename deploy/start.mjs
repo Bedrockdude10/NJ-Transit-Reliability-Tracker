@@ -130,15 +130,19 @@ const COPY_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Built by the Dockerfile; absent in a plain checkout. */
 const COPY_BUNDLE = "dist/archive-copy.mjs";
-const WORKER_BUNDLE = "dist/archive-worker.mjs";
+const EXPORT_BUNDLE = "dist/events-export.mjs";
+const PREDICTIONS_BUNDLE = "dist/predictions-import.mjs";
 
 /**
- * Matched to the TripUpdates poll, which is the rate at which SQLite learns
- * anything: live scoring needs today's partition while it is still being written,
- * so publishing it partial is now the point rather than the hazard. The consumer
- * is what must not *train* on a day still in progress.
+ * A minute, against a TripUpdates poll of 30s: one spawn per run costs ~90 MB while
+ * it lives, so the gap between runs is what keeps it affordable. Live scoring needs
+ * today's partition while it is still being written, so publishing it partial is the
+ * point rather than the hazard — the consumer must not *train* on a day in progress.
  */
-const ARCHIVE_EVERY_SECONDS = 30;
+const EXPORT_INTERVAL_MS = 60_000;
+
+/** Predictions only change when the model publishes, which is not yet continuous. */
+const IMPORT_INTERVAL_MS = 60 * 60 * 1000;
 
 /** Today and yesterday. The rest of the archive only changes after a repair. */
 const EXPORT_RECENT_DAYS = 2;
@@ -153,7 +157,6 @@ const COPY_RETAIN_HOURS = 2;
  * newest data arriving late after every deploy. Contention past that point needs no
  * offset — the memory guard refuses a pass and the next tick is 30s away.
  */
-const FIRST_PASS_DELAY_MS = { worker: 60_000 };
 
 /**
  * Hours moved per run. The steady state needs one; the cap bounds how long a
@@ -259,36 +262,49 @@ function scheduleArchiveCopy() {
 }
 
 /**
- * One resident process for both halves of the archive round trip, not one per tick
- * and not one each. A fresh Node start costs ~90 MB and reopens SQLite, which at
- * 30s is 2,880 times a day; but two *resident* processes hold ~90 MB each forever,
- * and on a 512 MB machine that left the export short of the memory it checks for.
- * `start` supervises it, so a crash is still restarted.
+ * Spawned per run and allowed to exit, which is what keeps it affordable: a resident
+ * process would hold Node's ~90 MB forever, and two of them starved the export of
+ * the memory its own guard checks for. Exiting hands it all back.
  */
-function scheduleArchiveWorker() {
-  const args = ["--recent", String(EXPORT_RECENT_DAYS), "--every", String(ARCHIVE_EVERY_SECONDS)];
-  const command = existsSync(WORKER_BUNDLE)
-    ? ["node", [WORKER_BUNDLE, ...args]]
-    : ["npm", ["run", "archive:worker", "--", ...args]];
+function scheduleOneShot(name, script, bundle, intervalMs, firstRunMs, extraArgs = []) {
+  let running = false;
+  const run = () => {
+    if (running || shuttingDown) return;
+    running = true;
+    const [bin, args] = existsSync(bundle)
+      ? ["node", [bundle, ...extraArgs]]
+      : ["npm", ["run", script, "--", ...extraArgs]];
+    const child = spawn(bin, args, { stdio: "inherit", env: process.env });
+    child.on("error", (error) => {
+      running = false;
+      log(`${name} failed to start`, { error: error.message });
+    });
+    child.on("exit", (code) => {
+      running = false;
+      if (code !== 0) log(`${name} exited non-zero; will retry next tick`, { code });
+    });
+  };
 
-  setTimeout(() => {
-    if (!shuttingDown) start("archive-worker", command);
-  }, FIRST_PASS_DELAY_MS.worker).unref();
-
-  log("archive worker scheduled", {
-    everySeconds: ARCHIVE_EVERY_SECONDS,
-    recentDays: EXPORT_RECENT_DAYS,
-  });
+  setInterval(run, intervalMs).unref();
+  setTimeout(run, firstRunMs).unref();
+  log(`${name} scheduled`, { everySeconds: intervalMs / 1000 });
 }
 
-// One worker covers both; either flag turns it on, and it skips the half it is not
-// asked for by publishing or importing nothing.
-if (
-  HAS_R2 &&
-  (process.env.NJT_EVENTS_EXPORT_ENABLED === "true" ||
-    process.env.NJT_PREDICTION_IMPORT_ENABLED === "true")
-) {
-  scheduleArchiveWorker();
+if (HAS_R2 && process.env.NJT_EVENTS_EXPORT_ENABLED === "true") {
+  scheduleOneShot("events export", "export:events", EXPORT_BUNDLE, EXPORT_INTERVAL_MS, 60_000, [
+    "--recent",
+    String(EXPORT_RECENT_DAYS),
+  ]);
+}
+
+if (HAS_R2 && process.env.NJT_PREDICTION_IMPORT_ENABLED === "true") {
+  scheduleOneShot(
+    "prediction import",
+    "import:predictions",
+    PREDICTIONS_BUNDLE,
+    IMPORT_INTERVAL_MS,
+    90_000,
+  );
 }
 
 if (HAS_R2 && process.env.NJT_ARCHIVE_COPY_ENABLED === "true") {

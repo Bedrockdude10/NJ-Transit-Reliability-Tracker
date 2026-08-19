@@ -37,7 +37,6 @@
     "verify:restore": "tsx pipeline/src/maintenance/verify-restore-cli.ts",
     "monitors:sync": "tsx scripts/sync-monitors.ts",
     "export:events": "tsx pipeline/src/archive/export-cli.ts",
-    "archive:worker": "tsx pipeline/src/archive/worker-cli.ts",
     "archive:copy": "tsx pipeline/src/archive/copy-cli.ts",
     "import:predictions": "tsx pipeline/src/predictions/import-cli.ts",
     "export:predictions": "tsx pipeline/src/replay/export-predictions.ts",

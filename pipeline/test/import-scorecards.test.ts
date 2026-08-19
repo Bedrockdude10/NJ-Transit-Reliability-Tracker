@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { createRepositories, openDatabase, type Database, type Repositories } from "@njt/db";
 import { datasetKey, type ModelScorecard } from "@njt/shared";
@@ -40,10 +39,7 @@ function bucket(objects: Record<string, unknown[] | string>) {
     bodies.set(key, gzipSync(text));
   }
   return {
-    list: async (prefix: string) =>
-      [...bodies.entries()]
-        .filter(([key]) => key.startsWith(prefix))
-        .map(([key, body]) => ({ key, etag: createHash("md5").update(body).digest("hex") })),
+    list: async (prefix: string) => [...bodies.keys()].filter((key) => key.startsWith(prefix)),
     get: async (key: string) => {
       const body = bodies.get(key);
       if (!body) throw new Error(`no such object: ${key}`);
@@ -68,7 +64,7 @@ describe("importing scorecards", () => {
 
     const imported = await importScorecards({ repos, store: STORE, reader, log: silentLogger });
 
-    expect(imported).toEqual([{ serviceDate: "2026-08-14", rows: 2, skipped: false }]);
+    expect(imported).toEqual([{ serviceDate: "2026-08-14", rows: 2 }]);
     expect(repos.scorecards.forServiceDate("2026-08-14")).toHaveLength(2);
   });
 
@@ -113,7 +109,7 @@ describe("importing scorecards", () => {
       log: silentLogger,
     });
 
-    expect(imported).toEqual([{ serviceDate: "2026-08-15", rows: 1, skipped: false }]);
+    expect(imported).toEqual([{ serviceDate: "2026-08-15", rows: 1 }]);
   });
 
   it("does nothing, quietly, when no model has published yet", async () => {

@@ -1,4 +1,3 @@
-import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 import { createRepositories, openDatabase, type Database, type Repositories } from "@njt/db";
 import { datasetKey, type DelayPrediction } from "@njt/shared";
@@ -39,31 +38,20 @@ const PREDICTION: DelayPrediction = {
   runId: "run-a",
 };
 
-/**
- * Serves objects the way the modelling repo writes them: gzipped JSON Lines, with
- * the ETag R2 returns for a single-part upload — the body's MD5.
- */
+/** Serves objects the way the modelling repo writes them: gzipped JSON Lines. */
 function bucket(objects: Record<string, unknown[] | string>) {
   const bodies = new Map<string, Uint8Array>();
-  const gets: string[] = [];
-  const encode = (value: unknown[] | string) =>
-    gzipSync(
-      typeof value === "string" ? value : `${value.map((row) => JSON.stringify(row)).join("\n")}\n`,
-    );
-  for (const [key, value] of Object.entries(objects)) bodies.set(key, encode(value));
-
+  for (const [key, value] of Object.entries(objects)) {
+    const text =
+      typeof value === "string" ? value : `${value.map((row) => JSON.stringify(row)).join("\n")}\n`;
+    bodies.set(key, gzipSync(text));
+  }
   return {
     bodies,
-    gets,
-    put: (key: string, value: unknown[] | string) => bodies.set(key, encode(value)),
-    list: async (prefix: string) =>
-      [...bodies.entries()]
-        .filter(([key]) => key.startsWith(prefix))
-        .map(([key, body]) => ({ key, etag: createHash("md5").update(body).digest("hex") })),
+    list: async (prefix: string) => [...bodies.keys()].filter((key) => key.startsWith(prefix)),
     get: async (key: string) => {
       const body = bodies.get(key);
       if (!body) throw new Error(`no such object: ${key}`);
-      gets.push(key);
       return body;
     },
   };
@@ -85,7 +73,7 @@ describe("importing predictions", () => {
 
     const imported = await importPredictions({ repos, store: STORE, reader, log: silentLogger });
 
-    expect(imported).toEqual([{ serviceDate: "2026-08-14", rows: 1, skipped: false }]);
+    expect(imported).toEqual([{ serviceDate: "2026-08-14", rows: 1 }]);
     expect(repos.predictions.forServiceDate("2026-08-14")).toEqual([PREDICTION]);
   });
 
@@ -247,59 +235,5 @@ describe("importing prediction intervals", () => {
     await expect(importing([WITH_INTERVAL, { ...WITH_INTERVAL, tripId: "T2", predictionIntervalPercent: 0 }]))
       .rejects.toThrow(/between 0 and 100/u);
     expect(repos.predictions.forServiceDate("2026-08-14")).toEqual([]);
-  });
-});
-
-describe("a resident loop re-reading the same bucket", () => {
-  it("does not re-download a partition whose ETag has not moved", async () => {
-    // The whole point of a 30s import: listing is one request, and re-parsing and
-    // re-writing every published day on every pass is what kept this hourly.
-    const reader = bucket({ [KEY]: [PREDICTION] });
-    const seen = new Map<string, string>();
-
-    const first = await importPredictions({
-      repos,
-      store: STORE,
-      reader,
-      log: silentLogger,
-      knownEtags: seen,
-    });
-    const second = await importPredictions({
-      repos,
-      store: STORE,
-      reader,
-      log: silentLogger,
-      knownEtags: seen,
-    });
-
-    expect(first[0]?.skipped).toBe(false);
-    expect(second[0]?.skipped).toBe(true);
-    expect(reader.gets).toEqual([KEY]);
-  });
-
-  it("re-imports as soon as the modelling repo republishes the day", async () => {
-    const reader = bucket({ [KEY]: [PREDICTION] });
-    const seen = new Map<string, string>();
-    await importPredictions({ repos, store: STORE, reader, log: silentLogger, knownEtags: seen });
-
-    reader.put(KEY, [PREDICTION, { ...PREDICTION, toStopId: "109" }]);
-    const after = await importPredictions({
-      repos,
-      store: STORE,
-      reader,
-      log: silentLogger,
-      knownEtags: seen,
-    });
-
-    expect(after[0]?.skipped).toBe(false);
-    expect(after[0]?.rows).toBe(2);
-    expect(reader.gets).toEqual([KEY, KEY]);
-  });
-
-  it("imports everything on a fresh process, which remembers no ETags", async () => {
-    const reader = bucket({ [KEY]: [PREDICTION] });
-    await importPredictions({ repos, store: STORE, reader, log: silentLogger });
-    await importPredictions({ repos, store: STORE, reader, log: silentLogger });
-    expect(reader.gets).toEqual([KEY, KEY]);
   });
 });

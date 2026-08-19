@@ -1,8 +1,8 @@
 import { createRepositories, openDatabase } from "@njt/db";
-import { consoleLogger } from "@njt/shared/logger";
 import { toLocalDateString } from "@njt/shared";
+import { consoleLogger } from "@njt/shared/logger";
 import { datesToExport, exportEvents } from "./export-events";
-import { createClient, storeFromEnv } from "./object-store";
+import { storeFromEnv } from "./object-store";
 import { withLock } from "./run-lock";
 
 /**
@@ -10,9 +10,7 @@ import { withLock } from "./run-lock";
  *
  *   npm run export:events                      # every service date
  *   npm run export:events -- --from 2026-08-01 # from a date onwards
- *   npm run export:events -- --recent 2        # the newest two
- *
- * The repeating path is `archive:worker`; this is the one-shot, for backfills.
+ *   npm run export:events -- --recent 2        # the newest two, for a frequent run
  *
  * Re-running a date replaces its object, so this is safe to schedule and safe to
  * rerun after a backfill.
@@ -29,33 +27,20 @@ db.exec("PRAGMA busy_timeout = 60000;");
 const repos = createRepositories(db);
 
 const recent = flag("recent");
-const from = flag("from");
-const explicitRecent = recent === undefined ? undefined : Number(recent);
+const serviceDates = datesToExport(repos.events.serviceDates(), {
+  from: flag("from"),
+  recent: recent === undefined ? undefined : Number(recent),
+  through: toLocalDateString(Date.now() / 1000),
+});
 
-/**
- * Resolved per pass, not once: `through` is today in NJT's timezone, and a resident
- * loop crosses midnight.
- */
-function currentWindow() {
-  return { from, recent: explicitRecent, through: toLocalDateString(Date.now() / 1000) };
+if (serviceDates.length === 0) {
+  consoleLogger.warn("nothing to export", { dbPath });
+  process.exit(0);
 }
 
-// Held across passes so a resident loop pays SQLite, the S3 client and Node's own
-// startup once instead of on every tick.
-const client = createClient(store);
-const knownDigests = new Map<string, string>();
-
-/** Resolved per pass, not once: a loop outlives the service date it started in. */
-async function pass(): Promise<void> {
-  const serviceDates = datesToExport(repos.events.serviceDates(), currentWindow());
-  if (serviceDates.length === 0) {
-    consoleLogger.warn("nothing to export", { dbPath });
-    return;
-  }
-  await withLock(`${dbPath}.events.lock`, () =>
-    exportEvents({ repos, store, serviceDates, client, log: consoleLogger, knownDigests }),
-  );
-}
-
-await pass();
+// A separate lock from the snapshot copy's, which touches a different table — see
+// run-lock.ts.
+await withLock(`${dbPath}.events.lock`, () =>
+  exportEvents({ repos, store, serviceDates, log: consoleLogger }),
+);
 db.close();

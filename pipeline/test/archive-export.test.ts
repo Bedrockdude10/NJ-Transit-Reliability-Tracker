@@ -14,7 +14,6 @@ import {
   sqliteColumn,
 } from "../src/archive/export-events";
 import type { ObjectStore } from "../src/archive/object-store";
-import { PASS_MEMORY_MB } from "../src/archive/export-events";
 
 /**
  * The export is the offline seam with the Python modelling repo: gzipped JSON
@@ -225,155 +224,6 @@ describe("the objects", () => {
   });
 });
 
-describe("what a pass needs, versus what starting a process needs", () => {
-  it("does not ask a running loop for the memory a fresh process would have needed", async () => {
-    // Production: "needs ~66 MB more (~145 MB in total, 78 MB already held), 58 MB
-    // available" — refused every 30s pass while gzipping 3 MB, because 145 MB
-    // describes allocating a whole process, which a resident loop already did.
-    repos.events.record(EVENT);
-    const client = recordingClient();
-
-    // Production's exact numbers, pinned so the assertion does not depend on the
-    // test runner's own RSS.
-    await exportEvents({
-      repos,
-      store: STORE,
-      serviceDates: ["2026-08-11"],
-      client,
-      requiredMemoryMb: PASS_MEMORY_MB,
-      availableMemoryMb: () => 58,
-      alreadyHeldMb: 0,
-    });
-
-    expect(client.objects.has(partitionKey("2026-08-11"))).toBe(true);
-  });
-
-  it("would have refused those same numbers under the fresh-process figure", async () => {
-    repos.events.record(EVENT);
-    const client = recordingClient();
-
-    await expect(
-      exportEvents({
-        repos,
-        store: STORE,
-        serviceDates: ["2026-08-11"],
-        client,
-        requiredMemoryMb: 145,
-        availableMemoryMb: () => 58,
-        alreadyHeldMb: 78,
-      }),
-    ).rejects.toThrow(/needs ~67 MB more/u);
-  });
-
-  it("still refuses a pass when the machine really has nothing left", async () => {
-    repos.events.record(EVENT);
-    const client = recordingClient();
-
-    await expect(
-      exportEvents({
-        repos,
-        store: STORE,
-        serviceDates: ["2026-08-11"],
-        client,
-        requiredMemoryMb: PASS_MEMORY_MB,
-        availableMemoryMb: () => 0,
-        alreadyHeldMb: 0,
-      }),
-    ).rejects.toThrow(/not enough memory to export events/u);
-  });
-});
-
-describe("a resident loop re-exporting the same day", () => {
-  it("does not re-upload a partition whose bytes have not changed", async () => {
-    // At a 30s cadence yesterday's partition is rebuilt ~2,880 times a day and
-    // is identical every time; the digest is already computed to hash the body.
-    repos.events.record(EVENT);
-    const client = recordingClient();
-    const seen = new Map<string, string>();
-
-    const first = await exportEvents({
-      repos,
-      store: STORE,
-      serviceDates: ["2026-08-11"],
-      client,
-      knownDigests: seen,
-    });
-    client.objects.clear();
-    const second = await exportEvents({
-      repos,
-      store: STORE,
-      serviceDates: ["2026-08-11"],
-      client,
-      knownDigests: seen,
-    });
-
-    expect(first[0]?.skipped).toBe(false);
-    expect(second[0]?.skipped).toBe(true);
-    expect(client.objects.has(partitionKey("2026-08-11"))).toBe(false);
-  });
-
-  it("uploads again as soon as a new row lands in the day", async () => {
-    repos.events.record(EVENT);
-    const client = recordingClient();
-    const seen = new Map<string, string>();
-    await exportEvents({
-      repos,
-      store: STORE,
-      serviceDates: ["2026-08-11"],
-      client,
-      knownDigests: seen,
-    });
-    client.objects.clear();
-
-    repos.events.record({ ...EVENT, tripId: "T2", stopSequence: 4 });
-    const after = await exportEvents({
-      repos,
-      store: STORE,
-      serviceDates: ["2026-08-11"],
-      client,
-      knownDigests: seen,
-    });
-
-    expect(after[0]?.skipped).toBe(false);
-    expect(after[0]?.rows).toBe(2);
-    expect(client.objects.has(partitionKey("2026-08-11"))).toBe(true);
-  });
-
-  it("publishes the manifest once rather than on every pass", async () => {
-    // Fixed at build time, so re-PUTting it each pass is a third of the write
-    // budget spent on identical bytes.
-    repos.events.record(EVENT);
-    const client = recordingClient();
-    const seen = new Map<string, string>();
-
-    await exportEvents({
-      repos,
-      store: STORE,
-      serviceDates: ["2026-08-11"],
-      client,
-      knownDigests: seen,
-    });
-    client.objects.clear();
-    await exportEvents({
-      repos,
-      store: STORE,
-      serviceDates: ["2026-08-11"],
-      client,
-      knownDigests: seen,
-    });
-
-    expect(client.objects.has(manifestKey())).toBe(false);
-  });
-
-  it("still publishes everything on a fresh process, which has no memory", async () => {
-    repos.events.record(EVENT);
-    const client = recordingClient();
-    await exportEvents({ repos, store: STORE, serviceDates: ["2026-08-11"], client });
-    expect(client.objects.has(manifestKey())).toBe(true);
-    expect(client.objects.has(partitionKey("2026-08-11"))).toBe(true);
-  });
-});
-
 describe("datesToExport", () => {
   const ALL = ["2026-08-12", "2026-08-13", "2026-08-14", "2026-08-15", "2026-08-16"];
 
@@ -413,13 +263,6 @@ describe("datesToExport", () => {
     expect(datesToExport(ALL, { recent: 2, through: "2026-08-15" })).toEqual([
       "2026-08-14",
       "2026-08-15",
-    ]);
-  });
-
-  it("still publishes today when today is the newest thing there is", () => {
-    expect(datesToExport(ALL, { recent: 2, through: "2026-08-16" })).toEqual([
-      "2026-08-15",
-      "2026-08-16",
     ]);
   });
 

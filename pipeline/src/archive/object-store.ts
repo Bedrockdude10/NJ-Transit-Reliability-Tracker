@@ -32,11 +32,6 @@ export function createClient(store: ObjectStore): S3Client {
 /** Just enough of the client to send a command, so tests can supply their own. */
 export type ObjectWriter = Pick<S3Client, "send">;
 
-/** The digest `putVerified` will send, for callers deciding whether to send at all. */
-export function bodyDigest(body: Uint8Array): string {
-  return createHash("md5").update(body).digest("hex");
-}
-
 /**
  * Store an object and confirm the bytes. `Content-MD5` makes the store rehash the
  * body it received and refuse a mismatch, which is a stronger guarantee than reading
