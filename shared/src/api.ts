@@ -594,6 +594,40 @@ export interface PredictedDelay {
   errorSeconds: number | null;
 }
 
+/** One horizon's accuracy for a model version, summed over the dates it scored. */
+export interface ModelHorizonAccuracy {
+  /** How far ahead the prediction reached, in seconds. */
+  horizonSeconds: number;
+  predictions: number;
+  maeSeconds: number;
+  /** Signed: positive means the train was later than the model said. */
+  biasSeconds: number;
+  /** Share of predictions that were optimistic, 0-100. */
+  falselyReassuringPercent: number;
+}
+
+/** A model version's track record, from the scorecards it published. */
+export interface ModelAccuracy {
+  modelVersion: string;
+  /** MLflow run ids behind these numbers, so any one can be traced back. */
+  runIds: string[];
+  serviceDates: string[];
+  predictions: number;
+  /** Weighted by how many legs each horizon scored, never a mean of means. */
+  maeSeconds: number;
+  biasSeconds: number;
+  horizons: ModelHorizonAccuracy[];
+}
+
+export interface ModelAccuracyResponse {
+  /** Null when every scored date is included rather than one. */
+  serviceDate: string | null;
+  available: boolean;
+  /** Service dates that do hold scorecards, so a screen can offer them. */
+  availableDates: string[];
+  models: ModelAccuracy[];
+}
+
 export interface PredictionProvenance {
   modelVersion: string;
   runId: string;

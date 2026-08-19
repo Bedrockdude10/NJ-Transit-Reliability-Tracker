@@ -14,6 +14,7 @@ import {
   lineTrendResponseSchema,
   mapResponseSchema,
   mapVehiclesResponseSchema,
+  modelAccuracyResponseSchema,
   predictionsResponseSchema,
   propagationResponseSchema,
   stationDeparturesResponseSchema,
@@ -133,6 +134,8 @@ export const api = {
   /** Omit `date` for the most recently predicted day — today is usually unpredicted. */
   predictions: (date?: string, line?: string) =>
     get(predictionsResponseSchema, "/predictions", { date, line }),
+  /** A model's track record, not its forecast — see `/models`. */
+  models: (date?: string) => get(modelAccuracyResponseSchema, "/models", { date }),
   exportUrl: (entity: "system" | "line" | "station", r: DateRange, id?: string) =>
     buildUrl("/export", { entity, id, ...r }),
 };

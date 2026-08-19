@@ -619,6 +619,40 @@ export const predictedDelaySchema = z.object({
     errorSeconds: z.number().nullable()
 });
 
+/** One horizon's accuracy for a model version, summed over the dates it scored. */
+export const modelHorizonAccuracySchema = z.object({
+    /** How far ahead the prediction reached, in seconds. */
+    horizonSeconds: z.number(),
+    predictions: z.number(),
+    maeSeconds: z.number(),
+    /** Signed: positive means the train was later than the model said. */
+    biasSeconds: z.number(),
+    /** Share of predictions that were optimistic, 0-100. */
+    falselyReassuringPercent: z.number()
+});
+
+/** A model version's track record, from the scorecards it published. */
+export const modelAccuracySchema = z.object({
+    modelVersion: z.string(),
+    /** MLflow run ids behind these numbers, so any one can be traced back. */
+    runIds: z.array(z.string()),
+    serviceDates: z.array(z.string()),
+    predictions: z.number(),
+    /** Weighted by how many legs each horizon scored, never a mean of means. */
+    maeSeconds: z.number(),
+    biasSeconds: z.number(),
+    horizons: z.array(modelHorizonAccuracySchema)
+});
+
+export const modelAccuracyResponseSchema = z.object({
+    /** Null when every scored date is included rather than one. */
+    serviceDate: z.string().nullable(),
+    available: z.boolean(),
+    /** Service dates that do hold scorecards, so a screen can offer them. */
+    availableDates: z.array(z.string()),
+    models: z.array(modelAccuracySchema)
+});
+
 export const predictionProvenanceSchema = z.object({
     modelVersion: z.string(),
     runId: z.string(),

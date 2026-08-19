@@ -12,6 +12,7 @@ import { healthRoutes } from "./routes/health";
 import { lightRailRoutes } from "./routes/lightrail";
 import { lineRoutes } from "./routes/lines";
 import { mapRoutes } from "./routes/map";
+import { modelRoutes } from "./routes/models";
 import { stationRoutes } from "./routes/stations";
 import { systemRoutes } from "./routes/system";
 import { ApiError } from "./util";
@@ -56,6 +57,7 @@ export function createApp(repos: Repositories, log: Logger = consoleLogger): Hon
   app.route("/health", healthRoutes(repos));
   app.route("/system", systemRoutes(repos));
   app.route("/lines", lineRoutes(repos));
+  app.route("/models", modelRoutes(repos));
   app.route("/lightrail", lightRailRoutes(repos));
   app.route("/map", mapRoutes(repos));
   app.route("/stations", stationRoutes(repos));
