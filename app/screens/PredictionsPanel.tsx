@@ -6,6 +6,7 @@ import {
   accuracyNote,
   byLine,
   formatPredictedDelay,
+  formatScheduledArrival,
   intervalNote,
   provenanceNote,
   signedSeconds,
@@ -72,12 +73,6 @@ function PredictionPanel({ date, line }: { date?: string | undefined; line?: str
           />
         </Row>
         <Muted>{accuracyNote(data)}</Muted>
-        {data.totalPredictions > data.predictions.length ? (
-          <Muted>
-            Showing the {data.predictions.length} most delayed legs of{" "}
-            {formatInt(data.totalPredictions)}.
-          </Muted>
-        ) : null}
       </Card>
 
       {byLine(data.predictions).map((group) => (
@@ -96,6 +91,7 @@ function LineGroup({ lineName, legs }: { lineName: string; legs: PredictedDelay[
       <SectionTitle>{lineName}</SectionTitle>
       <Table
         columns={[
+          { key: "due", label: "Due", flex: 1 },
           { key: "leg", label: "Leg", flex: 3 },
           { key: "predicted", label: ranges === null ? "Predicted" : "Predicted range", flex: 1.2 },
           { key: "actual", label: "Actual", flex: 1.2 },
@@ -103,6 +99,7 @@ function LineGroup({ lineName, legs }: { lineName: string; legs: PredictedDelay[
         ]}
         rows={legs.map((leg) => ({
           key: `${leg.tripId}-${leg.toStopName}`,
+          due: formatScheduledArrival(leg.scheduledArrivalTime),
           leg: `${leg.fromStopName} → ${leg.toStopName}`,
           predicted: formatPredictedDelay(leg),
           actual: leg.actualDelaySeconds === null ? "—" : formatDelayShort(leg.actualDelaySeconds),

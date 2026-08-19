@@ -47,4 +47,37 @@ describe("GtfsRepository", () => {
     expect(times.map((t) => t.stopId)).toEqual(["NWK", "NYP"]);
     expect(times[1]?.arrivalTime).toBe("08:20:00");
   });
+
+  describe("arrivalTimesForTrips", () => {
+    it("looks up a whole service day of trips in one query", () => {
+      // A busy day runs ~780 trips, and the lookup binds one parameter per trip;
+      // SQLite rejects the statement outright past its variable limit.
+      const trips = Array.from({ length: 1500 }, (_, i) => `T${i}`);
+      repos.gtfs.insertVersion({
+        versionId: "big",
+        effectiveFrom: 0,
+        effectiveTo: null,
+        checksum: "c",
+        ingestedAtMs: 0,
+      });
+      repos.gtfs.replaceStopTimes(
+        "big",
+        trips.map((tripId) => ({
+          tripId,
+          stopId: "S1",
+          stopSequence: 1,
+          arrivalTime: "07:15:00",
+          departureTime: null,
+        })),
+      );
+
+      const found = repos.gtfs.arrivalTimesForTrips("big", trips);
+      expect(found.size).toBe(1500);
+      expect(found.get("T900|S1")).toBe("07:15:00");
+    });
+
+    it("returns nothing rather than a broken query when asked for no trips", () => {
+      expect(repos.gtfs.arrivalTimesForTrips("v1", []).size).toBe(0);
+    });
+  });
 });

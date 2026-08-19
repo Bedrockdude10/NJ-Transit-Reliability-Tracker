@@ -4,6 +4,7 @@ import {
   accuracyNote,
   byLine,
   formatPredictedDelay,
+  formatScheduledArrival,
   intervalNote,
   provenanceNote,
   signedSeconds,
@@ -23,6 +24,7 @@ const LEG: PredictedDelay = {
   fromStopName: "Newark Penn Station",
   toStopName: "New York Penn Station",
   horizonSeconds: 1800,
+  scheduledArrivalTime: "07:15:00",
   predictedDelaySeconds: 240,
   interval: null,
   actualDelaySeconds: null,
@@ -163,5 +165,19 @@ describe("intervalNote", () => {
 
   it("ignores legs without a range when some have one", () => {
     expect(intervalNote([LEG, withInterval(300, 720)])).toMatch(/80%/u);
+  });
+});
+
+describe("formatScheduledArrival", () => {
+  it("renders a normal clock time", () => {
+    expect(formatScheduledArrival("07:15:00")).toBe("07:15");
+  });
+
+  it("wraps GTFS hours past midnight, which count upward rather than resetting", () => {
+    expect(formatScheduledArrival("25:10:00")).toBe("01:10");
+  });
+
+  it("says nothing rather than guessing when the timetable has no entry", () => {
+    expect(formatScheduledArrival(null)).toBe("—");
   });
 });

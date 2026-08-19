@@ -55,3 +55,15 @@ export function intervalNote(predictions: readonly PredictedDelay[]): string | n
   const coverage = percents.sort((a, b) => a - b).join("% / ");
   return `Ranges are ${coverage}% prediction intervals: the model expects the actual delay to fall inside them that often.`;
 }
+
+/**
+ * GTFS "HH:MM:SS" as a clock time a rider reads. Hours past 24 mean the next
+ * calendar day, so they wrap rather than rendering as "25:10".
+ */
+export function formatScheduledArrival(arrivalTime: string | null): string {
+  if (arrivalTime === null) return "—";
+  const [hours, minutes] = arrivalTime.split(":");
+  const hour = Number(hours);
+  if (!Number.isFinite(hour) || minutes === undefined) return "—";
+  return `${String(hour % 24).padStart(2, "0")}:${minutes}`;
+}

@@ -293,6 +293,29 @@ export class GtfsRepository {
     );
   }
 
+  /**
+   * Scheduled arrival per `tripId|stopId`, for many trips at once. GTFS keeps
+   * "HH:MM:SS" with hours past 24 for a trip that runs into the next day, so the
+   * strings sort chronologically within a service date without being parsed.
+   */
+  arrivalTimesForTrips(versionId: string, tripIds: readonly string[]): Map<string, string> {
+    const unique = [...new Set(tripIds)];
+    if (unique.length === 0) return new Map();
+    const placeholders = unique.map((_, i) => `:t${i}`).join(",");
+    const params = Object.fromEntries(unique.map((id, i) => [`t${i}`, id]));
+    const rows = this.db.all<{ tripId: string; stopId: string; arrivalTime: string | null }>(
+      /* sql */ `
+        SELECT trip_id AS tripId, stop_id AS stopId, arrival_time AS arrivalTime
+        FROM gtfs_stop_times
+        WHERE version_id = :v AND trip_id IN (${placeholders})
+      `,
+      { v: versionId, ...params },
+    );
+    return new Map(
+      rows.filter((r) => r.arrivalTime !== null).map((r) => [`${r.tripId}|${r.stopId}`, r.arrivalTime as string]),
+    );
+  }
+
   stationsWithLines(versionId: string): StationWithLines[] {
     const rows = this.db.all<{ stopId: string; stopName: string; routes: string | null }>(
       /* sql */ `

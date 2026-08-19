@@ -54,6 +54,7 @@ const POPULATED = {
       fromStopName: "Newark Penn Station",
       toStopName: "New York Penn Station",
       horizonSeconds: 1800,
+      scheduledArrivalTime: "07:15:00",
       predictedDelaySeconds: 240,
       interval: null,
       actualDelaySeconds: 300,

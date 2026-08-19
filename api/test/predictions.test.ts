@@ -92,6 +92,7 @@ describe("with predictions imported", () => {
         fromStopName: "Newark Penn Station",
         toStopName: "New York Penn Station",
         horizonSeconds: 1800,
+        scheduledArrivalTime: null,
         predictedDelaySeconds: 240,
         interval: null,
         actualDelaySeconds: null,
@@ -197,11 +198,11 @@ describe("with predictions imported", () => {
   });
 });
 
-describe("keeping the response a size a phone can use", () => {
+describe("limit, and what the whole day costs", () => {
   beforeEach(() => {
-    // A real service date holds ~50,000 legs. Returning them all is ~5 MB of
-    // JSON and 300 KB of DOM, nearly all of it a shuttle predicted to be on
-    // time — measured in the browser before this cap existed.
+    // A *retrospective* service date holds ~50,000 legs: ~5 MB of JSON and 300 KB
+    // of DOM, measured in the browser. Live scoring publishes only trains in
+    // service — 369 at peak — which is why the default is no longer a cap.
     repos.predictions.upsertMany(
       Array.from({ length: 250 }, (_, i) => ({
         ...PREDICTION,
@@ -211,26 +212,15 @@ describe("keeping the response a size a phone can use", () => {
     );
   });
 
-  it("returns the most delayed legs first, since that is why the page was opened", async () => {
-    const { body } = await get("/predictions?date=2026-08-14&limit=3");
-    expect(body.predictions.map((p: { predictedDelaySeconds: number }) => p.predictedDelaySeconds))
-      .toEqual([249, 248, 247]);
-  });
-
   it("caps the list but still says how many there were", async () => {
     const { body } = await get("/predictions?date=2026-08-14&limit=10");
     expect(body.predictions).toHaveLength(10);
     expect(body.totalPredictions).toBe(250);
   });
 
-  it("defaults to a hundred rather than everything", async () => {
-    const { body } = await get("/predictions?date=2026-08-14");
-    expect(body.predictions).toHaveLength(100);
-  });
-
   it("scores the whole day, not just the legs it returned", async () => {
-    // Ranking by delay and then scoring would measure the model only on the
-    // hardest cases it faces, which is not how it performed.
+    // A `limit` must not narrow the error figure: it would report the model's
+    // accuracy over an arbitrary prefix of the timetable.
     repos.predictions.upsertMany([
       { ...PREDICTION, tripId: "A", predictedDelaySeconds: 0, actualDelaySeconds: 10 },
       { ...PREDICTION, tripId: "B", predictedDelaySeconds: 1000, actualDelaySeconds: 1200 },
@@ -261,5 +251,79 @@ describe("keeping the response a size a phone can use", () => {
   it("rejects a nonsense limit rather than returning everything", async () => {
     expect((await get("/predictions?date=2026-08-14&limit=0")).status).toBe(400);
     expect((await get("/predictions?date=2026-08-14&limit=abc")).status).toBe(400);
+  });
+});
+
+describe("ordering and completeness", () => {
+  /** A rider is looking for one train, so the list has to be scannable by time. */
+  const leg = (tripId: string, toStopId: string, delay: number): DelayPrediction => ({
+    ...PREDICTION,
+    tripId,
+    toStopId,
+    predictedDelaySeconds: delay,
+  });
+
+  beforeEach(() => {
+    repos.gtfs.replaceStops("v1", [
+      { stopId: "105", stopName: "Newark Penn Station" },
+      { stopId: "107", stopName: "New York Penn Station" },
+      { stopId: "108", stopName: "Secaucus Junction" },
+      { stopId: "109", stopName: "Trenton" },
+    ]);
+    repos.gtfs.replaceTrips("v1", [
+      { tripId: "early", routeId: "NEC", serviceId: null, directionId: 0, tripHeadsign: null },
+      { tripId: "midday", routeId: "NEC", serviceId: null, directionId: 0, tripHeadsign: null },
+      { tripId: "late", routeId: "NEC", serviceId: null, directionId: 0, tripHeadsign: null },
+    ]);
+    repos.gtfs.replaceStopTimes("v1", [
+      { tripId: "early", stopId: "107", stopSequence: 2, arrivalTime: "07:15:00", departureTime: null },
+      { tripId: "midday", stopId: "108", stopSequence: 2, arrivalTime: "13:40:00", departureTime: null },
+      // Past midnight, so GTFS keeps counting hours upward rather than wrapping.
+      { tripId: "late", stopId: "109", stopSequence: 2, arrivalTime: "25:10:00", departureTime: null },
+    ]);
+  });
+
+  it("returns the legs in the order a rider will meet them, not worst-first", async () => {
+    repos.predictions.upsertMany([
+      leg("late", "109", 30),
+      leg("midday", "108", 900),
+      leg("early", "107", 60),
+    ]);
+
+    const { body } = await get("/predictions?date=2026-08-14");
+    expect(body.predictions.map((p: { tripId: string }) => p.tripId)).toEqual([
+      "early",
+      "midday",
+      "late",
+    ]);
+  });
+
+  it("publishes the scheduled arrival it sorted by, so a rider can find their train", async () => {
+    repos.predictions.upsertMany([leg("early", "107", 60)]);
+
+    const { body } = await get("/predictions?date=2026-08-14");
+    expect(body.predictions[0].scheduledArrivalTime).toBe("07:15:00");
+  });
+
+  it("returns every leg it holds rather than a top slice", async () => {
+    const many = Array.from({ length: 250 }, (_, i) => leg(`T${i}`, "107", i));
+    repos.predictions.upsertMany(many);
+
+    const { body } = await get("/predictions?date=2026-08-14");
+    expect(body.predictions).toHaveLength(250);
+    expect(body.totalPredictions).toBe(250);
+  });
+
+  it("still validates against the generated schema", async () => {
+    repos.predictions.upsertMany([leg("early", "107", 60)]);
+    const { body } = await get("/predictions?date=2026-08-14");
+    expect(predictionsResponseSchema.safeParse(body).success).toBe(true);
+  });
+
+  it("sorts a leg with no timetable entry last rather than dropping it", async () => {
+    repos.predictions.upsertMany([leg("unknown", "107", 60), leg("early", "107", 60)]);
+
+    const { body } = await get("/predictions?date=2026-08-14");
+    expect(body.predictions.map((p: { tripId: string }) => p.tripId)).toEqual(["early", "unknown"]);
   });
 });

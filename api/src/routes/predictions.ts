@@ -10,9 +10,8 @@ import { CACHE_CONTROL_MINUTE } from "../util";
 
 const SERVICE_DATE = /^\d{4}-\d{2}-\d{2}$/u;
 
-/** A day holds ~50,000 legs; returning them all is ~5 MB of JSON. */
-const DEFAULT_LIMIT = 100;
-const MAX_LIMIT = 1000;
+/** Sorts after every real "HH:MM:SS", so a leg with no timetable entry lands last. */
+const NO_TIMETABLE = "99:99:99";
 
 /** Signed error, positive when the model was optimistic — it under-predicted. */
 function errorSeconds(prediction: DelayPrediction): number | null {
@@ -34,11 +33,11 @@ export function predictionRoutes(repos: Repositories): Hono {
     const serviceDate = requested ?? availableDates.at(-1) ?? new Date().toISOString().slice(0, 10);
 
     const line = c.req.query("line");
-    const requestedLimit = Number(c.req.query("limit") ?? DEFAULT_LIMIT);
-    if (!Number.isFinite(requestedLimit) || requestedLimit < 1) {
+    const requestedLimit = c.req.query("limit");
+    const limit = requestedLimit === undefined ? null : Number(requestedLimit);
+    if (limit !== null && (!Number.isFinite(limit) || limit < 1)) {
       return c.json({ error: "limit must be a positive number" }, 400);
     }
-    const limit = Math.min(requestedLimit, MAX_LIMIT);
 
     const all = repos.predictions.forServiceDate(serviceDate);
     const stored = line ? all.filter((p) => p.lineName === line) : all;
@@ -46,23 +45,29 @@ export function predictionRoutes(repos: Repositories): Hono {
     const stopName = (stopId: string) =>
       (version && repos.gtfs.stopName(version.versionId, stopId)) ?? stopId;
 
-    const ranked = [...stored].sort(
-      (a, b) => Math.abs(b.predictedDelaySeconds) - Math.abs(a.predictedDelaySeconds),
+    const arrivals = version
+      ? repos.gtfs.arrivalTimesForTrips(version.versionId, stored.map((p) => p.tripId))
+      : new Map<string, string>();
+    const arrivalTime = (p: DelayPrediction) => arrivals.get(`${p.tripId}|${p.toStopId}`) ?? null;
+
+    const chronological = [...stored].sort((a, b) =>
+      (arrivalTime(a) ?? NO_TIMETABLE).localeCompare(arrivalTime(b) ?? NO_TIMETABLE),
     );
-    const predictions: PredictedDelay[] = ranked.slice(0, limit).map((prediction) => ({
+    const selected = limit === null ? chronological : chronological.slice(0, limit);
+    const predictions: PredictedDelay[] = selected.map((prediction) => ({
       tripId: prediction.tripId,
       lineName: prediction.lineName,
       fromStopName: stopName(prediction.fromStopId),
       toStopName: stopName(prediction.toStopId),
       horizonSeconds: prediction.horizonSeconds,
+      scheduledArrivalTime: arrivalTime(prediction),
       predictedDelaySeconds: prediction.predictedDelaySeconds,
       interval: predictionInterval(prediction),
       actualDelaySeconds: prediction.actualDelaySeconds,
       errorSeconds: errorSeconds(prediction),
     }));
 
-    // Score the whole day, not `predictions`: that is ranked by delay, so it
-    // would score the model only on its hardest cases.
+    // Score the whole day, not `predictions`, which a `limit` can truncate.
     const scored = stored.filter(
       (p): p is typeof p & { actualDelaySeconds: number } => p.actualDelaySeconds !== null,
     );

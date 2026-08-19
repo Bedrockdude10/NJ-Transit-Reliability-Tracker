@@ -604,6 +604,12 @@ export const predictedDelaySchema = z.object({
     toStopName: z.string(),
     /** How far ahead the prediction reaches, in seconds. */
     horizonSeconds: z.number(),
+    /**
+     * Scheduled arrival at `toStopName` as GTFS "HH:MM:SS", the key the list is
+     * ordered by. Hours pass 24 for a trip running into the next day. Null when the
+     * timetable holds no entry for this leg.
+     */
+    scheduledArrivalTime: z.string().nullable(),
     /** Predicted delay at the destination, seconds; positive = late. */
     predictedDelaySeconds: z.number(),
     interval: predictionIntervalSchema.nullable(),
@@ -632,9 +638,8 @@ export const predictionsResponseSchema = z.object({
     lines: z.array(z.string()),
     provenance: predictionProvenanceSchema.nullable(),
     /**
-     * The most delayed legs, largest first — not everything. A service date holds
-     * ~50,000 legs, ~5 MB of JSON, so the response is capped and
-     * `totalPredictions` says how many there were.
+     * Every leg held for the service date, ordered by scheduled arrival — the order
+     * a rider meets them, so theirs can be found. Pass `limit` to take a prefix.
      */
     predictions: z.array(predictedDelaySchema),
     totalPredictions: z.number(),
