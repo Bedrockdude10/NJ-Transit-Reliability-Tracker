@@ -163,6 +163,23 @@ describe("the delay certificate for one line on one date", () => {
     expect(body.serviceDate).toBe(DATE);
   });
 
+  it("does not default to a service date that has not happened yet", async () => {
+    // Trips running past midnight open tomorrow's partition, so the newest date
+    // in the archive is routinely in the future and holds a handful of trains.
+    repos.events.recordMany([
+      arrival(8, 600, { date: "2026-08-19" }),
+      arrival(1, 60, { date: "2026-08-20" }),
+    ]);
+    const { body } = await certificate("");
+    expect(body.serviceDate).toBe("2026-08-19");
+  });
+
+  it("still serves a future date when one is asked for outright", async () => {
+    repos.events.recordMany([arrival(1, 60, { date: "2026-08-20" })]);
+    const { body } = await certificate(`?line=${encodeURIComponent(NEC)}&date=2026-08-20`);
+    expect(body.serviceDate).toBe("2026-08-20");
+  });
+
   it("answers an empty archive without inventing a line", async () => {
     const { status, body } = await certificate("");
     expect(status).toBe(200);

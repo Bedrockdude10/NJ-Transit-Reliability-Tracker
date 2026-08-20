@@ -4,6 +4,7 @@ import {
   LOW_SAMPLE_THRESHOLD,
   NJT_TIMEZONE,
   bandForHour,
+  toLocalDateString,
   bandHours,
   bandLabel,
   isCertificateIssued,
@@ -49,7 +50,11 @@ export function certificateRoutes(repos: Repositories): Hono {
       badRequest("date must be YYYY-MM-DD");
     }
     const availableDates = repos.events.serviceDates();
-    const serviceDate = requestedDate ?? availableDates.at(-1) ?? "";
+    // Trips past midnight open tomorrow's partition, so the newest date held is
+    // routinely in the future; defaulting to it certifies four overnight trains.
+    const today = toLocalDateString(Math.floor(Date.now() / 1000));
+    const serviceDate =
+      requestedDate ?? availableDates.filter((d) => d <= today).at(-1) ?? availableDates.at(-1) ?? "";
     const lines = serviceDate === "" ? [] : repos.events.lineNamesOnDate(serviceDate);
     const lineName = c.req.query("line") ?? lines[0] ?? "";
 
