@@ -201,6 +201,9 @@ export function lineRoutes(repos: Repositories): Hono {
         lineName: t.lineName,
         direction: t.direction,
         terminalStopName: t.terminalStopName,
+        // The daily aggregates keep no timetable time, and a line-wide list is
+        // not read as a departure board.
+        scheduledDepartureSeconds: null,
         avgTerminalDelaySeconds: round1(t.avgTerminalDelaySeconds),
         observations: t.observations,
       })),

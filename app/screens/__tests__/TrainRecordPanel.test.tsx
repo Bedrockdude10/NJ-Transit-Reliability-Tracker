@@ -9,10 +9,21 @@ import { createQueryClient } from "../../lib/query-client";
  * cancellation must not read as an on-time run.
  */
 
+const mockSetParams = jest.fn();
 jest.mock("expo-router", () => ({
   useLocalSearchParams: () => ({}),
-  useRouter: () => ({ setParams: jest.fn() }),
+  useRouter: () => ({ setParams: mockSetParams }),
 }));
+
+/** 2026-08-17T12:42Z, which is 8:42 AM at a New Jersey station. */
+const SCHEDULED = 1_786_020_120;
+
+const STATIONS = {
+  stations: [
+    { stopId: "NWK", stopName: "Newark Penn", lines: ["Northeast Corridor Line"] },
+    { stopId: "NYP", stopName: "New York Penn", lines: ["Northeast Corridor Line"] },
+  ],
+};
 
 const RANKINGS = {
   from: "2026-05-21",
@@ -44,6 +55,7 @@ const TOP_TRIPS = {
       lineName: "Northeast Corridor Line",
       direction: "inbound",
       terminalStopName: "New York Penn",
+      scheduledDepartureSeconds: SCHEDULED,
       avgTerminalDelaySeconds: 720,
       observations: 26,
     },
@@ -85,7 +97,9 @@ function respondByPath(record: unknown = RECORD) {
       ? record
       : url.includes("top-delayed-trips")
         ? TOP_TRIPS
-        : RANKINGS;
+        : url.includes("/rankings")
+          ? RANKINGS
+          : STATIONS;
     return { ok: true, status: 200, json: async () => body } as Response;
   });
 }
@@ -100,13 +114,16 @@ const renderScreen = () =>
 /** Render, wait for the choices, and pick the one departure the fixture offers. */
 async function selectDeparture() {
   const screen = renderScreen();
-  const choice = await waitFor(() => screen.getByText(/Northeast Corridor Line · 3928/u));
+  const choice = await waitFor(() => screen.getByText(/8:42 AM/u));
   fireEvent.press(choice);
   await waitFor(() => expect(screen.getByText("Recent runs")).toBeTruthy());
   return screen;
 }
 
-afterEach(() => jest.restoreAllMocks());
+afterEach(() => {
+  jest.restoreAllMocks();
+  mockSetParams.mockClear();
+});
 
 describe("one departure's record", () => {
   it("asks the rider to pick a departure before showing numbers", async () => {
@@ -115,10 +132,45 @@ describe("one departure's record", () => {
     await waitFor(() => expect(screen.getByText(/select a departure/iu)).toBeTruthy());
   });
 
-  it("offers the departures worth checking", async () => {
+  it("names a departure by its scheduled time and where it goes", async () => {
+    // The internal GTFS trip id was the whole label once. No rider has seen one.
     respondByPath();
     const screen = renderScreen();
-    await waitFor(() => expect(screen.getByText(/Northeast Corridor Line · 3928/u)).toBeTruthy());
+    await waitFor(() => expect(screen.getByText(/8:42 AM · to New York Penn/u)).toBeTruthy());
+  });
+
+  it("does not label a departure by its internal trip id", async () => {
+    respondByPath();
+    const screen = renderScreen();
+    await waitFor(() => expect(screen.getByText(/8:42 AM/u)).toBeTruthy());
+    expect(screen.queryByText(/· 3928 ·/u)).toBeNull();
+  });
+
+  it("says when a departure has no timetable time rather than printing a dash alone", async () => {
+    const noTime = { ...TOP_TRIPS, trips: [{ ...TOP_TRIPS.trips[0], scheduledDepartureSeconds: null }] };
+    jest.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
+      const url = String(input);
+      const body = url.includes("/record")
+        ? RECORD
+        : url.includes("top-delayed-trips")
+          ? noTime
+          : url.includes("/rankings")
+            ? RANKINGS
+            : STATIONS;
+      return { ok: true, status: 200, json: async () => body } as Response;
+    });
+    const screen = renderScreen();
+    await waitFor(() => expect(screen.getByText(/Unscheduled · to New York Penn/u)).toBeTruthy());
+  });
+
+  it("lets the rider choose which station the departures are from", async () => {
+    // Without this the page pinned itself to the single worst station, so every
+    // row on it was the same branch.
+    respondByPath();
+    const screen = renderScreen();
+    fireEvent.press(await waitFor(() => screen.getByText("\u25bc")));
+    fireEvent.press(await waitFor(() => screen.getByText("Newark Penn")));
+    expect(mockSetParams).toHaveBeenCalledWith(expect.objectContaining({ recordStop: "NWK" }));
   });
 
   it("leads with how often the train is late and how late to plan for", async () => {

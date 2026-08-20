@@ -471,6 +471,8 @@ export const worstTripSchema = z.object({
     lineName: z.string(),
     direction: directionSchema,
     terminalStopName: z.string(),
+    /** Timetable departure at the stop this list is for; null when the feed gave neither. */
+    scheduledDepartureSeconds: z.number().nullable(),
     avgTerminalDelaySeconds: z.number(),
     observations: z.number()
 });

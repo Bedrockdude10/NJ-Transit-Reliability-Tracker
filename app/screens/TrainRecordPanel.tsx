@@ -1,15 +1,17 @@
 import type { TrainRunResult, WorstTrip } from "@njt/shared";
 import { OTP_STRICT_THRESHOLD_SECONDS } from "@njt/shared";
-import { useState } from "react";
+import { useLocalSearchParams, useRouter } from "expo-router";
+import { useCallback, useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { QueryBoundary } from "../components/QueryBoundary";
+import { StationPicker } from "../components/StationPicker";
 import { Table } from "../components/Table";
-import { Badge, Card, EmptyState, Muted, PageTitle, Row, SectionTitle, StatTile } from "../components/ui";
+import { Badge, Card, EmptyState, Loading, Muted, PageTitle, Row, SectionTitle, StatTile } from "../components/ui";
 import { WindowPicker } from "../components/WindowPicker";
 import { useApi } from "../hooks/useApi";
 import { useWindow } from "../hooks/useWindow";
 import { api, type DateRange } from "../lib/api";
-import { formatDelayShort, formatPercent, formatShortDate } from "../lib/format";
+import { formatClockTime, formatDelayShort, formatPercent, formatShortDate } from "../lib/format";
 import { theme } from "../lib/theme";
 
 /**
@@ -19,6 +21,17 @@ import { theme } from "../lib/theme";
 export function TrainRecordPanel() {
   const { key: windowKey, range, select } = useWindow("90d");
   const [trip, setTrip] = useState<WorstTrip | null>(null);
+  // In the URL, not state: which station a rider commutes from is the whole
+  // premise of the page, and it should survive a reload and a shared link.
+  const router = useRouter();
+  const { recordStop } = useLocalSearchParams<{ recordStop?: string }>();
+  const setStop = useCallback(
+    (stopId: string) => {
+      setTrip(null);
+      router.setParams({ recordStop: stopId, window: windowKey } as never);
+    },
+    [router, windowKey],
+  );
 
   return (
     <>
@@ -26,9 +39,14 @@ export function TrainRecordPanel() {
         title="Train record"
         subtitle="How often one scheduled departure is actually late, run by run"
       />
-      <WindowPicker value={windowKey} onChange={select} />
+      <Card>
+        <QueryBoundary pending={<Loading label="Loading stations…" />}>
+          <StopChooser value={recordStop ?? null} onChange={setStop} range={range} />
+        </QueryBoundary>
+        <WindowPicker value={windowKey} onChange={select} />
+      </Card>
       <QueryBoundary>
-        <TripChoices selected={trip} onSelect={setTrip} range={range} />
+        <TripChoices stopId={recordStop ?? null} selected={trip} onSelect={setTrip} range={range} />
       </QueryBoundary>
       {trip === null ? (
         <Muted>Select a departure above to see its record.</Muted>
@@ -41,22 +59,46 @@ export function TrainRecordPanel() {
   );
 }
 
+/** The station list, with the worst-delayed station as the opening suggestion. */
+function StopChooser({
+  value,
+  onChange,
+  range,
+}: {
+  value: string | null;
+  onChange: (stopId: string) => void;
+  range: DateRange;
+}) {
+  const { data } = useApi(api.stations());
+  const { data: rankings } = useApi(api.stationRankings(range, "delay"));
+  return (
+    <StationPicker
+      label="Station"
+      stations={data.stations}
+      value={value ?? rankings.stations[0]?.stopId ?? null}
+      onChange={onChange}
+    />
+  );
+}
+
 function TripChoices({
+  stopId,
   selected,
   onSelect,
   range,
 }: {
+  stopId: string | null;
   selected: WorstTrip | null;
   onSelect: (trip: WorstTrip) => void;
   range: DateRange;
 }) {
   const { data } = useApi(api.stationRankings(range, "delay"));
-  const worstStation = data.stations[0];
-  return worstStation === undefined ? (
+  const resolved = stopId ?? data.stations[0]?.stopId;
+  return resolved === undefined ? (
     <EmptyState title="No departures yet" hint="Records appear once the live feed has observed trains." />
   ) : (
     <QueryBoundary>
-      <StationTrips stopId={worstStation.stopId} selected={selected} onSelect={onSelect} range={range} />
+      <StationTrips stopId={resolved} selected={selected} onSelect={onSelect} range={range} />
     </QueryBoundary>
   );
 }
@@ -87,9 +129,15 @@ function StationTrips({
           accessibilityRole="button"
           accessibilityState={{ selected: selected?.tripId === t.tripId }}
         >
-          <Text style={styles.choiceText}>
-            {t.lineName} · {t.tripId} · to {t.terminalStopName}
-          </Text>
+          <View style={styles.choiceLabel}>
+            <Text style={styles.choiceText}>
+              {t.scheduledDepartureSeconds === null
+                ? "Unscheduled"
+                : formatClockTime(t.scheduledDepartureSeconds)}{" "}
+              · to {t.terminalStopName}
+            </Text>
+            <Text style={styles.choiceSub}>{t.lineName}</Text>
+          </View>
           <Text style={styles.choiceMeta}>{formatDelayShort(t.avgTerminalDelaySeconds)} avg</Text>
         </Pressable>
       ))}
@@ -188,7 +236,9 @@ const styles = StyleSheet.create({
     marginTop: theme.spacing(2),
   },
   choiceActive: { borderColor: theme.colors.accent, backgroundColor: theme.colors.accentSoft },
-  choiceText: { color: theme.colors.text, fontSize: theme.fontSize.sm, flexShrink: 1 },
+  choiceLabel: { flexShrink: 1, gap: theme.spacing(0.5) },
+  choiceText: { color: theme.colors.text, fontSize: theme.fontSize.sm, fontWeight: theme.fontWeight.semibold },
+  choiceSub: { color: theme.colors.textMuted, fontSize: theme.fontSize.xs },
   choiceMeta: { color: theme.colors.textMuted, fontSize: theme.fontSize.sm },
   strip: { flexDirection: "row", flexWrap: "wrap", gap: theme.spacing(2) },
   run: {

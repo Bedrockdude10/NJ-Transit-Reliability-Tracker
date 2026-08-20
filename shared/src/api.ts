@@ -444,6 +444,8 @@ export interface WorstTrip {
   lineName: string;
   direction: Direction;
   terminalStopName: string;
+  /** Timetable departure at the stop this list is for; null when the feed gave neither. */
+  scheduledDepartureSeconds: number | null;
   avgTerminalDelaySeconds: number;
   observations: number;
 }

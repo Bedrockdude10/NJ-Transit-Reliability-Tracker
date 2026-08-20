@@ -165,29 +165,40 @@ export function stationRoutes(repos: Repositories): Hono {
       direction: Direction;
       sum: number;
       count: number;
+      serviceDate: string;
+      scheduledDepartureSeconds: number | null;
     }
     const byTrip = new Map<string, Acc>();
     for (const e of repos.events.getByStop(stopId, range.from, range.to)) {
       if (e.delaySeconds === null || e.tripCancelled || e.stopSkipped) continue;
-      const acc = byTrip.get(e.tripId) ?? { routeId: e.routeId, lineName: e.lineName, direction: e.direction, sum: 0, count: 0 };
+      const acc = byTrip.get(e.tripId) ?? { routeId: e.routeId, lineName: e.lineName, direction: e.direction, sum: 0, count: 0, serviceDate: "", scheduledDepartureSeconds: null };
       acc.sum += e.delaySeconds;
       acc.count += 1;
+      // The newest run's timetable time, so a retimed train reads as it runs now.
+      if (e.serviceDate >= acc.serviceDate) {
+        acc.serviceDate = e.serviceDate;
+        acc.scheduledDepartureSeconds = e.scheduledDeparture ?? e.scheduledArrival;
+      }
       byTrip.set(e.tripId, acc);
     }
 
     const stationName = stopName(repos, stopId);
-    const trips: WorstTrip[] = [...byTrip.entries()]
-      .map(([tripId, a]) => ({
-        tripId,
-        routeId: a.routeId,
-        lineName: a.lineName,
-        direction: a.direction,
-        terminalStopName: stationName,
-        avgTerminalDelaySeconds: round1(a.sum / a.count),
-        observations: a.count,
-      }))
-      .sort((x, y) => y.avgTerminalDelaySeconds - x.avgTerminalDelaySeconds)
+    const ranked = [...byTrip.entries()]
+      .map(([tripId, a]) => ({ tripId, a, avg: round1(a.sum / a.count) }))
+      .sort((x, y) => y.avg - x.avg)
       .slice(0, limit);
+    // Where the train ends up, which is how a rider tells two departures apart.
+    // Only the ranked few, so the per-trip lookup stays bounded.
+    const trips: WorstTrip[] = ranked.map(({ tripId, a, avg }) => ({
+      tripId,
+      routeId: a.routeId,
+      lineName: a.lineName,
+      direction: a.direction,
+      terminalStopName: repos.events.tripIdentity(tripId)?.terminalStopName ?? stationName,
+      scheduledDepartureSeconds: a.scheduledDepartureSeconds,
+      avgTerminalDelaySeconds: avg,
+      observations: a.count,
+    }));
 
     const response: WorstTripsResponse = { scopeLabel: stationName, from: range.from, to: range.to, trips };
     return c.json(response);
