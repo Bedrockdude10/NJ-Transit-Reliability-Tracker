@@ -3,7 +3,7 @@ import { describe, expect, it } from "vitest";
 import * as schemas from "../src/api.zod";
 import type * as dto from "../src/api";
 import type { Direction, VehicleStopStatus } from "../src/domain";
-import type { HeatmapType } from "../src/constants";
+import type { CertificateBand, HeatmapType } from "../src/constants";
 
 /**
  * `api.zod.ts` is generated from `api.ts`, and generated code rots the moment
@@ -27,11 +27,12 @@ type Inferred<S> = S extends z.ZodType ? z.infer<S> : never;
 
 describe("generated schemas match the interfaces they came from", () => {
   it("infers exactly the declared response types", () => {
-    // The three unions the generator inlines, checked against the originals so
+    // The unions the generator inlines, checked against the originals so
     // an edit in domain.ts or constants.ts cannot silently diverge.
     assertExact<Inferred<typeof schemas.directionSchema>, Direction>(true);
     assertExact<Inferred<typeof schemas.vehicleStopStatusSchema>, VehicleStopStatus>(true);
     assertExact<Inferred<typeof schemas.heatmapTypeSchema>, HeatmapType>(true);
+    assertExact<Inferred<typeof schemas.certificateBandSchema>, CertificateBand>(true);
 
     // Every response the app can receive.
     assertExact<Inferred<typeof schemas.healthResponseSchema>, dto.HealthResponse>(true);
@@ -57,6 +58,8 @@ describe("generated schemas match the interfaces they came from", () => {
     assertExact<Inferred<typeof schemas.connectionTopResponseSchema>, dto.ConnectionTopResponse>(true);
     assertExact<Inferred<typeof schemas.alertListResponseSchema>, dto.AlertListResponse>(true);
     assertExact<Inferred<typeof schemas.alertFrequencyResponseSchema>, dto.AlertFrequencyResponse>(true);
+    assertExact<Inferred<typeof schemas.trainRecordResponseSchema>, dto.TrainRecordResponse>(true);
+    assertExact<Inferred<typeof schemas.certificateResponseSchema>, dto.CertificateResponse>(true);
 
     // The assertions above are the test; reaching here means they compiled.
     expect(true).toBe(true);

@@ -49,6 +49,13 @@ export const HEATMAP_TYPES = ["hour_of_day", "day_of_week"] as const;
 export type HeatmapType = (typeof HEATMAP_TYPES)[number];
 
 /**
+ * Time bands a delay certificate is issued for, in the order a day runs. The
+ * boundaries come from {@link PEAK_WINDOWS}, so bands and peak cannot drift.
+ */
+export const CERTIFICATE_BANDS = ["early", "am_peak", "midday", "pm_peak", "evening"] as const;
+export type CertificateBand = (typeof CERTIFICATE_BANDS)[number];
+
+/**
  * Ranges are [minSeconds, maxSeconds), in seconds; `maxSeconds: null` is
  * open-ended.
  */

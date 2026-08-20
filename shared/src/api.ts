@@ -1,5 +1,5 @@
 import type { Direction, VehicleStopStatus } from "./domain";
-import type { HeatmapType } from "./constants";
+import type { CertificateBand, HeatmapType } from "./constants";
 
 export interface DistributionBucketResult {
   label: string;
@@ -656,4 +656,78 @@ export interface PredictionsResponse {
   meanAbsoluteErrorSeconds: number | null;
   /** How many legs have an actual to compare against. */
   scoredCount: number;
+}
+
+export interface TrainRunResult {
+  serviceDate: string;
+  /** Null when the trip was cancelled, or the stop was never reached. */
+  delaySeconds: number | null;
+  cancelled: boolean;
+}
+
+export interface TrainRecordThreshold {
+  thresholdSeconds: number;
+  onTimePercent: number;
+}
+
+/**
+ * `GET /trips/:tripId/record` — one departure's own punctuality history, after
+ * Deutsche Bahn's per-train record. See README "Train record".
+ */
+export interface TrainRecordResponse {
+  tripId: string;
+  lineName: string;
+  direction: Direction;
+  originStopName: string;
+  terminalStopName: string;
+  /** Where lateness was measured; the terminal unless a stop was asked for. */
+  measuredAtStopId: string;
+  measuredAtStopName: string;
+  from: string;
+  to: string;
+  /** Service dates the departure ran, cancellations included. */
+  runs: number;
+  cancellations: number;
+  /** Share of completed runs more than the strict threshold late. */
+  latePercent: number;
+  onTime: TrainRecordThreshold[];
+  medianDelaySeconds: number | null;
+  p90DelaySeconds: number | null;
+  /** Newest last, so a strip of runs reads left to right. */
+  recentRuns: TrainRunResult[];
+  lowSample: boolean;
+}
+
+export interface CertificateBandResult {
+  band: CertificateBand;
+  label: string;
+  startHour: number;
+  /** Exclusive; 24 means midnight. */
+  endHour: number;
+  trainsObserved: number;
+  trainsLate: number;
+  latePercent: number;
+  avgDelaySeconds: number;
+  maxDelaySeconds: number;
+  /** True when this band's average delay reaches the certificate threshold. */
+  issued: boolean;
+  lowSample: boolean;
+}
+
+/**
+ * `GET /certificates?line=&date=` — the delay certificate, after JR East's
+ * 遅延証明書. See README "Delay certificate".
+ */
+export interface CertificateResponse {
+  lineName: string;
+  serviceDate: string;
+  thresholdSeconds: number;
+  /** Every band of the day, in order, whether or not it qualifies. */
+  bands: CertificateBandResult[];
+  /** True when any band qualifies, so a screen can say there is nothing to certify. */
+  issued: boolean;
+  worstBand: CertificateBand | null;
+  /** Service dates with arrivals, so a screen can offer them. */
+  availableDates: string[];
+  lines: string[];
 }

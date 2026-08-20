@@ -27,10 +27,11 @@ const OUTPUT = resolve(ROOT, "shared/src/api.zod.ts");
 
 const IMPORTED_UNIONS = `export type Direction = "inbound" | "outbound";
 export type VehicleStopStatus = "incoming_at" | "stopped_at" | "in_transit_to";
-export type HeatmapType = "hour_of_day" | "day_of_week";`;
+export type HeatmapType = "hour_of_day" | "day_of_week";
+export type CertificateBand = "early" | "am_peak" | "midday" | "pm_peak" | "evening";`;
 
 const IMPORTS = `import type { Direction, VehicleStopStatus } from "./domain";
-import type { HeatmapType } from "./constants";`;
+import type { CertificateBand, HeatmapType } from "./constants";`;
 
 const HEADER = `/**
  * Runtime validators for the API contract in \`api.ts\`.

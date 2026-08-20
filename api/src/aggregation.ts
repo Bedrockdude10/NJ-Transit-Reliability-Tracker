@@ -86,6 +86,18 @@ export function percentileFromDistribution(counts: CountMap, p: number): number 
   return 0;
 }
 
+/**
+ * Exact percentile over raw values, by nearest rank. Unlike
+ * {@link percentileFromDistribution} nothing is bucketed here, so a record built
+ * from individual runs reports the run it actually had.
+ */
+export function percentileOf(values: readonly number[], p: number): number | null {
+  if (values.length === 0) return null;
+  const sorted = [...values].sort((a, b) => a - b);
+  const rank = Math.ceil((p / 100) * sorted.length) - 1;
+  return sorted[Math.min(Math.max(rank, 0), sorted.length - 1)] ?? null;
+}
+
 export function buildDistributionResult(counts: CountMap): DistributionBucketResult[] {
   return DELAY_BUCKETS.map((bucket) => ({ label: bucket.label, count: counts[bucket.label] ?? 0 }));
 }

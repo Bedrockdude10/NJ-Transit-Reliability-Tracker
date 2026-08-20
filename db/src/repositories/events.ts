@@ -21,6 +21,30 @@ interface EventRow {
   ingested_at_ms: number;
 }
 
+export interface TrainRun {
+  serviceDate: string;
+  delaySeconds: number | null;
+  cancelled: boolean;
+  skipped: boolean;
+}
+
+export interface TripIdentity {
+  tripId: string;
+  lineName: string;
+  routeId: string;
+  direction: Direction;
+  originStopId: string;
+  originStopName: string;
+  terminalStopId: string;
+  terminalStopName: string;
+}
+
+export interface LineArrival {
+  tripId: string;
+  observedArrival: number;
+  delaySeconds: number;
+}
+
 export interface UpcomingDeparture {
   tripId: string;
   routeId: string;
@@ -386,6 +410,110 @@ export class TripStopEventRepository {
       stale: staleRouteId,
     });
     return affected;
+  }
+
+  /**
+   * One departure's outcome at one stop, per service date it ran. `tripId` is
+   * stable across days — measured, 1,321 of 1,579 ids recur — which is what
+   * makes a record possible at all. See README "Train record".
+   */
+  runsAtStop(tripId: string, stopId: string, from: string, to: string): TrainRun[] {
+    return this.db
+      .all<{
+        service_date: string;
+        delay_seconds: number | null;
+        trip_cancelled: number;
+        stop_skipped: number;
+      }>(
+        /* sql */ `
+          SELECT service_date, delay_seconds, trip_cancelled, stop_skipped
+          FROM trip_stop_events
+          WHERE trip_id = :trip AND stop_id = :stop
+            AND service_date BETWEEN :from AND :to
+          ORDER BY service_date
+        `,
+        { trip: tripId, stop: stopId, from, to },
+      )
+      .map((r) => ({
+        serviceDate: r.service_date,
+        delaySeconds: r.delay_seconds,
+        cancelled: fromSqlBool(r.trip_cancelled),
+        skipped: fromSqlBool(r.stop_skipped),
+      }));
+  }
+
+  /** How a screen names a departure: its line, and where it runs from and to. */
+  tripIdentity(tripId: string): TripIdentity | null {
+    const row = this.db.get<{
+      line_name: string;
+      route_id: string;
+      direction: string;
+      origin_stop_id: string;
+      origin_stop_name: string;
+      terminal_stop_id: string;
+      terminal_stop_name: string;
+    }>(
+      /* sql */ `
+        SELECT line_name, route_id, direction,
+               first_value(stop_id)   OVER seq AS origin_stop_id,
+               first_value(stop_name) OVER seq AS origin_stop_name,
+               last_value(stop_id)    OVER seq AS terminal_stop_id,
+               last_value(stop_name)  OVER seq AS terminal_stop_name
+        FROM trip_stop_events
+        WHERE trip_id = :trip
+        WINDOW seq AS (
+          ORDER BY stop_sequence
+          RANGE BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING
+        )
+        LIMIT 1
+      `,
+      { trip: tripId },
+    );
+    if (!row) return null;
+    return {
+      tripId,
+      lineName: row.line_name,
+      routeId: row.route_id,
+      direction: row.direction as Direction,
+      originStopId: row.origin_stop_id,
+      originStopName: row.origin_stop_name,
+      terminalStopId: row.terminal_stop_id,
+      terminalStopName: row.terminal_stop_name,
+    };
+  }
+
+  /**
+   * Every arrival a line actually made on one date. Banding by local hour is the
+   * caller's job: SQLite would need a fixed UTC offset and get DST wrong.
+   */
+  arrivalsOnDate(lineName: string, serviceDate: string): LineArrival[] {
+    return this.db
+      .all<{ trip_id: string; observed_arrival: number; delay_seconds: number }>(
+        /* sql */ `
+          SELECT trip_id, observed_arrival, delay_seconds
+          FROM trip_stop_events
+          WHERE line_name = :line AND service_date = :date
+            AND observed_arrival IS NOT NULL
+            AND delay_seconds IS NOT NULL
+            AND stop_skipped = 0
+          ORDER BY observed_arrival
+        `,
+        { line: lineName, date: serviceDate },
+      )
+      .map((r) => ({
+        tripId: r.trip_id,
+        observedArrival: r.observed_arrival,
+        delaySeconds: r.delay_seconds,
+      }));
+  }
+
+  lineNamesOnDate(serviceDate: string): string[] {
+    return this.db
+      .all<{ line_name: string }>(
+        "SELECT DISTINCT line_name FROM trip_stop_events WHERE service_date = :date ORDER BY line_name",
+        { date: serviceDate },
+      )
+      .map((r) => r.line_name);
   }
 
   distinctLineNames(): string[] {

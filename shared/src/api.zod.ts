@@ -14,6 +14,8 @@ export const vehicleStopStatusSchema = z.union([z.literal("incoming_at"), z.lite
 
 export const heatmapTypeSchema = z.union([z.literal("hour_of_day"), z.literal("day_of_week")]);
 
+export const certificateBandSchema = z.union([z.literal("early"), z.literal("am_peak"), z.literal("midday"), z.literal("pm_peak"), z.literal("evening")]);
+
 export const distributionBucketResultSchema = z.object({
     label: z.string(),
     count: z.number()
@@ -681,4 +683,78 @@ export const predictionsResponseSchema = z.object({
     meanAbsoluteErrorSeconds: z.number().nullable(),
     /** How many legs have an actual to compare against. */
     scoredCount: z.number()
+});
+
+export const trainRunResultSchema = z.object({
+    serviceDate: z.string(),
+    /** Null when the trip was cancelled, or the stop was never reached. */
+    delaySeconds: z.number().nullable(),
+    cancelled: z.boolean()
+});
+
+export const trainRecordThresholdSchema = z.object({
+    thresholdSeconds: z.number(),
+    onTimePercent: z.number()
+});
+
+/**
+ * `GET /trips/:tripId/record` — one departure's own punctuality history, after
+ * Deutsche Bahn's per-train record. See README "Train record".
+ */
+export const trainRecordResponseSchema = z.object({
+    tripId: z.string(),
+    lineName: z.string(),
+    direction: directionSchema,
+    originStopName: z.string(),
+    terminalStopName: z.string(),
+    /** Where lateness was measured; the terminal unless a stop was asked for. */
+    measuredAtStopId: z.string(),
+    measuredAtStopName: z.string(),
+    from: z.string(),
+    to: z.string(),
+    /** Service dates the departure ran, cancellations included. */
+    runs: z.number(),
+    cancellations: z.number(),
+    /** Share of completed runs more than the strict threshold late. */
+    latePercent: z.number(),
+    onTime: z.array(trainRecordThresholdSchema),
+    medianDelaySeconds: z.number().nullable(),
+    p90DelaySeconds: z.number().nullable(),
+    /** Newest last, so a strip of runs reads left to right. */
+    recentRuns: z.array(trainRunResultSchema),
+    lowSample: z.boolean()
+});
+
+export const certificateBandResultSchema = z.object({
+    band: certificateBandSchema,
+    label: z.string(),
+    startHour: z.number(),
+    /** Exclusive; 24 means midnight. */
+    endHour: z.number(),
+    trainsObserved: z.number(),
+    trainsLate: z.number(),
+    latePercent: z.number(),
+    avgDelaySeconds: z.number(),
+    maxDelaySeconds: z.number(),
+    /** True when this band's average delay reaches the certificate threshold. */
+    issued: z.boolean(),
+    lowSample: z.boolean()
+});
+
+/**
+ * `GET /certificates?line=&date=` — the delay certificate, after JR East's
+ * 遅延証明書. See README "Delay certificate".
+ */
+export const certificateResponseSchema = z.object({
+    lineName: z.string(),
+    serviceDate: z.string(),
+    thresholdSeconds: z.number(),
+    /** Every band of the day, in order, whether or not it qualifies. */
+    bands: z.array(certificateBandResultSchema),
+    /** True when any band qualifies, so a screen can say there is nothing to certify. */
+    issued: z.boolean(),
+    worstBand: certificateBandSchema.nullable(),
+    /** Service dates with arrivals, so a screen can offer them. */
+    availableDates: z.array(z.string()),
+    lines: z.array(z.string())
 });

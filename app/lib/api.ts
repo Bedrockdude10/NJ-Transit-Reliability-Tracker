@@ -1,6 +1,7 @@
 import {
   alertFrequencyResponseSchema,
   alertListResponseSchema,
+  certificateResponseSchema,
   commuteResponseSchema,
   connectionResponseSchema,
   connectionTopResponseSchema,
@@ -22,6 +23,7 @@ import {
   stationRankingsResponseSchema,
   stationSummaryResponseSchema,
   systemSummaryResponseSchema,
+  trainRecordResponseSchema,
   trendsResponseSchema,
   worstTripsResponseSchema,
   type HeatmapType,
@@ -134,6 +136,10 @@ export const api = {
   /** Omit `date` for the most recently predicted day — today is usually unpredicted. */
   predictions: (date?: string, line?: string) =>
     get(predictionsResponseSchema, "/predictions", { date, line }),
+  trainRecord: (tripId: string, q: { stop_id?: string | undefined } & Partial<DateRange> = {}) =>
+    get(trainRecordResponseSchema, `/trips/${encodeURIComponent(tripId)}/record`, { ...q }),
+  certificate: (line?: string, date?: string) =>
+    get(certificateResponseSchema, "/certificates", { line, date }),
   /** A model's track record, not its forecast — see `/models`. */
   models: (date?: string) => get(modelAccuracyResponseSchema, "/models", { date }),
   exportUrl: (entity: "system" | "line" | "station", r: DateRange, id?: string) =>

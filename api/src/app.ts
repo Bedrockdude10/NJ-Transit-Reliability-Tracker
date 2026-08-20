@@ -7,7 +7,9 @@ import { alertRoutes } from "./routes/alerts";
 import { commuteRoutes } from "./routes/commute";
 import { connectionRoutes } from "./routes/connections";
 import { exportRoutes } from "./routes/export";
+import { certificateRoutes } from "./routes/certificates";
 import { predictionRoutes } from "./routes/predictions";
+import { trainRecordRoutes } from "./routes/train-record";
 import { healthRoutes } from "./routes/health";
 import { lightRailRoutes } from "./routes/lightrail";
 import { lineRoutes } from "./routes/lines";
@@ -65,6 +67,8 @@ export function createApp(repos: Repositories, log: Logger = consoleLogger): Hon
   app.route("/connections", connectionRoutes(repos));
   app.route("/alerts", alertRoutes(repos));
   app.route("/predictions", predictionRoutes(repos));
+  app.route("/trips", trainRecordRoutes(repos));
+  app.route("/certificates", certificateRoutes(repos));
   app.route("/export", exportRoutes(repos));
 
   return app;

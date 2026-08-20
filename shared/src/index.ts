@@ -14,6 +14,7 @@ export * from "./lines";
 export * from "./geo";
 export * from "./time";
 export * from "./delay";
+export * from "./certificate";
 export * from "./departures";
 export * from "./month";
 export * from "./prediction-interval";
