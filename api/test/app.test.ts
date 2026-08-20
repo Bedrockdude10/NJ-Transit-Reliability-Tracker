@@ -376,6 +376,8 @@ describe("API integration", () => {
       `/lines/NE/summary?${RANGE}`,
       "/lines/NE/monthly",
       `/lightrail/summary?${RANGE}`,
+      `/trips/T1/record?${RANGE}`,
+      `/certificates?date=${SEED_DATE}`,
     ];
     for (const path of cached) {
       const res = await app.request(path);

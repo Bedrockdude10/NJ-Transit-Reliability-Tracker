@@ -143,6 +143,38 @@ describe("a departure's punctuality record", () => {
     expect(body.latePercent).toBe(0);
   });
 
+  it("excludes a cancelled run even when the feed left a delay on it", async () => {
+    // The cancelled flag and delay_seconds are separate columns, so a cancelled
+    // trip can arrive carrying a stale delay. Only the flag may decide this.
+    repos.events.recordMany([
+      runOn("2026-08-17", 60),
+      event({ serviceDate: "2026-08-18", delaySeconds: 3600, tripCancelled: true }),
+    ]);
+    const { body } = await record();
+    expect(body.cancellations).toBe(1);
+    expect(body.medianDelaySeconds).toBe(60);
+    expect(body.latePercent).toBe(0);
+    expect(body.recentRuns.at(-1)?.delaySeconds).toBeNull();
+  });
+
+  it("treats exactly five minutes as on time, matching the strict threshold", async () => {
+    repos.events.recordMany([runOn("2026-08-17", 300), runOn("2026-08-18", 301)]);
+    const { body } = await record();
+    expect(body.latePercent).toBe(50);
+  });
+
+  it("takes the median by nearest rank, so an even number of runs is unambiguous", async () => {
+    repos.events.recordMany([
+      runOn("2026-08-17", 0),
+      runOn("2026-08-18", 60),
+      runOn("2026-08-19", 600),
+      runOn("2026-08-20", 900),
+    ]);
+    const { body } = await record();
+    expect(body.medianDelaySeconds).toBe(60);
+    expect(body.p90DelaySeconds).toBe(900);
+  });
+
   it("shows the recent runs newest last, so the strip reads left to right", async () => {
     repos.events.recordMany([runOn("2026-08-17", 60), runOn("2026-08-18", 120), runOn("2026-08-19", 180)]);
     const { body } = await record();
