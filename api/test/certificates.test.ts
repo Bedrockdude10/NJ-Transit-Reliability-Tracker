@@ -1,5 +1,5 @@
 import { createRepositories, openDatabase, type Repositories } from "@njt/db";
-import { certificateResponseSchema, type CertificateBandResult, type TripStopEvent } from "@njt/shared";
+import { addDays, certificateResponseSchema, toLocalDateString, type CertificateBandResult, type TripStopEvent } from "@njt/shared";
 import { localPartsToEpochSeconds } from "@njt/shared/zoned";
 import { silentLogger } from "@njt/shared/logger";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -166,12 +166,15 @@ describe("the delay certificate for one line on one date", () => {
   it("does not default to a service date that has not happened yet", async () => {
     // Trips running past midnight open tomorrow's partition, so the newest date
     // in the archive is routinely in the future and holds a handful of trains.
+    // Both dates track the clock the route reads: a hardcoded pair stops testing
+    // anything the day after it is written, and then starts failing.
+    const today = toLocalDateString(Math.floor(Date.now() / 1000));
     repos.events.recordMany([
-      arrival(8, 600, { date: "2026-08-19" }),
-      arrival(1, 60, { date: "2026-08-20" }),
+      arrival(8, 600, { date: today }),
+      arrival(1, 60, { date: addDays(today, 1) }),
     ]);
     const { body } = await certificate("");
-    expect(body.serviceDate).toBe("2026-08-19");
+    expect(body.serviceDate).toBe(today);
   });
 
   it("still serves a future date when one is asked for outright", async () => {
