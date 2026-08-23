@@ -172,8 +172,10 @@ export function SegmentedControl<T extends string>({
   value: T;
   onChange: (key: T) => void;
 }) {
+  // Horizontally scrollable, like NavBar: five tabs overflow a 375px phone, and
+  // the page's own scroller is vertical, so a clipped tab is simply unreachable.
   return (
-    <View style={styles.segments}>
+    <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.segmentsScroll} contentContainerStyle={styles.segments}>
       {options.map((opt) => {
         const active = opt.key === value;
         return (
@@ -188,7 +190,7 @@ export function SegmentedControl<T extends string>({
           </Pressable>
         );
       })}
-    </View>
+    </ScrollView>
   );
 }
 
@@ -205,8 +207,10 @@ const styles = StyleSheet.create({
     borderColor: theme.colors.border,
     ...theme.shadow.card,
   },
-  cardHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: theme.spacing(3) },
-  cardHeaderText: { gap: 2, flexShrink: 1 },
+  // Wraps rather than crushes: `right` is often a control several words wide, and
+  // on a phone shrinking the title to share the row squeezes it to one word a line.
+  cardHeader: { flexDirection: "row", alignItems: "flex-start", justifyContent: "space-between", gap: theme.spacing(3), flexWrap: "wrap" },
+  cardHeaderText: { gap: 2, flexShrink: 1, flexGrow: 1, flexBasis: 200 },
   cardSubtitle: { color: theme.colors.textMuted, fontSize: theme.fontSize.sm },
 
   sectionTitle: { color: theme.colors.text, fontSize: theme.fontSize.lg, fontWeight: "700", letterSpacing: -0.2 },
@@ -256,7 +260,10 @@ const styles = StyleSheet.create({
   empty: { padding: theme.spacing(6), alignItems: "center", gap: theme.spacing(1), backgroundColor: theme.colors.surfaceAlt, borderRadius: theme.radii.md, borderWidth: 1, borderColor: theme.colors.border, borderStyle: "dashed" },
   emptyTitle: { color: theme.colors.text, fontSize: theme.fontSize.md, fontWeight: "600" },
 
-  segments: { flexDirection: "row", backgroundColor: theme.colors.surfaceAlt, borderRadius: theme.radii.pill, padding: 3, alignSelf: "flex-start", borderWidth: 1, borderColor: theme.colors.border },
+  // `flexGrow: 0` so the scroller does not stretch down the column; the pill
+  // itself is the content container, which hugs the tabs as it did before.
+  segmentsScroll: { flexGrow: 0 },
+  segments: { flexDirection: "row", backgroundColor: theme.colors.surfaceAlt, borderRadius: theme.radii.pill, padding: 3, borderWidth: 1, borderColor: theme.colors.border },
   segment: { paddingHorizontal: theme.spacing(3), paddingVertical: theme.spacing(2), borderRadius: theme.radii.pill },
   segmentActive: { backgroundColor: theme.colors.accent },
   segmentLabel: { color: theme.colors.textMuted, fontWeight: "600", fontSize: theme.fontSize.sm },

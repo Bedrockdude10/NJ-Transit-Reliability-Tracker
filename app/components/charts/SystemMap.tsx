@@ -107,12 +107,20 @@ export function SystemMap({
     setSelected(null);
   };
 
+  // At scale 1 there is nothing to pan, so the map must not claim the vertical
+  // swipe: `touch-action: none` there leaves a phone reader unable to scroll
+  // past the map at all. Once zoomed, dragging pans and the browser must yield.
+  useEffect(() => {
+    if (Platform.OS !== "web") return;
+    const el = containerRef.current as unknown as HTMLElement | null;
+    if (el) el.style.touchAction = view.scale > 1 ? "none" : "pan-y";
+  }, [view.scale]);
+
   // biome-ignore lint/correctness/useExhaustiveDependencies: listeners attach once, state flows via itx.current
   useEffect(() => {
     if (Platform.OS !== "web") return;
     const el = containerRef.current as unknown as HTMLElement | null;
     if (!el) return;
-    el.style.touchAction = "none";
     const rel = (e: PointerEvent | WheelEvent): Pt => {
       const r = el.getBoundingClientRect();
       return { x: e.clientX - r.left, y: e.clientY - r.top };
