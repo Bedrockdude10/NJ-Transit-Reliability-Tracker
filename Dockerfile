@@ -1,6 +1,7 @@
 # Server image: the pipeline + API (which share one SQLite file on a volume).
 # The Expo app is NOT included here — it ships as static files to a CDN.
-# We run TypeScript directly via tsx (no build step), which is fine at this scale.
+# Every process is esbuild-bundled to plain JS at build time (see below) — on a
+# 512 MB machine the tsx runtime's footprint is the binding constraint.
 # syntax=docker/dockerfile:1
 FROM node:24-bookworm-slim
 WORKDIR /app
@@ -21,7 +22,8 @@ RUN cd /tmp \
 
 # Install dependencies for the SERVER workspaces only. We rewrite the
 # "workspaces" list so npm never resolves the heavy Expo `app` package, keeping
-# the image lean. --include=dev because we run via tsx (a dev dependency).
+# the image lean. --include=dev because esbuild (a dev dependency) builds the
+# bundles below.
 COPY package.json package-lock.json ./
 COPY shared/package.json ./shared/
 COPY db/package.json ./db/
@@ -30,7 +32,7 @@ COPY api/package.json ./api/
 RUN node -e "const fs=require('fs');const p=JSON.parse(fs.readFileSync('package.json'));p.workspaces=['shared','db','pipeline','api'];fs.writeFileSync('package.json',JSON.stringify(p));" \
   && npm install --include=dev --no-audit --no-fund
 
-# Source (tsx executes it directly).
+# Source (esbuild bundles it below).
 COPY tsconfig.base.json tsconfig.json ./
 COPY shared ./shared
 COPY db ./db
@@ -41,14 +43,24 @@ COPY deploy ./deploy
 # it was built against — and it describes every object this container writes.
 COPY contract ./contract
 
-# Precompile the archive jobs to plain JavaScript.
+# Precompile every process to plain JavaScript.
 #
-# These run *while* the API and the pipeline are running, on a machine with
-# ~173 MB to spare, so their footprint is the constraint. Under tsx the
-# process is ~155 MB, ~25 MB of which is the runtime TypeScript compiler, plus
-# another ~20 MB for the `npm run` wrapper — overhead that buys nothing here
-# because the source never changes after the image is built.
-RUN node_modules/.bin/esbuild pipeline/src/archive/copy-cli.ts \
+# 512 MB nominal is ~469 MB usable, and `npm run <name>` spends ~137 MB of it
+# per child on nothing: an npm wrapper (~66 MB), a tsx launcher (~55 MB) and
+# tsx's esbuild service (~16 MB), all to compile source that cannot change
+# after the image is built. Across the API and the pipeline that is ~274 MB —
+# so when an hourly job spawned there was too little left, the OOM killer took
+# it, then the pipeline, and eventually the machine (2026-08-22).
+#
+# `dist/<name>.mjs` is the name `deploy/start.mjs` looks for; the CLIs keep
+# their own names because the supervisor invokes them by path.
+RUN node_modules/.bin/esbuild api/src/main.ts \
+  --bundle --platform=node --format=esm --external:@aws-sdk/* \
+  --outfile=dist/api.mjs \
+  && node_modules/.bin/esbuild pipeline/src/main.ts \
+  --bundle --platform=node --format=esm --external:@aws-sdk/* \
+  --outfile=dist/pipeline.mjs \
+  && node_modules/.bin/esbuild pipeline/src/archive/copy-cli.ts \
   --bundle --platform=node --format=esm --external:@aws-sdk/* \
   --outfile=dist/archive-copy.mjs \
   && node_modules/.bin/esbuild pipeline/src/archive/export-cli.ts \

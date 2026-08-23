@@ -30,12 +30,24 @@ function shutdown(code) {
   setTimeout(() => process.exit(code), 3000).unref();
 }
 
-/** @param {[string, string[]]} [command] defaults to `npm run <name>` */
+/**
+ * The precompiled bundle for a long-running child, or `npm run <name>` in a
+ * plain checkout. `npm run` costs an npm wrapper plus a tsx launcher plus its
+ * esbuild service — ~137 MB per child that the bundle spends nothing on, and
+ * with two children that was most of the headroom the hourly jobs needed.
+ * @returns {[string, string[]]}
+ */
+function serviceCommand(name) {
+  const bundle = `dist/${name}.mjs`;
+  return existsSync(bundle) ? ["node", [bundle]] : ["npm", ["run", name]];
+}
+
+/** @param {[string, string[]]} [command] defaults to `serviceCommand(name)` */
 function start(name, command) {
   const entry = supervised.get(name) ?? { child: null, failures: [] };
   supervised.set(name, entry);
 
-  const [bin, args] = command ?? ["npm", ["run", name]];
+  const [bin, args] = command ?? serviceCommand(name);
   // `detached` so the child leads its own process group and `stopTree` can signal
   // the whole tree (see `stopProcessTree`). Not unref'd — still owned here.
   const child = spawn(bin, args, { stdio: "inherit", env: process.env, detached: true });

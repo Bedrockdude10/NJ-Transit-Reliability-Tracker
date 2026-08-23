@@ -13,7 +13,7 @@ The pipeline and API share one SQLite file on a **persistent volume** (WAL = one
 
 ## What's already scaffolded (in this repo)
 
-- `Dockerfile` — builds the server image (pipeline + API only; excludes the Expo app; runs via `tsx`).
+- `Dockerfile` — builds the server image (pipeline + API only; excludes the Expo app; esbuild-bundles every process to `dist/*.mjs`, which is what keeps it inside 512 MB).
 - `deploy/start.mjs` — supervisor: runs the **API always**, and the **pipeline only when `NJT_RAIL_DATA_USERNAME` is set** (so you can launch before you have the GTFS-RT credentials).
 - `fly.toml` — Fly app config with the volume mount, `/health` check, and always-on settings.
 - `.dockerignore` — keeps the build context tiny (no `node_modules`, `data`, `app`).
@@ -395,7 +395,7 @@ Children are now spawned `detached` and stopped with a negative pid
 (`stopProcessTree`). If you ever need to check by hand, the image has no `ps`:
 
 ```bash
-fly ssh console -C "node -e 'const f=require(\"fs\");console.log(f.readdirSync(\"/proc\").filter(p=>/^[0-9]+$/.test(p)).map(p=>{try{return f.readFileSync(\"/proc/\"+p+\"/cmdline\",\"utf8\").replace(/\\0/g,\" \")}catch{return \"\"}}).filter(c=>/pipeline\\/src\\/main/.test(c)).length+\" pipeline processes\")'"
+fly ssh console -C "node -e 'const f=require(\"fs\");console.log(f.readdirSync(\"/proc\").filter(p=>/^[0-9]+$/.test(p)).map(p=>{try{return f.readFileSync(\"/proc/\"+p+\"/cmdline\",\"utf8\").replace(/\\0/g,\" \")}catch{return \"\"}}).filter(c=>/dist\\/pipeline|pipeline\\/src\\/main/.test(c)).length+\" pipeline processes\")'"
 ```
 
 Then it refuses to swap unless it can *prove* nothing wrote while it worked, rather
